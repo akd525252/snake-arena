@@ -59,6 +59,12 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    if (!userRow) {
+      console.error('[auth/login] User row is null after creation');
+      res.status(500).json({ error: 'Internal server error' });
+      return;
+    }
+
     const isDemo = userRow.game_mode === 'demo';
     const playerUsername = userRow.username;
     // skins is returned as array from Supabase even for one-to-one
