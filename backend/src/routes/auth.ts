@@ -25,13 +25,35 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     }
 
     // Look up user's game_mode, username, and equipped skin from DB
-    const { data: userRow, error: userErr } = await supabase
+    let { data: userRow, error: userErr } = await supabase
       .from('users')
       .select('game_mode, username, equipped_skin_id, skins(skin_key)')
       .eq('id', user.id)
       .single();
 
-    if (userErr) {
+    // Auto-create user row if it doesn't exist (first-time signup)
+    if (userErr && userErr.code === 'PGRST116') {
+      const { data: newUser, error: createErr } = await supabase
+        .from('users')
+        .insert({
+          id: user.id,
+          email: user.email,
+          username: user.user_metadata?.username || user.email?.split('@')[0] || 'player',
+          game_mode: 'demo',
+          demo_balance: 50.00,
+          account_status: 'active',
+        })
+        .select('game_mode, username, equipped_skin_id, skins(skin_key)')
+        .single();
+
+      if (createErr) {
+        console.error('[auth/login] Failed to create user row:', createErr);
+        res.status(500).json({ error: 'Internal server error' });
+        return;
+      }
+
+      userRow = newUser;
+    } else if (userErr) {
       console.error('[auth/login] Failed to fetch user data:', userErr);
       res.status(500).json({ error: 'Internal server error' });
       return;
