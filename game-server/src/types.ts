@@ -95,6 +95,7 @@ export interface GameStatePayload {
     boosted: boolean;
     slowed: boolean;
     skinId?: string | null;
+    inZone?: boolean;
   }[];
   coins: { id: string; position: Position; isTrap: boolean }[];
   arena: {

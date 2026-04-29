@@ -41,6 +41,7 @@ function PlayPageInner() {
   const [lobbyMax, setLobbyMax] = useState(10);
   const [matchStarting, setMatchStarting] = useState(false);
   const [showLobby, setShowLobby] = useState(true);
+  const [serverElapsed, setServerElapsed] = useState(0);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -105,10 +106,13 @@ function PlayPageInner() {
         onTimeUpdate: (time: number) => {
           setTimeRemaining(time);
         },
-        onQueueState: (data: { players: LobbyPlayer[]; minPlayers: number; maxPlayers: number }) => {
+        onQueueState: (data: { players: LobbyPlayer[]; minPlayers: number; maxPlayers: number; elapsedSeconds?: number }) => {
           setLobbyPlayers(data.players);
           setLobbyMin(data.minPlayers);
           setLobbyMax(data.maxPlayers);
+          if (typeof data.elapsedSeconds === 'number') {
+            setServerElapsed(data.elapsedSeconds);
+          }
         },
         onMatchStart: (data: { matchId: string; players: LobbyPlayer[] }) => {
           setLobbyPlayers(data.players.map((p: LobbyPlayer) => ({ ...p, betAmount: undefined })));
@@ -178,6 +182,7 @@ function PlayPageInner() {
           isDemo={false}
           matchStarting={matchStarting}
           scanSeconds={60}
+          serverElapsed={serverElapsed}
           onCancel={() => router.push('/dashboard')}
           onRetry={() => window.location.reload()}
         />

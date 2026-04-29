@@ -443,6 +443,7 @@ function broadcastGameState(room: GameRoom): void {
       boosted: p.snake.boosted,
       slowed: p.snake.slowed,
       skinId: p.skinId,
+      inZone: p.snake.outOfZoneSince === null,
     })),
     coins: room.coins.map(c => ({
       id: c.id,

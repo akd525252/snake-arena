@@ -23,7 +23,15 @@ interface Props {
   onRetry?: () => void;
   /** Total scan duration in seconds. Defaults to 60 for pro, instant for demo. */
   scanSeconds?: number;
+  /** Server-synced elapsed seconds so all clients see same countdown */
+  serverElapsed?: number;
 }
+
+const SKIN_COLORS: Record<string, string> = {
+  neon_cyber: '#00f0ff',
+  inferno_drake: '#ff4500',
+  void_shadow: '#8b00ff',
+};
 
 export default function MatchmakingLobby({
   players,
@@ -36,14 +44,25 @@ export default function MatchmakingLobby({
   onCancel,
   onRetry,
   scanSeconds = 60,
+  serverElapsed = 0,
 }: Props) {
-  const [elapsed, setElapsed] = useState(0);
+  const [localElapsed, setLocalElapsed] = useState(serverElapsed);
   const [dots, setDots] = useState('');
   const [scanExpired, setScanExpired] = useState(false);
+  const [visibleSlots, setVisibleSlots] = useState(0);
 
+  // Sync with server elapsed time when provided
   useEffect(() => {
-    const start = Date.now();
-    const id = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
+    if (serverElapsed > 0) {
+      setLocalElapsed(serverElapsed);
+    }
+  }, [serverElapsed]);
+
+  // Local timer only if no server sync yet
+  useEffect(() => {
+    const id = setInterval(() => {
+      setLocalElapsed(prev => prev + 1);
+    }, 1000);
     return () => clearInterval(id);
   }, []);
 
@@ -59,17 +78,34 @@ export default function MatchmakingLobby({
       setScanExpired(false);
       return;
     }
-    if (elapsed >= scanSeconds + 5 && !scanExpired) {
+    if (localElapsed >= scanSeconds + 5 && !scanExpired) {
       setScanExpired(true);
     }
-  }, [elapsed, matchStarting, isDemo, scanSeconds, scanExpired]);
+  }, [localElapsed, matchStarting, isDemo, scanSeconds, scanExpired]);
+
+  // Staggered reveal of bot slots when match starts
+  useEffect(() => {
+    if (!matchStarting) {
+      setVisibleSlots(players.length);
+      return;
+    }
+    setVisibleSlots(0);
+    let count = 0;
+    const total = players.length;
+    const interval = setInterval(() => {
+      count++;
+      setVisibleSlots(Math.min(count, total));
+      if (count >= total) clearInterval(interval);
+    }, 180);
+    return () => clearInterval(interval);
+  }, [matchStarting, players.length]);
 
   const handleRetry = () => {
     setScanExpired(false);
     onRetry?.();
   };
 
-  const remaining = Math.max(0, scanSeconds - elapsed);
+  const remaining = Math.max(0, scanSeconds - localElapsed);
 
   const slots = Math.max(maxPlayers, minPlayers);
 
@@ -130,7 +166,7 @@ export default function MatchmakingLobby({
           {!matchStarting && !scanExpired && isDemo && (
             <div className="flex justify-center gap-6 mt-3 text-xs text-[#6a6a7a]">
               <span>Bet: <span className="text-white font-bold">${betAmount}</span></span>
-              <span>Time waiting: <span className="text-white font-mono">{elapsed}s</span></span>
+              <span>Time waiting: <span className="text-white font-mono">{localElapsed}s</span></span>
               <span>Mode: <span className="text-white font-bold">Demo</span></span>
             </div>
           )}
@@ -139,12 +175,12 @@ export default function MatchmakingLobby({
         {/* Player slots grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-6">
           {Array.from({ length: slots }).map((_, i) => {
-            const p = players[i];
+            const p = i < visibleSlots ? players[i] : undefined;
             if (!p) {
               return (
                 <div
                   key={`empty-${i}`}
-                  className="aspect-square rounded-xl border-2 border-dashed border-[#1a1a2e] flex flex-col items-center justify-center text-[#5a5a6a]"
+                  className="aspect-square rounded-xl border-2 border-dashed border-[#1a1a2e] flex flex-col items-center justify-center text-[#5a5a6a] animate-pulse"
                 >
                   <div className="w-12 h-12 rounded-full bg-[#11111a] mb-2 flex items-center justify-center text-[#5a5a6a]">
                     ?
@@ -154,25 +190,35 @@ export default function MatchmakingLobby({
               );
             }
             const isMe = p.id === myPlayerId;
+            const skinColor = p.skinId ? SKIN_COLORS[p.skinId] : null;
+            const showSkin = !!skinColor;
             return (
               <div
                 key={p.id}
-                className={`aspect-square rounded-xl border-2 flex flex-col items-center justify-center p-3 transition-all ${
+                className={`aspect-square rounded-xl border-2 flex flex-col items-center justify-center p-3 transition-all animate-in fade-in zoom-in duration-300 ${
                   isMe ? `${accent.slotBorder} ${accent.slotBg} shadow-lg ${accent.slotShadow}` : 'border-[#2a2a3a] bg-[#11111a]/50'
                 }`}
+                style={{ animationDelay: `${i * 120}ms` }}
               >
-                <div className={`w-14 h-14 rounded-full overflow-hidden border-2 mb-2 ${
-                  isMe ? accent.avatarBorder : 'border-[#3a3a4a]'
-                }`}>
+                <div className={`w-14 h-14 rounded-full overflow-hidden border-2 mb-2 relative ${
+                  isMe ? accent.avatarBorder : showSkin ? 'border-[2px]' : 'border-[#3a3a4a]'
+                }`}
+                  style={showSkin && !isMe ? { borderColor: skinColor! } : {}}
+                >
                   {p.avatar ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={p.avatar} alt={p.username} className="w-full h-full object-cover" />
                   ) : (
                     <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${
-                      isMe ? accent.avatarGradient : 'from-[#3a3a4a] to-[#2a2a3a]'
-                    } text-white font-black text-xl`}>
+                      isMe ? accent.avatarGradient : showSkin ? 'from-[#1a1a2e] to-[#0f0f1a]' : 'from-[#3a3a4a] to-[#2a2a3a]'
+                    } text-white font-black text-xl`}
+                      style={showSkin ? { color: skinColor! } : {}}
+                    >
                       {p.username.charAt(0).toUpperCase()}
                     </div>
+                  )}
+                  {showSkin && (
+                    <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full border border-white/20" style={{ backgroundColor: skinColor! }} />
                   )}
                 </div>
                 <span className="text-xs text-white font-bold truncate w-full text-center">
@@ -194,7 +240,7 @@ export default function MatchmakingLobby({
             <div className="h-2 bg-[#11111a] rounded-full overflow-hidden">
               <div
                 className={`h-full ${accent.bar} transition-all duration-1000 ease-linear`}
-                style={{ width: `${Math.max(0, ((scanSeconds - elapsed) / scanSeconds) * 100)}%` }}
+                style={{ width: `${Math.max(0, ((scanSeconds - localElapsed) / scanSeconds) * 100)}%` }}
               />
             </div>
             <div className="text-center text-xs text-[#6a6a7a] mt-2">

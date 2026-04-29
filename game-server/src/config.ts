@@ -43,5 +43,5 @@ export const CONFIG = {
   DEATH_DROP_MAX_COINS: 20, // upper bound on death-drop coin count (each carries proportional value)
 
   // Zone penalty (outside arena)
-  ZONE_PENALTY_PER_SECOND: 0.30, // dollars deducted per second while outside arena
+  ZONE_PENALTY_PER_SECOND: 3.00, // dollars deducted per second while outside arena — dangerous!
 };

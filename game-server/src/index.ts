@@ -51,6 +51,7 @@ interface QueueEntry {
 }
 
 const matchmakingQueue: QueueEntry[] = [];
+let proScanStartTime = 0; // timestamp when first pro player entered queue (resets on empty)
 
 // ============================================
 // WebSocket Connection
@@ -267,6 +268,11 @@ function joinQueue(ws: WebSocket, playerId: string, username: string, avatar: st
     skinId,
   });
 
+  // Track when pro scanning started so late joiners see same countdown
+  if (!isDemo && proScanStartTime === 0) {
+    proScanStartTime = Date.now();
+  }
+
   console.log(`[joinQueue] queue size now ${matchmakingQueue.length}`);
   broadcastQueueState();
   tryMatchPlayers();
@@ -276,6 +282,11 @@ function broadcastQueueState(): void {
   // Group by demo/pro since they don't share queues
   const proPlayers = matchmakingQueue.filter(e => !e.isDemo);
   const demoPlayers = matchmakingQueue.filter(e => e.isDemo);
+
+  // Reset scan timer when pro queue empties
+  if (proPlayers.length === 0) {
+    proScanStartTime = 0;
+  }
 
   // Pro queue: send to each pro player the full pro queue.
   // minPlayers = 1 because pro matches always include 2 bots that fill
@@ -287,6 +298,7 @@ function broadcastQueueState(): void {
     skinId: e.skinId,
     betAmount: e.betAmount,
   }));
+  const proElapsed = proScanStartTime ? Math.floor((Date.now() - proScanStartTime) / 1000) : 0;
   for (const p of proPlayers) {
     if (p.ws.readyState !== p.ws.OPEN) continue;
     p.ws.send(JSON.stringify({
@@ -294,6 +306,8 @@ function broadcastQueueState(): void {
       players: proList,
       minPlayers: 1,
       maxPlayers: CONFIG.MAX_PLAYERS,
+      scanStartTime: proScanStartTime,
+      elapsedSeconds: proElapsed,
     }));
   }
 

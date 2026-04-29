@@ -16,6 +16,7 @@ interface RemotePlayer {
   boosted: boolean;
   slowed: boolean;
   skinId?: string | null;
+  inZone?: boolean;
 }
 
 interface GameStateMessage {
@@ -61,6 +62,19 @@ export class GameScene extends Phaser.Scene {
   // Camera offset
   private cameraTarget: Position | null = null;
 
+  // Zone danger overlay
+  private zoneOverlay!: Phaser.GameObjects.Graphics;
+
+  // Mobile controls
+  private isMobile = false;
+  private joystickOrigin: Position | null = null;
+  private joystickCurrent: Position | null = null;
+  private joystickActive = false;
+  private joystickGraphics!: Phaser.GameObjects.Graphics;
+  private mobileBoostBtn!: Phaser.GameObjects.Container;
+  private mobileTrapBtn!: Phaser.GameObjects.Container;
+  private touchId: number | null = null;
+
   // Skin effects
   private playerBoostTrails = new Map<string, Phaser.GameObjects.Graphics[]>();
   private playerCloneSprites = new Map<string, Phaser.GameObjects.Graphics[]>();
@@ -79,7 +93,7 @@ export class GameScene extends Phaser.Scene {
   private onMyDeath: ((info: { lostAmount: number; killerName?: string; killerId?: string }) => void) | null = null;
   private onScoreChange: ((score: number) => void) | null = null;
   private onTimeUpdate: ((timeRemaining: number) => void) | null = null;
-  private onQueueState: ((data: { players: { id: string; username: string; avatar: string | null; skinId: string | null; betAmount: number }[]; minPlayers: number; maxPlayers: number }) => void) | null = null;
+  private onQueueState: ((data: { players: { id: string; username: string; avatar: string | null; skinId: string | null; betAmount: number }[]; minPlayers: number; maxPlayers: number; elapsedSeconds?: number }) => void) | null = null;
   private onMatchStart: ((data: { matchId: string; players: { id: string; username: string; avatar: string | null; skinId: string | null }[] }) => void) | null = null;
   private onGameBegin: (() => void) | null = null;
 
@@ -97,7 +111,7 @@ export class GameScene extends Phaser.Scene {
     onMyDeath?: (info: { lostAmount: number; killerName?: string; killerId?: string }) => void;
     onScoreChange?: (score: number) => void;
     onTimeUpdate?: (timeRemaining: number) => void;
-    onQueueState?: (data: { players: { id: string; username: string; avatar: string | null; skinId: string | null; betAmount: number }[]; minPlayers: number; maxPlayers: number }) => void;
+    onQueueState?: (data: { players: { id: string; username: string; avatar: string | null; skinId: string | null; betAmount: number }[]; minPlayers: number; maxPlayers: number; elapsedSeconds?: number }) => void;
     onMatchStart?: (data: { matchId: string; players: { id: string; username: string; avatar: string | null; skinId: string | null }[] }) => void;
     onGameBegin?: () => void;
   }) {
@@ -128,14 +142,21 @@ export class GameScene extends Phaser.Scene {
   preload() {}
 
   create() {
+    // Detect mobile
+    this.isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
     // Arena background
     this.arenaGfx = this.add.graphics();
     this.drawArena();
 
+    // Zone danger overlay (full-screen red tint when outside arena)
+    this.zoneOverlay = this.add.graphics();
+    this.zoneOverlay.setScrollFactor(0).setDepth(99);
+
     // HUD
     this.scoreText = this.add.text(16, 16, 'Score: $0.00', {
       fontFamily: 'monospace',
-      fontSize: '20px',
+      fontSize: this.isMobile ? '16px' : '20px',
       color: this.isDemo ? '#f59e0b' : '#10b981',
       fontStyle: 'bold',
     }).setScrollFactor(0).setDepth(100);
@@ -164,14 +185,14 @@ export class GameScene extends Phaser.Scene {
 
     this.leaderboardText = this.add.text(this.scale.width - 16, 16, '', {
       fontFamily: 'monospace',
-      fontSize: '13px',
+      fontSize: this.isMobile ? '11px' : '13px',
       color: '#a1a1aa',
       align: 'right',
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
 
     this.aliveText = this.add.text(16, 72, 'Alive: 0', {
       fontFamily: 'monospace',
-      fontSize: '14px',
+      fontSize: this.isMobile ? '12px' : '14px',
       color: '#71717a',
     }).setScrollFactor(0).setDepth(100);
 
@@ -184,12 +205,104 @@ export class GameScene extends Phaser.Scene {
 
     // Camera — zoom in so snake is larger on screen
     this.cameras.main.setBackgroundColor('#0a0a0a');
-    this.cameras.main.setZoom(1.6);
+    this.cameras.main.setZoom(this.isMobile ? 1.2 : 1.6);
+
+    // Mobile touch controls
+    if (this.isMobile) {
+      this.setupMobileControls();
+    }
+  }
+
+  private setupMobileControls() {
+    const w = this.scale.width;
+    const h = this.scale.height;
+
+    // Joystick graphics
+    this.joystickGraphics = this.add.graphics().setScrollFactor(0).setDepth(200);
+
+    // Touch steering via joystick
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (pointer.x > w * 0.5) return; // right half reserved for buttons
+      this.joystickActive = true;
+      this.touchId = pointer.id;
+      this.joystickOrigin = { x: pointer.x, y: pointer.y };
+      this.joystickCurrent = { x: pointer.x, y: pointer.y };
+    });
+
+    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      if (!this.joystickActive || pointer.id !== this.touchId) return;
+      this.joystickCurrent = { x: pointer.x, y: pointer.y };
+      const dx = pointer.x - this.joystickOrigin!.x;
+      const dy = pointer.y - this.joystickOrigin!.y;
+      const angle = Math.atan2(dy, dx);
+      if (this.lastSentAngle === null || Math.abs(angle - this.lastSentAngle) > 0.035) {
+        this.send({ type: 'turn', angle });
+        this.lastSentAngle = angle;
+      }
+    });
+
+    this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+      if (pointer.id !== this.touchId) return;
+      this.joystickActive = false;
+      this.touchId = null;
+      this.joystickGraphics.clear();
+    });
+
+    // Boost button (right side bottom)
+    const btnRadius = 36;
+    const boostX = w - btnRadius * 2.5;
+    const boostY = h - btnRadius * 2;
+    this.mobileBoostBtn = this.createMobileButton(boostX, boostY, btnRadius, 'BOOST', 0x00f0ff, () => {
+      this.send({ type: 'boost' });
+    });
+
+    // Trap button (right side above boost)
+    const trapX = w - btnRadius * 2.5;
+    const trapY = h - btnRadius * 5;
+    this.mobileTrapBtn = this.createMobileButton(trapX, trapY, btnRadius, 'TRAP', 0xff2e63, () => {
+      this.send({ type: 'skill_use', skill: 'trap' });
+    });
+  }
+
+  private createMobileButton(x: number, y: number, r: number, label: string, color: number, onDown: () => void): Phaser.GameObjects.Container {
+    const container = this.add.container(x, y).setScrollFactor(0).setDepth(200);
+    const circle = this.add.graphics();
+    circle.fillStyle(color, 0.25);
+    circle.fillCircle(0, 0, r);
+    circle.lineStyle(2, color, 0.8);
+    circle.strokeCircle(0, 0, r);
+    const text = this.add.text(0, 0, label, {
+      fontFamily: 'monospace',
+      fontSize: '10px',
+      color: '#ffffff',
+    }).setOrigin(0.5);
+    container.add([circle, text]);
+
+    // Hit area for touch
+    const zone = this.add.zone(x, y, r * 2, r * 2).setScrollFactor(0).setDepth(201);
+    zone.setInteractive();
+    zone.on('pointerdown', () => {
+      circle.clear();
+      circle.fillStyle(color, 0.5);
+      circle.fillCircle(0, 0, r);
+      circle.lineStyle(2, color, 1);
+      circle.strokeCircle(0, 0, r);
+      onDown();
+    });
+    zone.on('pointerup', () => {
+      circle.clear();
+      circle.fillStyle(color, 0.25);
+      circle.fillCircle(0, 0, r);
+      circle.lineStyle(2, color, 0.8);
+      circle.strokeCircle(0, 0, r);
+    });
+
+    return container;
   }
 
   update() {
-    // Mouse / touch steering: compute angle from my snake head to the pointer
-    if (this.cameraTarget && this.input.activePointer) {
+    // Mouse steering (desktop only — mobile uses joystick)
+    if (!this.isMobile && this.cameraTarget && this.input.activePointer) {
       const pointer = this.input.activePointer;
       // Convert screen-space pointer to world-space
       const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
@@ -202,6 +315,23 @@ export class GameScene extends Phaser.Scene {
         this.send({ type: 'turn', angle });
         this.lastSentAngle = angle;
       }
+    }
+
+    // Draw joystick visual
+    if (this.isMobile && this.joystickActive && this.joystickOrigin && this.joystickCurrent) {
+      this.joystickGraphics.clear();
+      const ox = this.joystickOrigin.x;
+      const oy = this.joystickOrigin.y;
+      const cx = this.joystickCurrent.x;
+      const cy = this.joystickCurrent.y;
+      // Base
+      this.joystickGraphics.fillStyle(0xffffff, 0.15);
+      this.joystickGraphics.fillCircle(ox, oy, 40);
+      this.joystickGraphics.lineStyle(2, 0xffffff, 0.3);
+      this.joystickGraphics.strokeCircle(ox, oy, 40);
+      // Stick
+      this.joystickGraphics.fillStyle(0x00f0ff, 0.6);
+      this.joystickGraphics.fillCircle(cx, cy, 18);
     }
 
     // Camera follow
@@ -272,6 +402,7 @@ export class GameScene extends Phaser.Scene {
           players: { id: string; username: string; avatar: string | null; skinId: string | null; betAmount: number }[];
           minPlayers: number;
           maxPlayers: number;
+          elapsedSeconds?: number;
         };
         this.statusText.setText(`Finding match... ${data.players.length}/${data.minPlayers}`);
         this.onQueueState?.(data);
@@ -353,18 +484,38 @@ export class GameScene extends Phaser.Scene {
     // Update players
     const seenPlayers = new Set<string>();
     let aliveCount = 0;
+    let myPlayerAlive = false;
+    let highestAlive: RemotePlayer | null = null;
+
     for (const p of state.players) {
       seenPlayers.add(p.id);
       this.renderSnake(p);
-      if (p.alive) aliveCount++;
+      if (p.alive) {
+        aliveCount++;
+        if (!highestAlive || p.score > highestAlive.score) {
+          highestAlive = p;
+        }
+      }
 
       if (p.id === this.myPlayerId) {
+        myPlayerAlive = p.alive;
         this.scoreText.setText(`Score: $${p.score.toFixed(2)}`);
         this.onScoreChange?.(p.score);
         if (p.alive && p.segments.length > 0) {
           this.cameraTarget = p.segments[0];
         }
+        // Zone danger overlay: show red tint when outside safe zone
+        if (p.inZone === false) {
+          this.drawZoneOverlay(true);
+        } else {
+          this.drawZoneOverlay(false);
+        }
       }
+    }
+
+    // If I'm dead, spectate the highest-scoring alive player smoothly
+    if (!myPlayerAlive && highestAlive && highestAlive.segments.length > 0) {
+      this.cameraTarget = highestAlive.segments[0];
     }
 
     // Send time update to React overlay
@@ -660,6 +811,29 @@ export class GameScene extends Phaser.Scene {
     }, 1600);
 
     this.playerCloneSprites.set(p.id, clones);
+  }
+
+  private drawZoneOverlay(active: boolean) {
+    this.zoneOverlay.clear();
+    if (!active) return;
+    const w = this.scale.width;
+    const h = this.scale.height;
+    this.zoneOverlay.fillStyle(0x7f1d1d, 0.25); // red-900 at 25% opacity
+    this.zoneOverlay.fillRect(0, 0, w, h);
+    // Pulsing vignette border
+    const pulse = 0.3 + Math.sin(Date.now() / 300) * 0.1;
+    this.zoneOverlay.lineStyle(8, 0xef4444, pulse);
+    this.zoneOverlay.strokeRect(0, 0, w, h);
+    // Warning text
+    this.zoneOverlay.fillStyle(0xffffff, 0.6);
+    const warningText = this.add.text(w / 2, h * 0.15, 'DANGER ZONE — RETURN!', {
+      fontFamily: 'monospace',
+      fontSize: this.isMobile ? '14px' : '18px',
+      color: '#ef4444',
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(99);
+    // Auto-remove after one frame (re-created each tick while in danger)
+    this.time.delayedCall(50, () => warningText.destroy());
   }
 
   private drawArena() {
