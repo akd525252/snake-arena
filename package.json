@@ -1,0 +1,22 @@
+{
+  "name": "snake-arena",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Multiplayer snake game with crypto betting (Next.js + Phaser + native WebSocket + Supabase + NOWPayments)",
+  "scripts": {
+    "dev": "concurrently -n frontend,backend,game-server -c cyan,magenta,yellow \"npm:dev:frontend\" \"npm:dev:backend\" \"npm:dev:game\"",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:game": "npm --prefix game-server run dev",
+    "build": "npm --prefix frontend run build && npm --prefix backend run build && npm --prefix game-server run build",
+    "build:frontend": "npm --prefix frontend run build",
+    "build:backend": "npm --prefix backend run build",
+    "build:game": "npm --prefix game-server run build",
+    "start:backend": "npm --prefix backend run start",
+    "start:game": "npm --prefix game-server run start",
+    "install:all": "npm install && npm --prefix frontend install && npm --prefix backend install && npm --prefix game-server install"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
