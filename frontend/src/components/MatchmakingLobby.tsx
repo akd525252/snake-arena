@@ -140,19 +140,19 @@ export default function MatchmakingLobby({
             matchStarting ? 'text-white' : scanExpired ? 'text-[#ff2e63]' : accent.textTitle
           }`}>
             {matchStarting
-              ? 'Match Starting!'
+              ? 'Match Found!'
               : scanExpired
-                ? 'No Match Found'
-                : `Scanning${dots}`}
+                ? 'Still Searching...'
+                : `Finding Players${dots}`}
           </h1>
           <p className="text-[#8a8a9a] text-sm">
             {matchStarting
-              ? 'Get ready to play!'
+              ? 'Preparing arena...'
               : scanExpired
-                ? 'Could not find a match. Try scanning again or play later.'
+                ? 'Taking longer than usual. You can keep waiting or try again.'
                 : isDemo
-                  ? 'Adding bots in a moment'
-                  : `Looking for opponents... (${players.length} found)`}
+                  ? 'Bots joining your match...'
+                  : `Players ready: ${players.length}`}
           </p>
           {!matchStarting && !scanExpired && !isDemo && (
             <div className="flex justify-center gap-6 mt-3 text-xs text-[#6a6a7a]">
@@ -245,7 +245,7 @@ export default function MatchmakingLobby({
             </div>
             <div className="text-center text-xs text-[#6a6a7a] mt-2">
               {remaining > 0
-                ? `Match starts in ${remaining}s if no more humans join`
+                ? `Match starts in ${remaining}s — bots will fill empty spots`
                 : 'Starting match now...'}
             </div>
           </div>
@@ -260,7 +260,7 @@ export default function MatchmakingLobby({
                   onClick={handleRetry}
                   className={`px-6 py-2 rounded-lg ${accent.bar} text-[#05050a] font-bold hover:opacity-90 text-sm`}
                 >
-                  ↻ Retry Scan
+                  ↻ Keep Searching
                 </button>
                 <button
                   onClick={onCancel}

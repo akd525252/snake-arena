@@ -22,13 +22,43 @@ import { supabase, chargeBet } from './db';
 // Server Setup
 // ============================================
 const server = http.createServer((req, res) => {
-  if (req.url === '/health' || req.url === '/') {
+  if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }));
     return;
   }
-  res.writeHead(404);
-  res.end();
+  if (req.url === '/' || req.url === '/status') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Snake Arena · Game Server</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  body{margin:0;background:#05050a;color:#e0e0e8;font-family:system-ui,Segoe UI,Helvetica,Arial,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .card{max-width:520px;width:100%;background:#0a0a12;border:1px solid #1a1a2e;border-radius:24px;padding:40px;text-align:center;box-shadow:0 0 60px rgba(0,240,255,0.06)}
+  h1{margin:0 0 8px 0;font-size:28px;color:#00f0ff;letter-spacing:1px}
+  .pill{display:inline-block;padding:6px 14px;border-radius:999px;background:#39ff1422;color:#39ff14;font-weight:700;font-size:12px;margin:12px 0;border:1px solid #39ff1444}
+  p{margin:8px 0;color:#8a8a9a;line-height:1.6}
+  code{background:#11111a;padding:2px 8px;border-radius:6px;color:#00f0ff;font-size:13px}
+  .stats{margin-top:24px;font-size:12px;color:#5a5a6a}
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>SNAKE ARENA</h1>
+    <div class="pill">● Game Server Online</div>
+    <p>This is the <strong>WebSocket game server</strong>. Connect via the Snake Arena game client to play.</p>
+    <p>Health endpoint: <code>/health</code></p>
+    <div class="stats">${new Date().toISOString()}</div>
+  </div>
+</body>
+</html>`);
+    return;
+  }
+  res.writeHead(404, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ error: 'Not found' }));
 });
 
 const wss = new WebSocketServer({ server });
@@ -495,8 +525,8 @@ async function createMatch(entries: QueueEntry[]): Promise<void> {
     }
   }
 
-  // Brief delay so players see the lobby with full roster before game starts
-  setTimeout(() => startGame(room), 1500);
+  // Reveal full roster (humans + bots) for 3s before kickoff so it never feels sudden
+  setTimeout(() => startGame(room), 3000);
 }
 
 // ============================================

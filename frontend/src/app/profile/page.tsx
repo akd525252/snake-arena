@@ -163,7 +163,7 @@ export default function ProfilePage() {
               // eslint-disable-next-line @next/next/no-img-element
               <img src={avatar} alt={username || 'avatar'} className="w-full h-full object-cover" />
             ) : (
-              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#00a0a8] to-[#006060] text-white font-black text-4xl">
+              <div className="w-full h-full flex items-center justify-center bg-[#00f0ff] text-[#05050a] font-black text-4xl">
                 {(username || user.email || '?').charAt(0).toUpperCase()}
               </div>
             )}
@@ -249,7 +249,7 @@ export default function ProfilePage() {
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#00a0a8] to-[#006060] text-white font-black text-4xl">
+                <div className="w-full h-full flex items-center justify-center bg-[#00f0ff] text-[#05050a] font-black text-4xl">
                   {(username || user.email || '?').charAt(0).toUpperCase()}
                 </div>
               )}

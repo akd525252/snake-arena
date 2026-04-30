@@ -66,6 +66,26 @@ export class GameScene extends Phaser.Scene {
   // Locked spectate target ID after death — prevents flipping between leaders
   private spectateTargetId: string | null = null;
 
+  // Snake interpolation: server ticks at 50ms (20Hz) but we render at 60fps.
+  // To avoid jitter we keep prev+curr positions per player and lerp each frame.
+  private readonly SERVER_TICK_MS = 50;
+  private lastServerStateTime = 0;
+  private serverInterval = this.SERVER_TICK_MS;
+  // For each player: previous server snapshot + latest server snapshot
+  private playerInterp = new Map<string, {
+    prevSegments: Position[];
+    currSegments: Position[];
+    prevAngle: number;
+    currAngle: number;
+    alive: boolean;
+    score: number;
+    boosted: boolean;
+    slowed: boolean;
+    skinId?: string | null;
+    inZone?: boolean;
+    username: string;
+  }>();
+
   // Zone danger overlay
   private zoneOverlay!: Phaser.GameObjects.Graphics;
   private zoneWarningText!: Phaser.GameObjects.Text;
@@ -345,17 +365,109 @@ export class GameScene extends Phaser.Scene {
       this.joystickGraphics.fillCircle(cx, cy, 18);
     }
 
-    // Camera follow with LERP smoothing — eliminates jitter between server ticks (50ms apart)
-    if (this.cameraTarget) {
+    // ─── Frame-by-frame snake interpolation + render ────────────────
+    // Compute interp factor t in [0,1] based on time elapsed since last server tick.
+    // Allow slight extrapolation (up to 1.5) when server is late, so snakes don't freeze.
+    let t = 1;
+    if (this.lastServerStateTime > 0) {
+      t = (performance.now() - this.lastServerStateTime) / this.serverInterval;
+      t = Math.max(0, Math.min(1.5, t));
+    }
+
+    let myInterpHead: Position | null = null;
+    let myAlive = false;
+    let myInZone = true;
+    let highestAliveId: string | null = null;
+    let highestAliveScore = -Infinity;
+
+    for (const [id, data] of this.playerInterp) {
+      // Build interpolated snapshot
+      const interpSegments: Position[] = [];
+      const segCount = Math.min(data.prevSegments.length, data.currSegments.length);
+      for (let i = 0; i < segCount; i++) {
+        const a = data.prevSegments[i];
+        const b = data.currSegments[i];
+        interpSegments.push({
+          x: a.x + (b.x - a.x) * t,
+          y: a.y + (b.y - a.y) * t,
+        });
+      }
+      // If curr has more segments (snake grew), append the extras
+      for (let i = segCount; i < data.currSegments.length; i++) {
+        interpSegments.push({ ...data.currSegments[i] });
+      }
+
+      const interpAngle = data.prevAngle + this.shortestAngleDelta(data.prevAngle, data.currAngle) * t;
+
+      const interpPlayer: RemotePlayer = {
+        id,
+        username: data.username,
+        segments: interpSegments,
+        angle: interpAngle,
+        alive: data.alive,
+        score: data.score,
+        boosted: data.boosted,
+        slowed: data.slowed,
+        skinId: data.skinId,
+        inZone: data.inZone,
+      };
+
+      this.renderSnake(interpPlayer);
+
+      if (id === this.myPlayerId) {
+        myAlive = data.alive;
+        myInZone = data.inZone !== false;
+        if (data.alive && interpSegments.length > 0) {
+          myInterpHead = interpSegments[0];
+        }
+      }
+      if (data.alive && data.score > highestAliveScore) {
+        highestAliveScore = data.score;
+        highestAliveId = id;
+      }
+    }
+
+    // Pick camera target
+    let camTarget: Position | null = null;
+    if (myAlive && myInterpHead) {
+      camTarget = myInterpHead;
+      this.spectateTargetId = null;
+      this.drawZoneOverlay(!myInZone);
+    } else {
+      // Spectating
+      if (!this.spectateTargetId || !this.playerInterp.get(this.spectateTargetId)?.alive) {
+        this.spectateTargetId = highestAliveId;
+      }
+      const target = this.spectateTargetId ? this.playerInterp.get(this.spectateTargetId) : null;
+      if (target && target.currSegments.length > 0) {
+        const a = target.prevSegments[0];
+        const b = target.currSegments[0];
+        camTarget = a && b
+          ? { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
+          : { x: b.x, y: b.y };
+      }
+      this.drawZoneOverlay(false);
+    }
+
+    if (camTarget) {
+      this.cameraTarget = camTarget;
       if (!this.cameraSmooth) {
-        this.cameraSmooth = { x: this.cameraTarget.x, y: this.cameraTarget.y };
+        this.cameraSmooth = { x: camTarget.x, y: camTarget.y };
       } else {
-        // 0.5 lerp factor at 60fps = ~2 frame lag, responsive but smooth
-        this.cameraSmooth.x += (this.cameraTarget.x - this.cameraSmooth.x) * 0.5;
-        this.cameraSmooth.y += (this.cameraTarget.y - this.cameraSmooth.y) * 0.5;
+        // Single, gentle lerp on top of interpolated target — smooth and responsive
+        this.cameraSmooth.x += (camTarget.x - this.cameraSmooth.x) * 0.25;
+        this.cameraSmooth.y += (camTarget.y - this.cameraSmooth.y) * 0.25;
       }
       this.cameras.main.centerOn(this.cameraSmooth.x, this.cameraSmooth.y);
     }
+  }
+
+  /** Returns shortest signed delta between two angles, handling wrap-around. */
+  private shortestAngleDelta(a: number, b: number): number {
+    let d = b - a;
+    while (d > Math.PI) d -= 2 * Math.PI;
+    while (d < -Math.PI) d += 2 * Math.PI;
+    return d;
   }
 
   // ============================================
@@ -474,6 +586,11 @@ export class GameScene extends Phaser.Scene {
   // ============================================
   // Rendering
   // ============================================
+  /**
+   * Called when a server game_state arrives. We DON'T render directly here;
+   * instead we update the interpolation buffer. The actual snake drawing happens
+   * every frame in update() using interpolated positions.
+   */
   private renderGameState(state: GameStateMessage['state']) {
     // Update circular arena if changed
     if (
@@ -487,79 +604,67 @@ export class GameScene extends Phaser.Scene {
       this.drawArena();
     }
 
+    // Track real server tick interval — adapt interp duration if server lags
+    const now = performance.now();
+    if (this.lastServerStateTime > 0) {
+      const delta = now - this.lastServerStateTime;
+      // Smooth between bursts; clamp to a sane range
+      this.serverInterval = Math.max(40, Math.min(120, delta));
+    }
+    this.lastServerStateTime = now;
+
     // Update timer
     const seconds = Math.ceil(state.timeRemaining / 1000);
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
     this.timeText.setText(`${m}:${s.toString().padStart(2, '0')}`);
-    // Turn red when under 10 seconds
     if (seconds <= 10 && seconds > 0) {
-      this.timeText.setColor('#ef4444'); // red-500
+      this.timeText.setColor('#ef4444');
     } else {
       this.timeText.setColor('#ffffff');
     }
 
-    // Update players
+    // Update interp buffer for each player (rotate curr → prev, set new curr)
     const seenPlayers = new Set<string>();
-    let aliveCount = 0;
-    let myPlayerAlive = false;
-    let highestAlive: RemotePlayer | null = null;
-    const playersById = new Map<string, RemotePlayer>();
-
     for (const p of state.players) {
       seenPlayers.add(p.id);
-      playersById.set(p.id, p);
-      this.renderSnake(p);
-      if (p.alive) {
-        aliveCount++;
-        if (!highestAlive || p.score > highestAlive.score) {
-          highestAlive = p;
-        }
+      const existing = this.playerInterp.get(p.id);
+      if (existing) {
+        // Rotate: previous curr becomes prev
+        existing.prevSegments = existing.currSegments;
+        existing.prevAngle = existing.currAngle;
+        existing.currSegments = p.segments.map(s => ({ x: s.x, y: s.y }));
+        existing.currAngle = p.angle;
+        existing.alive = p.alive;
+        existing.score = p.score;
+        existing.boosted = p.boosted;
+        existing.slowed = p.slowed;
+        existing.skinId = p.skinId;
+        existing.inZone = p.inZone;
+        existing.username = p.username;
+      } else {
+        // First snapshot — duplicate so prev=curr (no jump)
+        const segCopy = p.segments.map(s => ({ x: s.x, y: s.y }));
+        this.playerInterp.set(p.id, {
+          prevSegments: segCopy.map(s => ({ ...s })),
+          currSegments: segCopy,
+          prevAngle: p.angle,
+          currAngle: p.angle,
+          alive: p.alive,
+          score: p.score,
+          boosted: p.boosted,
+          slowed: p.slowed,
+          skinId: p.skinId,
+          inZone: p.inZone,
+          username: p.username,
+        });
       }
-
-      if (p.id === this.myPlayerId) {
-        myPlayerAlive = p.alive;
-        this.scoreText.setText(`Score: $${p.score.toFixed(2)}`);
-        this.onScoreChange?.(p.score);
-        if (p.alive && p.segments.length > 0) {
-          const head = p.segments[0];
-          if (this.cameraTarget) {
-            // Lerp camera target toward server head to avoid snap-jitter between ticks
-            this.cameraTarget.x += (head.x - this.cameraTarget.x) * 0.3;
-            this.cameraTarget.y += (head.y - this.cameraTarget.y) * 0.3;
-          } else {
-            this.cameraTarget = { x: head.x, y: head.y };
-          }
-          this.spectateTargetId = null; // alive — clear any locked spectate
-        }
-        // Zone danger overlay: show red tint when outside safe zone
-        if (p.inZone === false) {
-          this.drawZoneOverlay(true);
-        } else {
-          this.drawZoneOverlay(false);
-        }
-      }
-    }
-
-    // If I'm dead, spectate. Lock target until they die — prevents flickering between leaders.
-    if (!myPlayerAlive) {
-      // Re-evaluate spectate target only if locked one is gone or dead
-      const currentTarget = this.spectateTargetId ? playersById.get(this.spectateTargetId) : null;
-      if (!currentTarget || !currentTarget.alive || currentTarget.segments.length === 0) {
-        this.spectateTargetId = highestAlive ? highestAlive.id : null;
-      }
-      const target = this.spectateTargetId ? playersById.get(this.spectateTargetId) : null;
-      if (target && target.segments.length > 0) {
-        this.cameraTarget = target.segments[0];
-      }
-      // Hide zone overlay while dead — avoids stale red tint
-      this.drawZoneOverlay(false);
     }
 
     // Send time update to React overlay
     this.onTimeUpdate?.(state.timeRemaining);
 
-    // Mini-leaderboard (top 5 by score)
+    // Mini-leaderboard
     const sorted = [...state.players]
       .sort((a, b) => b.score - a.score)
       .slice(0, 5);
@@ -572,7 +677,15 @@ export class GameScene extends Phaser.Scene {
     this.leaderboardText.setText(lbLines.join('\n'));
     this.leaderboardText.setX(this.scale.width - 16);
 
+    const aliveCount = state.players.filter(p => p.alive).length;
     this.aliveText.setText(`Alive: ${aliveCount}/${state.players.length}`);
+
+    // Update score for me (uses authoritative score, not interpolated)
+    const me = state.players.find(p => p.id === this.myPlayerId);
+    if (me) {
+      this.scoreText.setText(`Score: $${me.score.toFixed(2)}`);
+      this.onScoreChange?.(me.score);
+    }
 
     // Remove disconnected players
     for (const id of this.playerGraphics.keys()) {
@@ -583,8 +696,7 @@ export class GameScene extends Phaser.Scene {
         this.playerGraphics.delete(id);
         this.playerLabels.delete(id);
         this.playerScoreLabels.delete(id);
-
-        // Clean up skin effects
+        this.playerInterp.delete(id);
         this.clearBoostTrails(id);
         this.lastBoostStates.delete(id);
         const clones = this.playerCloneSprites.get(id);
