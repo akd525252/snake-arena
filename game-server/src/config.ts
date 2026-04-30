@@ -18,8 +18,13 @@ export const CONFIG = {
 
   COIN_VALUE: 0.10,
   COIN_SPAWN_INTERVAL: 3000, // ms
-  MAX_COINS: 30,
-  INITIAL_COINS: 10,
+  MAX_COINS: 20,          // reduced — coins are now rare money items
+  INITIAL_COINS: 5,       // fewer starting coins
+
+  // Food (cosmetic, dense, grows snake, no money)
+  FOOD_SPAWN_INTERVAL: 800, // ms — food respawns quickly for dense coverage
+  MAX_FOOD: 150,             // many food pellets on the map
+  INITIAL_FOOD: 80,
 
   SNAKE_SPEED: 3,
   SNAKE_BOOST_SPEED: 6,

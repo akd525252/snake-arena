@@ -36,6 +36,18 @@ export interface Coin {
   value: number; // dollar value awarded when collected
 }
 
+/**
+ * Food pellet — purely cosmetic gameplay item. Eating food grows the snake by
+ * `growth` segments but awards NO money. Food is dense (everywhere on the map)
+ * and comes in multiple colors and 2 sizes (small / large).
+ */
+export interface Food {
+  id: string;
+  position: Position;
+  size: 'small' | 'large'; // small = 1 growth, large = 3 growth
+  colorIndex: number;       // 0..n — client picks color from a palette
+}
+
 export interface Player {
   id: string;
   username: string;
@@ -52,6 +64,7 @@ export interface GameRoom {
   id: string;
   players: Map<string, Player>;
   coins: Coin[];
+  food: Food[];               // cosmetic pellets that grow the snake (no money)
   // Circular arena
   arenaCenterX: number;
   arenaCenterY: number;
@@ -63,6 +76,7 @@ export interface GameRoom {
   totalSpawnSlots: number;
   gameLoopInterval: NodeJS.Timeout | null;
   coinSpawnInterval: NodeJS.Timeout | null;
+  foodSpawnInterval: NodeJS.Timeout | null;
   shrinkInterval: NodeJS.Timeout | null;
   platformRakeAccrued: number; // running total of rake recorded during the match (USD)
 }
@@ -81,6 +95,8 @@ export type ServerMessage =
   | { type: 'player_leave'; playerId: string }
   | { type: 'coin_spawn'; coin: { id: string; position: Position; isTrap: boolean } }
   | { type: 'coin_remove'; coinId: string }
+  | { type: 'food_spawn'; food: { id: string; position: Position; size: 'small' | 'large'; colorIndex: number } }
+  | { type: 'food_remove'; foodId: string }
   | { type: 'game_start'; matchId: string; players: { id: string; username: string }[] }
   | { type: 'game_end'; results: GameResult[] }
   | { type: 'player_death'; playerId: string; coins: { id: string; position: Position }[]; lostAmount?: number; killerId?: string; killerName?: string }
@@ -104,6 +120,7 @@ export interface GameStatePayload {
     inZone?: boolean;
   }[];
   coins: { id: string; position: Position; isTrap: boolean }[];
+  food: { id: string; position: Position; size: 'small' | 'large'; colorIndex: number }[];
   arena: {
     centerX: number;
     centerY: number;

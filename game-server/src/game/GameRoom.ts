@@ -5,6 +5,7 @@ import {
   GameRoom,
   Player,
   Coin,
+  Food,
   Position,
   Snake,
   GameStatePayload,
@@ -40,6 +41,7 @@ export function createGameRoom(matchId: string, betAmount: number, totalSpawnSlo
     id: matchId,
     players: new Map(),
     coins: [],
+    food: [],
     arenaCenterX: CONFIG.ARENA_RADIUS + 50,
     arenaCenterY: CONFIG.ARENA_RADIUS + 50,
     arenaRadius: CONFIG.ARENA_RADIUS,
@@ -50,6 +52,7 @@ export function createGameRoom(matchId: string, betAmount: number, totalSpawnSlo
     totalSpawnSlots,
     gameLoopInterval: null,
     coinSpawnInterval: null,
+    foodSpawnInterval: null,
     shrinkInterval: null,
     platformRakeAccrued: 0,
   };
@@ -134,11 +137,24 @@ export function startGame(room: GameRoom): void {
 
   room.gameLoopInterval = setInterval(() => gameLoop(room), CONFIG.TICK_RATE);
 
+  // Spawn coins (money, rare)
   room.coinSpawnInterval = setInterval(() => {
     if (room.coins.length < CONFIG.MAX_COINS) {
       spawnCoin(room);
     }
   }, CONFIG.COIN_SPAWN_INTERVAL);
+
+  // Spawn food (cosmetic growth pellets, dense, everywhere)
+  room.foodSpawnInterval = setInterval(() => {
+    if (room.food.length < CONFIG.MAX_FOOD) {
+      spawnFood(room);
+    }
+  }, CONFIG.FOOD_SPAWN_INTERVAL);
+
+  // Initial scatter of food around the arena
+  for (let i = 0; i < CONFIG.INITIAL_FOOD; i++) {
+    spawnFood(room);
+  }
 
   room.shrinkInterval = setInterval(() => shrinkArena(room), CONFIG.ARENA_SHRINK_INTERVAL);
 
@@ -251,11 +267,29 @@ function gameLoop(room: GameRoom): void {
         } else {
           player.snake.score += coin.value;
           player.snake.coinsCollected++;
+          // Coins grow the snake by 1 segment
           const tail = player.snake.segments[player.snake.segments.length - 1];
           player.snake.segments.push({ ...tail });
         }
         room.coins.splice(i, 1);
         broadcastToRoom(room, { type: 'coin_remove', coinId: coin.id });
+      }
+    }
+
+    // Food collection — grows snake by size, no money awarded
+    for (let i = room.food.length - 1; i >= 0; i--) {
+      const f = room.food[i];
+      // Food has a smaller hit radius than coins
+      const pickupRadius = f.size === 'large' ? CONFIG.SNAKE_SEGMENT_SIZE + 6 : CONFIG.SNAKE_SEGMENT_SIZE + 3;
+      if (distance(head, f.position) < pickupRadius) {
+        // Small food = +1 segment, large food = +3 segments
+        const growth = f.size === 'large' ? 3 : 1;
+        const tail = player.snake.segments[player.snake.segments.length - 1];
+        for (let g = 0; g < growth; g++) {
+          player.snake.segments.push({ ...tail });
+        }
+        room.food.splice(i, 1);
+        broadcastToRoom(room, { type: 'food_remove', foodId: f.id });
       }
     }
   }
@@ -363,16 +397,32 @@ function killPlayer(room: GameRoom, player: Player, killerId?: string): void {
 
   const totalValue = Math.max(0, player.snake.score);
 
-  // Rake split per actor type:
-  //   Pro human: 10% → platform, 90% drops as coins
-  //   Pro bot:   50% → platform, 50% drops as coins
-  //   Demo (any): 0% rake (no real money in play)
+  // Rake & drop split per actor type:
+  //   Pro human: 10% of total → platform, 90% drops as coins
+  //   Pro bot:   bet is virtual platform money (never dropped). Only EARNINGS above
+  //              the bet are split: 50% → platform revenue, 50% drops as coins.
+  //              This means a bot dying with no earnings drops nothing — platform
+  //              never loses money on a bot death.
+  //   Demo (any): 0% rake (no real money in play); full drop for player feedback.
   let rakeRate = 0;
-  if (!player.isDemo) {
-    rakeRate = player.isBot ? CONFIG.BOT_RAKE_RATE : CONFIG.MATCH_RAKE_RATE;
+  let platformRake = 0;
+  let dropValue = 0;
+
+  if (player.isDemo) {
+    rakeRate = 0;
+    platformRake = 0;
+    dropValue = totalValue;
+  } else if (player.isBot) {
+    rakeRate = CONFIG.BOT_RAKE_RATE;
+    const earnings = Math.max(0, totalValue - player.betAmount);
+    platformRake = +(earnings * rakeRate).toFixed(4);
+    dropValue = +(earnings - platformRake).toFixed(4);
+    // The bet (player.betAmount) stays with the platform — virtual, no drop
+  } else {
+    rakeRate = CONFIG.MATCH_RAKE_RATE;
+    platformRake = +(totalValue * rakeRate).toFixed(4);
+    dropValue = +(totalValue - platformRake).toFixed(4);
   }
-  const platformRake = +(totalValue * rakeRate).toFixed(4);
-  const dropValue = +(totalValue - platformRake).toFixed(4);
 
   if (platformRake > 0) {
     room.platformRakeAccrued += platformRake;
@@ -451,6 +501,29 @@ function spawnCoin(room: GameRoom): void {
   });
 }
 
+function spawnFood(room: GameRoom): void {
+  const r = Math.sqrt(Math.random()) * (room.arenaRadius - 15);
+  const a = Math.random() * Math.PI * 2;
+  const size: Food['size'] = Math.random() < 0.8 ? 'small' : 'large';
+  const colorIndex = Math.floor(Math.random() * 6); // 6 possible colors
+
+  const food: Food = {
+    id: uuidv4(),
+    position: {
+      x: room.arenaCenterX + Math.cos(a) * r,
+      y: room.arenaCenterY + Math.sin(a) * r,
+    },
+    size,
+    colorIndex,
+  };
+
+  room.food.push(food);
+  broadcastToRoom(room, {
+    type: 'food_spawn',
+    food: { id: food.id, position: food.position, size: food.size, colorIndex: food.colorIndex },
+  });
+}
+
 function shrinkArena(room: GameRoom): void {
   if (room.arenaRadius <= CONFIG.MIN_ARENA_RADIUS) return;
 
@@ -459,6 +532,10 @@ function shrinkArena(room: GameRoom): void {
   // Remove coins outside the new circle
   room.coins = room.coins.filter(c =>
     distance(c.position, { x: room.arenaCenterX, y: room.arenaCenterY }) < room.arenaRadius
+  );
+  // Remove food outside the new circle
+  room.food = room.food.filter(f =>
+    distance(f.position, { x: room.arenaCenterX, y: room.arenaCenterY }) < room.arenaRadius
   );
 }
 
@@ -477,6 +554,7 @@ export function endGame(room: GameRoom): void {
 
   if (room.gameLoopInterval) clearInterval(room.gameLoopInterval);
   if (room.coinSpawnInterval) clearInterval(room.coinSpawnInterval);
+  if (room.foodSpawnInterval) clearInterval(room.foodSpawnInterval);
   if (room.shrinkInterval) clearInterval(room.shrinkInterval);
 
   const results: GameResult[] = Array.from(room.players.values())
@@ -557,6 +635,12 @@ function broadcastGameState(room: GameRoom): void {
       id: c.id,
       position: c.position,
       isTrap: c.isTrap && false,
+    })),
+    food: room.food.map(f => ({
+      id: f.id,
+      position: f.position,
+      size: f.size,
+      colorIndex: f.colorIndex,
     })),
     arena: {
       centerX: room.arenaCenterX,

@@ -501,7 +501,11 @@ async function createMatch(entries: QueueEntry[]): Promise<void> {
     // PRO MATCH: always inject 2 advanced "pro" bots disguised as real players.
     // They have realistic names, avatars, random skins, and aggressive AI that
     // hunts down humans to prevent them from earning.
-    const proBotBet = Math.max(CONFIG.MIN_BET, Math.floor(avgBet));
+    //
+    // Bots ALWAYS bet exactly $1 regardless of the human bet amount. Their bet is
+    // virtual platform money — keeping it at $1 means a bot dying with no earnings
+    // costs the platform nothing (bet returns to platform, no drops created).
+    const proBotBet = CONFIG.MIN_BET;
     for (let i = 0; i < 2; i++) {
       const bot = createProBot(room, proBotBet);
       addPlayerToRoom(room, bot);

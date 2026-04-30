@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import WebSocket from 'ws';
-import { Player, Position, GameRoom, Coin } from '../types';
+import { Player, Position, GameRoom, Coin, Food } from '../types';
 import { CONFIG } from '../config';
 
 // ============================================================================
@@ -118,13 +118,16 @@ const PRO_KILL_RANGE = 180;          // when this close, attack mode
 const PRO_BOOST_KILL_RANGE = 120;    // boost in when really close
 const PRO_BLOCK_LOOKAHEAD = 90;      // how far ahead to predict victim's path
 const PRO_FORWARD_THREAT_RANGE = 80;
-const PRO_WALL_MARGIN = 70;
-const PRO_BODY_AVOID_RANGE = 50;
+const PRO_WALL_MARGIN = 90;          // extra safe margin from wall (was 70)
+const PRO_BODY_AVOID_RANGE = 55;
 
 interface ProBotState {
   lastBoostTime: number;
   targetVictimId: string | null;
   targetCoolDown: number;
+  boostActiveSince: number; // timestamp when boost started (0 if not boosting)
+  foodWanderTarget: Position | null;
+  foodWanderCooldown: number;
 }
 
 const proBotStates = new Map<string, ProBotState>();
@@ -132,7 +135,7 @@ const proBotStates = new Map<string, ProBotState>();
 function getState(botId: string): ProBotState {
   let s = proBotStates.get(botId);
   if (!s) {
-    s = { lastBoostTime: 0, targetVictimId: null, targetCoolDown: 0 };
+    s = { lastBoostTime: 0, targetVictimId: null, targetCoolDown: 0, boostActiveSince: 0, foodWanderTarget: null, foodWanderCooldown: 0 };
     proBotStates.set(botId, s);
   }
   return s;
@@ -241,6 +244,21 @@ function nearestSafeCoin(bot: Player, room: GameRoom): Coin | null {
   return best;
 }
 
+/** Find nearest food pellet. */
+function nearestFood(bot: Player, room: GameRoom): Food | null {
+  const head = bot.snake.segments[0];
+  let best: Food | null = null;
+  let bestDist = Infinity;
+  for (const food of room.food) {
+    const d = dist(head, food.position);
+    if (d < bestDist) {
+      bestDist = d;
+      best = food;
+    }
+  }
+  return best;
+}
+
 // ============================================================================
 // MAIN UPDATE FUNCTION
 // ============================================================================
@@ -255,12 +273,17 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
   const cy = room.arenaCenterY;
 
   // ──────────────────────────────────────────────────────────────────────────
-  // PRIORITY 1: Wall avoidance
+  // PRIORITY 1: Wall / zone avoidance
   // ──────────────────────────────────────────────────────────────────────────
   const distToCenter = dist(head, { x: cx, y: cy });
   if (distToCenter > room.arenaRadius - PRO_WALL_MARGIN) {
-    // Steer toward center, but blend with current angle to avoid sharp U-turn
+    // Steer toward center aggressively when near edge
     bot.snake.targetAngle = angleToward(head, { x: cx, y: cy });
+    // Cancel boost if we accidentally boosted toward the wall
+    if (bot.snake.boosted) {
+      bot.snake.boosted = false;
+      state.boostActiveSince = 0;
+    }
     return;
   }
 
@@ -308,19 +331,27 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
         bot.snake.targetAngle = angleToward(head, oh);
       }
 
-      // BOOST when close enough to slam into the human's path
+      // BOOST decision (hold-to-boost style: activate/deactivate each tick)
       const now = Date.now();
-      const boostCooldown = 3000;
-      if (
+      const boostCooldown = 2500;
+      const canAffordBoost = bot.snake.score >= bot.betAmount + 0.25; // keep a buffer
+      const wantsBoost =
         distToHuman < PRO_BOOST_KILL_RANGE &&
-        !bot.snake.boosted &&
         now - state.lastBoostTime > boostCooldown &&
-        bot.snake.score > bot.betAmount + 0.5 // need score to boost
-      ) {
-        // Activate boost (server-side: same as activateBoost from GameRoom)
-        bot.snake.boosted = true;
-        bot.snake.boostEndTime = now + 1500;
-        state.lastBoostTime = now;
+        canAffordBoost &&
+        cutoffSafe; // only boost if cutoff is safe
+
+      if (wantsBoost) {
+        if (!bot.snake.boosted) {
+          bot.snake.boosted = true;
+          state.boostActiveSince = now;
+          state.lastBoostTime = now;
+        }
+      } else {
+        if (bot.snake.boosted) {
+          bot.snake.boosted = false;
+          state.boostActiveSince = 0;
+        }
       }
 
       return;
@@ -328,23 +359,47 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // PRIORITY 5: Coin farming (when no humans in range)
+  // PRIORITY 5: Coin & food farming (when no humans in range)
   // ──────────────────────────────────────────────────────────────────────────
   // Don't pick up coins blindly — avoid going through other snakes' bodies
   if (bodyVeryClose(bot, room)) {
     // Just keep moving toward center safely
     bot.snake.targetAngle = angleToward(head, { x: cx, y: cy });
+    // Make sure boost is off when evading
+    if (bot.snake.boosted) {
+      bot.snake.boosted = false;
+      state.boostActiveSince = 0;
+    }
     return;
   }
 
+  // Stop boost if we were hunting and lost the target
+  if (bot.snake.boosted) {
+    bot.snake.boosted = false;
+    state.boostActiveSince = 0;
+  }
+
+  // Prefer coins (money) over food, but food is great for growing
   const coin = nearestSafeCoin(bot, room);
   if (coin) {
     bot.snake.targetAngle = angleToward(head, coin.position);
-  } else {
-    // Wander toward a random point near center
-    bot.snake.targetAngle = angleToward(head, {
+    return;
+  }
+
+  const food = nearestFood(bot, room);
+  if (food) {
+    bot.snake.targetAngle = angleToward(head, food.position);
+    return;
+  }
+
+  // Wander toward a random point near center, refreshing occasionally
+  if (!state.foodWanderTarget || state.foodWanderCooldown <= 0) {
+    state.foodWanderTarget = {
       x: cx + (Math.random() - 0.5) * room.arenaRadius * 0.6,
       y: cy + (Math.random() - 0.5) * room.arenaRadius * 0.6,
-    });
+    };
+    state.foodWanderCooldown = 40 + Math.floor(Math.random() * 40); // ~2-4 seconds
   }
+  state.foodWanderCooldown--;
+  bot.snake.targetAngle = angleToward(head, state.foodWanderTarget);
 }

@@ -19,11 +19,19 @@ interface RemotePlayer {
   inZone?: boolean;
 }
 
+interface FoodItem {
+  id: string;
+  position: Position;
+  size: 'small' | 'large';
+  colorIndex: number;
+}
+
 interface GameStateMessage {
   type: 'game_state';
   state: {
     players: RemotePlayer[];
     coins: { id: string; position: Position; isTrap: boolean }[];
+    food: FoodItem[];
     arena: { centerX: number; centerY: number; radius: number };
     timeRemaining: number;
   };
@@ -38,6 +46,7 @@ export class GameScene extends Phaser.Scene {
   private playerLabels = new Map<string, Phaser.GameObjects.Text>();
   private playerScoreLabels = new Map<string, Phaser.GameObjects.Text>();
   private coinSprites = new Map<string, Phaser.GameObjects.Arc>();
+  private foodSprites = new Map<string, Phaser.GameObjects.Arc>();
 
   // Arena (circular)
   private arenaGfx!: Phaser.GameObjects.Graphics;
@@ -745,6 +754,31 @@ export class GameScene extends Phaser.Scene {
       if (!seenCoins.has(id)) {
         this.coinSprites.get(id)?.destroy();
         this.coinSprites.delete(id);
+      }
+    }
+
+    // Update food pellets
+    const seenFood = new Set<string>();
+    const foodColors = [0x22c55e, 0xef4444, 0x3b82f6, 0xeab308, 0xa855f7, 0xf97316]; // green, red, blue, yellow, purple, orange
+    for (const f of state.food) {
+      seenFood.add(f.id);
+      const radius = f.size === 'large' ? 5 : 3;
+      const color = foodColors[f.colorIndex % foodColors.length];
+      if (!this.foodSprites.has(f.id)) {
+        const pellet = this.add.circle(f.position.x, f.position.y, radius, color)
+          .setDepth(4);
+        this.foodSprites.set(f.id, pellet);
+      } else {
+        const sp = this.foodSprites.get(f.id)!;
+        sp.setPosition(f.position.x, f.position.y);
+        sp.setRadius(radius);
+        sp.fillColor = color;
+      }
+    }
+    for (const id of this.foodSprites.keys()) {
+      if (!seenFood.has(id)) {
+        this.foodSprites.get(id)?.destroy();
+        this.foodSprites.delete(id);
       }
     }
   }
