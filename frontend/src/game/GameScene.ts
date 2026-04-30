@@ -683,38 +683,40 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Draw segments (tail to head)
-    for (let i = p.segments.length - 1; i >= 0; i--) {
-      const seg = p.segments[i];
-      const radius = i === 0 ? 9 : 7;
-
-      // Skin gradient effect
-      if (skin && p.skinId === 'neon_cyber') {
-        // Neon Cyber: gradient from cyan to magenta along body
-        const ratio = i / Math.max(1, p.segments.length - 1);
-        const r = Math.round(0 + (255 - 0) * ratio);
-        const gVal = Math.round(240 + (0 - 240) * ratio);
-        const b = Math.round(255 + (160 - 255) * ratio);
-        bodyColor = (r << 16) | (gVal << 8) | b;
-      } else if (skin && p.skinId === 'inferno_drake') {
-        // Inferno Drake: gradient from orange to red
-        const ratio = i / Math.max(1, p.segments.length - 1);
-        const r = Math.round(255);
-        const gVal = Math.round(140 + (69 - 140) * ratio);
-        const b = Math.round(0);
-        bodyColor = (r << 16) | (gVal << 8) | b;
+    // Build a flexible continuous body path through all segment points
+    if (p.segments.length > 1) {
+      g.lineStyle(14, bodyColor, 1);
+      g.beginPath();
+      const tail = p.segments[p.segments.length - 1];
+      g.moveTo(tail.x, tail.y);
+      for (let i = p.segments.length - 2; i >= 0; i--) {
+        const seg = p.segments[i];
+        g.lineTo(seg.x, seg.y);
       }
+      g.strokePath();
+      g.closePath();
 
-      g.fillStyle(bodyColor, 1);
-      g.fillCircle(seg.x, seg.y, radius);
-
-      // Skin-specific outline
+      // Outer glow / outline
       if (skin) {
-        g.lineStyle(2, skin.secondary, 0.8);
-      } else {
-        g.lineStyle(2, 0x000000, 0.3);
+        g.lineStyle(2, skin.secondary, 0.6);
+        g.beginPath();
+        g.moveTo(tail.x, tail.y);
+        for (let i = p.segments.length - 2; i >= 0; i--) {
+          const seg = p.segments[i];
+          g.lineTo(seg.x, seg.y);
+        }
+        g.strokePath();
+        g.closePath();
       }
-      g.strokeCircle(seg.x, seg.y, radius);
+    }
+
+    // Draw head as a distinct circle
+    if (p.segments.length > 0) {
+      const head = p.segments[0];
+      g.fillStyle(bodyColor, 1);
+      g.fillCircle(head.x, head.y, 10);
+      g.lineStyle(2, skin ? skin.secondary : 0x000000, 0.4);
+      g.strokeCircle(head.x, head.y, 10);
     }
 
     // Skin skill effects

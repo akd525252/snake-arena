@@ -34,6 +34,7 @@ function PlayPageInner() {
   const [timeRemaining, setTimeRemaining] = useState<number>(60000);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const [inMatch, setInMatch] = useState(false);
+  const gameStartedRef = useRef(false);
 
   // Matchmaking lobby state
   const [lobbyPlayers, setLobbyPlayers] = useState<LobbyPlayer[]>([]);
@@ -120,6 +121,7 @@ function PlayPageInner() {
           setMatchStarting(true);
         },
         onGameBegin: () => {
+          gameStartedRef.current = true;
           setShowLobby(false);
         },
       });
@@ -171,8 +173,8 @@ function PlayPageInner() {
       {/* Game */}
       <div ref={containerRef} className="flex-1 relative" />
 
-      {/* Matchmaking lobby overlay (shown until first game_state) */}
-      {showLobby && !results && !deathInfo && (
+      {/* Matchmaking lobby overlay (shown until game actually begins) */}
+      {showLobby && !results && !deathInfo && !gameStartedRef.current && (
         <MatchmakingLobby
           players={lobbyPlayers}
           minPlayers={lobbyMin}

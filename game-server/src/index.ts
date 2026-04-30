@@ -22,7 +22,7 @@ import { supabase, chargeBet } from './db';
 // Server Setup
 // ============================================
 const server = http.createServer((req, res) => {
-  if (req.url === '/health') {
+  if (req.url === '/health' || req.url === '/') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }));
     return;
