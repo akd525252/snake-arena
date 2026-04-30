@@ -1,4 +1,5 @@
 import * as Phaser from 'phaser';
+import { SoundFX } from './SoundFX';
 
 interface Position {
   x: number;
@@ -65,6 +66,14 @@ export class GameScene extends Phaser.Scene {
   private statusText!: Phaser.GameObjects.Text;
   private leaderboardText!: Phaser.GameObjects.Text;
   private aliveText!: Phaser.GameObjects.Text;
+  private killNotificationText!: Phaser.GameObjects.Text;
+  private killNotificationTween: Phaser.Tweens.Tween | null = null;
+
+  // Sound FX (synthesized via Web Audio — no asset files)
+  private sfx = new SoundFX();
+  // Track score / length to detect pickups for sound triggers
+  private prevMyScore = 0;
+  private prevMyLength = 0;
 
   // Input — mouse/touch pointer for angle-based steering
   private spaceKey!: Phaser.Input.Keyboard.Key;
@@ -246,14 +255,31 @@ export class GameScene extends Phaser.Scene {
       color: '#71717a',
     }).setScrollFactor(0).setDepth(100);
 
+    // Kill notification — floats in the upper third when you eliminate someone
+    this.killNotificationText = this.add.text(this.scale.width / 2, this.scale.height * 0.28, '', {
+      fontFamily: 'monospace',
+      fontSize: this.isMobile ? '20px' : '28px',
+      color: '#ffd700',
+      fontStyle: 'bold',
+      stroke: '#000000',
+      strokeThickness: 4,
+      align: 'center',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(102).setAlpha(0);
+
     // Input — keyboard for boost/trap, mouse/touch for steering
     this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.trapKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
 
     // Hold-to-boost: $0.01/sec while spacebar held. Auto-stops on release/death.
-    this.spaceKey.on('down', () => this.send({ type: 'boost_start' }));
+    this.spaceKey.on('down', () => {
+      this.send({ type: 'boost_start' });
+      this.sfx.boostStart();
+    });
     this.spaceKey.on('up', () => this.send({ type: 'boost_end' }));
-    this.trapKey.on('down', () => this.send({ type: 'skill_use', skill: 'trap' }));
+    this.trapKey.on('down', () => {
+      this.send({ type: 'skill_use', skill: 'trap' });
+      this.sfx.trap();
+    });
 
     // Camera — zoom in so snake is larger on screen
     this.cameras.main.setBackgroundColor('#0a0a0a');
@@ -610,11 +636,18 @@ export class GameScene extends Phaser.Scene {
       case 'player_death':
         if (msg.playerId === this.myPlayerId) {
           this.statusText.setText('');
+          this.sfx.death();
           this.onMyDeath?.({
             lostAmount: (msg.lostAmount as number) ?? 0,
             killerName: msg.killerName as string | undefined,
             killerId: msg.killerId as string | undefined,
           });
+        } else if (msg.killerId === this.myPlayerId) {
+          // We killed someone — show a satisfying notification
+          const victimName = (this.playerInterp.get(msg.playerId as string)?.username) || 'Enemy';
+          const lost = (msg.lostAmount as number) ?? 0;
+          this.showKillNotification(victimName, lost);
+          this.sfx.kill();
         }
         break;
 
@@ -713,16 +746,28 @@ export class GameScene extends Phaser.Scene {
     // Send time update to React overlay
     this.onTimeUpdate?.(state.timeRemaining);
 
-    // Mini-leaderboard
-    const sorted = [...state.players]
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5);
-    const lbLines = sorted.map((p, i) => {
+    // Mini-leaderboard with medals + boost/dead markers + own-rank fallback
+    const sorted = [...state.players].sort((a, b) => b.score - a.score);
+    const top5 = sorted.slice(0, 5);
+    const myIdx = sorted.findIndex(p => p.id === this.myPlayerId);
+    const inTop5 = myIdx >= 0 && myIdx < 5;
+    const medals = ['🥇', '🥈', '🥉', '#4', '#5'];
+
+    const formatLine = (p: typeof sorted[number], idx: number): string => {
+      const rank = medals[idx] || `#${idx + 1}`;
       const me = p.id === this.myPlayerId ? ' ◀' : '';
       const dead = p.alive ? '' : ' ✗';
-      const name = p.username.length > 12 ? p.username.slice(0, 12) + '..' : p.username;
-      return `#${i + 1} ${name}  $${p.score.toFixed(2)}${dead}${me}`;
-    });
+      const fire = p.boosted ? ' 🔥' : '';
+      const name = p.username.length > 11 ? p.username.slice(0, 11) + '..' : p.username;
+      return `${rank} ${name}  $${p.score.toFixed(2)}${fire}${dead}${me}`;
+    };
+
+    const lbLines = top5.map(formatLine);
+    if (!inTop5 && myIdx >= 0) {
+      lbLines.push('  ⋯');
+      lbLines.push(formatLine(sorted[myIdx], myIdx));
+    }
+
     this.leaderboardText.setText(lbLines.join('\n'));
     this.leaderboardText.setX(this.scale.width - 16);
 
@@ -732,6 +777,19 @@ export class GameScene extends Phaser.Scene {
     // Update score for me (uses authoritative score, not interpolated)
     const me = state.players.find(p => p.id === this.myPlayerId);
     if (me) {
+      // Pickup detection — score up = coin, length up without score change = food.
+      // We compare to last tick's values (snapshot just before this update).
+      if (me.alive) {
+        const scoreDelta = me.score - this.prevMyScore;
+        const lengthDelta = me.segments.length - this.prevMyLength;
+        if (scoreDelta > 0.005) {
+          this.sfx.coinPickup();
+        } else if (lengthDelta > 0) {
+          this.sfx.foodPickup();
+        }
+      }
+      this.prevMyScore = me.score;
+      this.prevMyLength = me.segments.length;
       this.scoreText.setText(`Score: $${me.score.toFixed(2)}`);
       this.onScoreChange?.(me.score);
     }
@@ -937,6 +995,29 @@ export class GameScene extends Phaser.Scene {
     g.fillCircle(head.x + fwdX * 4.5 + perpX * 4, head.y + fwdY * 4.5 + perpY * 4, 1.4);
     g.fillCircle(head.x + fwdX * 4.5 - perpX * 4, head.y + fwdY * 4.5 - perpY * 4, 1.4);
 
+    // Tongue flicker — small red forked tongue that pulses on a cycle.
+    // Cycle every ~1.6s, visible for 250ms. Uses player id for phase offset
+    // so different snakes don't all flick simultaneously.
+    const phase = (p.id.charCodeAt(0) * 137) % 1600;
+    const cyclePos = (performance.now() + phase) % 1600;
+    if (cyclePos < 250) {
+      const tongueLen = 9 + (cyclePos / 250) * 4; // extends as it flicks
+      const tipX = head.x + fwdX * (HEAD_RADIUS + tongueLen);
+      const tipY = head.y + fwdY * (HEAD_RADIUS + tongueLen);
+      const baseX = head.x + fwdX * (HEAD_RADIUS + 2);
+      const baseY = head.y + fwdY * (HEAD_RADIUS + 2);
+      g.lineStyle(2, 0xd83a3a, 1);
+      g.beginPath();
+      g.moveTo(baseX, baseY);
+      g.lineTo(tipX, tipY);
+      // Forked tip
+      g.moveTo(tipX, tipY);
+      g.lineTo(tipX + perpX * 2.5 - fwdX * 2, tipY + perpY * 2.5 - fwdY * 2);
+      g.moveTo(tipX, tipY);
+      g.lineTo(tipX - perpX * 2.5 - fwdX * 2, tipY - perpY * 2.5 - fwdY * 2);
+      g.strokePath();
+    }
+
     // Skin skill effects (boost trails, etc.)
     this.handleSkinEffects(p, skin);
 
@@ -944,6 +1025,31 @@ export class GameScene extends Phaser.Scene {
     scoreLabel.setText(`$${p.score.toFixed(2)}`);
     scoreLabel.setPosition(head.x, head.y - 38);
     label.setPosition(head.x, head.y - 26);
+  }
+
+  private showKillNotification(victimName: string, lostAmount: number) {
+    const safeName = victimName.length > 18 ? victimName.slice(0, 18) + '…' : victimName;
+    const bonus = lostAmount > 0 ? ` · +$${lostAmount.toFixed(2)} dropped` : '';
+    this.killNotificationText.setText(`☠  ELIMINATED ${safeName}${bonus}`);
+    this.killNotificationText.setX(this.scale.width / 2);
+    this.killNotificationText.setAlpha(1);
+    this.killNotificationText.setScale(0.85);
+
+    if (this.killNotificationTween) this.killNotificationTween.stop();
+    this.killNotificationTween = this.tweens.add({
+      targets: this.killNotificationText,
+      scale: { from: 1.15, to: 1 },
+      duration: 300,
+      ease: 'Back.out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: this.killNotificationText,
+          alpha: 0,
+          duration: 800,
+          delay: 1400,
+        });
+      },
+    });
   }
 
   /** Catmull-Rom spline interpolation through segment control points. */
