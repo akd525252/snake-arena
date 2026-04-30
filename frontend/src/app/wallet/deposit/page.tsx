@@ -91,19 +91,22 @@ export default function DepositPage() {
               </div>
             </div>
 
-            {/* Deposit summary card */}
+            {/* Fee breakdown card */}
             {quote && (
               <div className="p-5 rounded-2xl bg-[#0a0a12] border border-[#1a1a2e]">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-bold text-white">Deposit Summary</h3>
+                  <h3 className="text-sm font-bold text-white">Fee Breakdown</h3>
                   <span className="text-[10px] text-[#00f0ff] uppercase tracking-wider">{quote.networkLabel}</span>
                 </div>
                 <div className="space-y-2 text-sm">
+                  <Row label="Deposit amount" value={`$${quote.amount.toFixed(2)}`} />
                   <Row
-                    label="You will send (approx)"
-                    value={`~${quote.youPayApprox.toFixed(2)} USDT`}
-                    bold
+                    label={`NOWPayments processor fee (${quote.processorFeeRate}%)`}
+                    value={`+$${quote.processorFee.toFixed(2)}`}
+                    muted
                   />
+                  <div className="h-px bg-[#1a1a2e] my-2" />
+                  <Row label="You will send" value={`$${quote.youPay.toFixed(2)} USDT`} bold />
                   <Row
                     label="Credited to wallet"
                     value={`$${quote.youReceiveInWallet.toFixed(2)}`}
@@ -132,7 +135,11 @@ export default function DepositPage() {
               disabled={busy || amount < MIN_DEPOSIT}
               className="w-full py-3 rounded-lg bg-[#00f0ff] text-[#05050a] font-bold hover:bg-[#33f3ff] disabled:opacity-50 glow-cyan transition-colors"
             >
-              {busy ? 'Creating invoice...' : `Deposit $${amount} USDT`}
+              {busy
+                ? 'Creating invoice...'
+                : quote
+                ? `Send $${quote.youPay.toFixed(2)} → Receive $${amount.toFixed(2)}`
+                : `Deposit $${amount} USDT`}
             </button>
 
             <div className="text-xs text-[#4a4a5a] text-center">

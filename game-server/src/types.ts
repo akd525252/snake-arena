@@ -59,6 +59,7 @@ export interface GameRoom {
   gameLoopInterval: NodeJS.Timeout | null;
   coinSpawnInterval: NodeJS.Timeout | null;
   shrinkInterval: NodeJS.Timeout | null;
+  platformRakeAccrued: number; // running total of rake recorded during the match (USD)
 }
 
 // Client → Server messages

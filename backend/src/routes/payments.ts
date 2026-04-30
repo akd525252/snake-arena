@@ -9,14 +9,16 @@ const router = Router();
 
 const NOWPAYMENTS_API = 'https://api.nowpayments.io/v1';
 const MIN_DEPOSIT = 5;
-// NOWPayments handles the conversion to BEP20 USDT and absorbs its merchant fee on
-// our side — the user pays only the USDT amount the invoice quotes (≈ deposit amount
-// at current USDT/USD rate). The BSC gas to broadcast the transfer is paid from the
-// user's own BNB balance and is not part of the invoice total.
 const PAY_CURRENCY = 'usdtbsc'; // NOWPayments code for USDT BEP20 (BSC)
 
+// NOWPayments takes ~0.5% merchant fee + there's a small USDT/USD rate gap.
+// We gross up the invoice by 2% so that after NOWPayments deducts their cut,
+// our merchant balance receives the FULL deposit amount the user requested.
+// This is a passthrough — platform doesn't profit from deposits, just covers cost.
+const NOWPAY_PASSTHROUGH_RATE = 0.02;
+
 // ============================================
-// User: Quote deposit fees (so user sees what they'll actually pay)
+// User: Quote deposit fees (clear breakdown of what they'll pay)
 // ============================================
 router.get('/deposit/quote', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -25,14 +27,16 @@ router.get('/deposit/quote', authenticateToken, async (req: AuthRequest, res: Re
       res.status(400).json({ error: `Minimum deposit is ${MIN_DEPOSIT} USDT` });
       return;
     }
-    // The invoice will show the user roughly `amount` USDT. The exact figure depends on
-    // the live USDT/USD rate at the moment NOWPayments generates the invoice.
+    const processorFee = +(amount * NOWPAY_PASSTHROUGH_RATE).toFixed(2);
+    const youPay = +(amount + processorFee).toFixed(2);
     res.json({
       amount,
-      youPayApprox: amount,
+      processorFee,
+      processorFeeRate: NOWPAY_PASSTHROUGH_RATE * 100,
+      youPay,
       networkLabel: 'BEP20',
       youReceiveInWallet: amount,
-      note: 'NOWPayments will display the exact USDT amount to send. A small BSC gas fee is paid from your own BNB balance.',
+      note: 'The processor fee is charged by NOWPayments to deliver USDT to our merchant wallet. A small BSC gas fee is paid separately from your own BNB balance.',
     });
   } catch (err) {
     console.error('Deposit quote error:', err);
@@ -44,21 +48,26 @@ router.get('/deposit/quote', authenticateToken, async (req: AuthRequest, res: Re
 router.post('/deposit', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { amount } = req.body;
+    const requested = parseFloat(amount);
 
-    if (!amount || amount < MIN_DEPOSIT) {
+    if (!requested || requested < MIN_DEPOSIT) {
       res.status(400).json({ error: `Minimum deposit is ${MIN_DEPOSIT} USDT` });
       return;
     }
 
-    // Create NOWPayments invoice
+    // Gross up the invoice price so NOWPayments still leaves us with `requested` after their cut.
+    // The user pays `youPay`, our wallet credit will be exactly `requested`.
+    const youPay = +(requested * (1 + NOWPAY_PASSTHROUGH_RATE)).toFixed(2);
+
+    // Create NOWPayments invoice for the grossed-up amount
     const response = await axios.post(
       `${NOWPAYMENTS_API}/invoice`,
       {
-        price_amount: amount,
+        price_amount: youPay,
         price_currency: 'usd',
         pay_currency: PAY_CURRENCY,
         order_id: `dep_${req.user!.id}_${Date.now()}`,
-        order_description: `Snake Arena Deposit - ${amount} USDT (BEP20)`,
+        order_description: `Snake Arena Deposit - $${requested} USDT (BEP20)`,
         ipn_callback_url: `${process.env.BACKEND_URL || 'http://localhost:4000'}/api/payments/webhook`,
       },
       {
@@ -71,11 +80,13 @@ router.post('/deposit', authenticateToken, async (req: AuthRequest, res: Respons
 
     const invoice = response.data;
 
-    // Store invoice in database
+    // Store invoice — `amount` is what we credit to the user's wallet on success
     await supabase.from('payment_invoices').insert({
       user_id: req.user!.id,
       invoice_id: invoice.id.toString(),
-      amount,
+      amount: requested,
+      estimated_fee: +(youPay - requested).toFixed(2),
+      net_credited: requested,
       currency: 'USDT',
       status: 'pending',
       payment_url: invoice.invoice_url,
@@ -84,7 +95,8 @@ router.post('/deposit', authenticateToken, async (req: AuthRequest, res: Respons
     res.json({
       invoice_id: invoice.id,
       payment_url: invoice.invoice_url,
-      amount,
+      amount: requested,
+      youPay,
     });
   } catch (err: any) {
     console.error('Create deposit error:', err.response?.data || err.message);

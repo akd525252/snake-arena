@@ -44,4 +44,8 @@ export const CONFIG = {
 
   // Zone penalty (outside arena)
   ZONE_PENALTY_PER_SECOND: 3.00, // dollars deducted per second while outside arena — dangerous!
+
+  // Platform rake: when a pro player dies, this fraction of their score is taken as
+  // platform revenue; the remainder drops as coins for other players to collect.
+  MATCH_RAKE_RATE: 0.10,
 };

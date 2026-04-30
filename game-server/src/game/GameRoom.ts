@@ -51,6 +51,7 @@ export function createGameRoom(matchId: string, betAmount: number, totalSpawnSlo
     gameLoopInterval: null,
     coinSpawnInterval: null,
     shrinkInterval: null,
+    platformRakeAccrued: 0,
   };
 }
 
@@ -301,14 +302,31 @@ function killPlayer(room: GameRoom, player: Player, killerId?: string): void {
   player.snake.alive = false;
 
   const totalValue = Math.max(0, player.snake.score);
+
+  // Platform rake: 10% of every pro (non-demo, non-bot) death goes to the platform.
+  // The remaining 90% drops as coins for other players to collect.
+  const isPaidHumanPlayer = !player.isBot && !player.isDemo;
+  const platformRake = isPaidHumanPlayer ? +(totalValue * CONFIG.MATCH_RAKE_RATE).toFixed(4) : 0;
+  const dropValue = totalValue - platformRake;
+
+  if (platformRake > 0) {
+    room.platformRakeAccrued += platformRake;
+    void recordRevenue('match_rake', platformRake, room.id, player.id, {
+      reason: killerId ? 'killed' : 'zone_or_self',
+      killerId: killerId || null,
+      betAmount: room.betAmount,
+      scoreAtDeath: totalValue,
+    });
+  }
+
   const coinCount = Math.max(
     1,
     Math.min(
       CONFIG.DEATH_DROP_MAX_COINS,
-      Math.max(player.snake.coinsCollected, Math.ceil(totalValue / CONFIG.COIN_VALUE / 5)),
+      Math.max(player.snake.coinsCollected, Math.ceil(dropValue / CONFIG.COIN_VALUE / 5)),
     ),
   );
-  const perCoin = totalValue > 0 ? totalValue / coinCount : 0;
+  const perCoin = dropValue > 0 ? dropValue / coinCount : 0;
 
   const droppedCoins: { id: string; position: Position }[] = [];
   for (let i = 0; i < coinCount; i++) {
@@ -426,14 +444,18 @@ export function endGame(room: GameRoom): void {
     }
   }
 
-  // Platform rake = whatever the house keeps from pro matches (the gap between
-  // what was charged in bets and what was actually returned to surviving players).
-  // For demo matches we ignore it entirely — no real money in/out.
-  const rake = +(totalProBets - totalProCredited).toFixed(2);
-  if (rake > 0) {
-    void recordRevenue('match_rake', rake, room.id, null, {
+  // Platform rake reconciliation: total gap between pro bets and pro payouts MUST go
+  // to the platform. We've already recorded 10% of every death during the match
+  // (`room.platformRakeAccrued`); the remainder (e.g., zone-penalty losses) is the
+  // unaccounted gap which we record here as a top-up.
+  const totalGap = +(totalProBets - totalProCredited).toFixed(4);
+  const remainder = +(totalGap - room.platformRakeAccrued).toFixed(4);
+  if (remainder > 0.001) {
+    void recordRevenue('match_rake', remainder, room.id, null, {
+      reason: 'end_of_match_topup',
       totalBets: totalProBets,
       totalCredited: totalProCredited,
+      deathRakeAccrued: room.platformRakeAccrued,
       betAmount: room.betAmount,
       players: results.length,
     });

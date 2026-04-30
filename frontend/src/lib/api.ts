@@ -298,7 +298,9 @@ export interface RevenueEvent {
 
 export interface DepositQuote {
   amount: number;
-  youPayApprox: number;
+  processorFee: number;
+  processorFeeRate: number;
+  youPay: number;
   networkLabel: string;
   youReceiveInWallet: number;
   note: string;
