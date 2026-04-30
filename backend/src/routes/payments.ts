@@ -3,6 +3,7 @@ import axios from 'axios';
 import crypto from 'crypto';
 import { supabase } from '../config/supabase';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { depositLimiter } from '../middleware/rateLimits';
 import { addTransaction } from './wallet';
 
 const router = Router();
@@ -20,7 +21,7 @@ const NOWPAY_PASSTHROUGH_RATE = 0.02;
 // ============================================
 // User: Quote deposit fees (clear breakdown of what they'll pay)
 // ============================================
-router.get('/deposit/quote', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+router.get('/deposit/quote', authenticateToken, depositLimiter, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const amount = parseFloat(req.query.amount as string);
     if (!amount || isNaN(amount) || amount < MIN_DEPOSIT) {
@@ -45,7 +46,7 @@ router.get('/deposit/quote', authenticateToken, async (req: AuthRequest, res: Re
 });
 
 // Create deposit invoice
-router.post('/deposit', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+router.post('/deposit', authenticateToken, depositLimiter, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { amount } = req.body;
     const requested = parseFloat(amount);
@@ -144,11 +145,18 @@ router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
       }, {});
 
     hmac.update(JSON.stringify(sortedBody));
-    const signature = hmac.digest('hex');
+    const expected = hmac.digest();
 
-    const receivedSig = req.headers['x-nowpayments-sig'] as string;
-    if (signature !== receivedSig) {
-      console.error('Invalid webhook signature');
+    const receivedHex = (req.headers['x-nowpayments-sig'] as string) || '';
+    const receivedBuf = Buffer.from(receivedHex, 'hex');
+
+    // Constant-time compare — protects against timing attacks. Mismatched
+    // lengths short-circuit by failing the length check first.
+    if (
+      receivedBuf.length !== expected.length ||
+      !crypto.timingSafeEqual(expected, receivedBuf)
+    ) {
+      console.error('[webhook] invalid signature');
       res.status(400).json({ error: 'Invalid signature' });
       return;
     }

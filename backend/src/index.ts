@@ -21,6 +21,11 @@ const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
   .map(origin => origin.trim())
   .filter(Boolean);
 
+// Trust the first proxy (Railway, Vercel, etc.) so req.ip resolves to the
+// real client IP via X-Forwarded-For. Without this every request would be
+// keyed by the proxy IP, making rate limiting useless.
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(helmet());
 app.use(cors({
@@ -29,12 +34,17 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Rate limiting
+// Global rate limiter — generous baseline for normal browsing.
+// Per-route limiters in middleware/rateLimits.ts apply stricter caps to
+// sensitive endpoints (auth, deposits, withdrawals, purchases).
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip the NOWPayments IPN webhook — it can fire dozens of times per
+  // invoice, and bursts of confirmations would otherwise hit the cap.
+  skip: req => req.path === '/api/payments/webhook',
 });
 app.use('/api/', limiter);
 

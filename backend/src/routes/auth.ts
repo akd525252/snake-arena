@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { authLimiter } from '../middleware/rateLimits';
 import jwt from 'jsonwebtoken';
 import { supabase } from '../config/supabase';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
@@ -6,7 +7,7 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 const router = Router();
 
 // Verify Supabase token and issue app JWT
-router.post('/login', async (req: Request, res: Response): Promise<void> => {
+router.post('/login', authLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const { access_token } = req.body;
 

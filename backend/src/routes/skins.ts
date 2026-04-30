@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { purchaseLimiter } from '../middleware/rateLimits';
 import { recordRevenue } from '../lib/revenue';
 
 const router = Router();
@@ -52,7 +53,7 @@ router.get('/my', authenticateToken, async (req: AuthRequest, res: Response): Pr
 });
 
 // POST /skins/buy - Buy a skin
-router.post('/buy', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+router.post('/buy', authenticateToken, purchaseLimiter, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user!.id;
     const { skinId } = req.body;

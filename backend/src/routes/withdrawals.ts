@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { authenticateToken, requireAdmin, AuthRequest } from '../middleware/auth';
+import { withdrawalLimiter } from '../middleware/rateLimits';
 import { addTransaction } from './wallet';
 import { recordRevenue } from '../lib/revenue';
 
@@ -47,7 +48,7 @@ router.get('/quote', authenticateToken, async (req: AuthRequest, res: Response):
 // ============================================
 // User: Create withdrawal request
 // ============================================
-router.post('/', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+router.post('/', authenticateToken, withdrawalLimiter, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { amount, wallet_address } = req.body;
     const amt = parseFloat(amount);
