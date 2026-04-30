@@ -42,26 +42,37 @@ export default function AdminDashboard() {
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
-    try {
-      const [m, p, h, d, r, u] = await Promise.all([
-        api.getMetrics(),
-        api.getPendingWithdrawals(),
-        api.getAllWithdrawals(),
-        api.getAdminDeposits(),
-        api.getRevenueHistory(undefined, 50),
-        api.getUsers(),
-      ]);
-      setMetrics(m);
-      setPending(p.withdrawals);
-      setHistory(h.withdrawals);
-      setDeposits(d.deposits);
-      setRevenue(r.events);
-      setUsers(u.users);
-    } catch (err) {
-      console.error('Admin fetch error:', err);
-    } finally {
-      setRefreshing(false);
-    }
+
+    // Each call is independent — one failing query (e.g. missing migration column)
+    // should NOT blank out unrelated tabs. Use allSettled and log per-endpoint.
+    const [m, p, h, d, r, u] = await Promise.allSettled([
+      api.getMetrics(),
+      api.getPendingWithdrawals(),
+      api.getAllWithdrawals(),
+      api.getAdminDeposits(),
+      api.getRevenueHistory(undefined, 50),
+      api.getUsers(),
+    ]);
+
+    if (m.status === 'fulfilled') setMetrics(m.value);
+    else console.error('[admin] getMetrics failed:', m.reason);
+
+    if (p.status === 'fulfilled') setPending(p.value.withdrawals);
+    else console.error('[admin] getPendingWithdrawals failed:', p.reason);
+
+    if (h.status === 'fulfilled') setHistory(h.value.withdrawals);
+    else console.error('[admin] getAllWithdrawals failed:', h.reason);
+
+    if (d.status === 'fulfilled') setDeposits(d.value.deposits);
+    else console.error('[admin] getAdminDeposits failed:', d.reason);
+
+    if (r.status === 'fulfilled') setRevenue(r.value.events);
+    else console.error('[admin] getRevenueHistory failed:', r.reason);
+
+    if (u.status === 'fulfilled') setUsers(u.value.users);
+    else console.error('[admin] getUsers failed:', u.reason);
+
+    setRefreshing(false);
   }, []);
 
   useEffect(() => {
