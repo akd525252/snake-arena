@@ -151,7 +151,7 @@ export default function MatchmakingLobby({
               : scanExpired
                 ? 'Taking longer than usual. You can keep waiting or try again.'
                 : isDemo
-                  ? 'Bots joining your match...'
+                  ? 'Finding opponents for your match...'
                   : `Players ready: ${players.length}`}
           </p>
           {!matchStarting && !scanExpired && !isDemo && (
@@ -245,7 +245,7 @@ export default function MatchmakingLobby({
             </div>
             <div className="text-center text-xs text-[#6a6a7a] mt-2">
               {remaining > 0
-                ? `Match starts in ${remaining}s — bots will fill empty spots`
+                ? `Match starts in ${remaining}s`
                 : 'Starting match now...'}
             </div>
           </div>
@@ -256,24 +256,15 @@ export default function MatchmakingLobby({
           <div className="flex justify-center gap-3">
             {scanExpired ? (
               <>
-                <button
-                  onClick={handleRetry}
-                  className={`px-6 py-2 rounded-lg ${accent.bar} text-[#05050a] font-bold hover:opacity-90 text-sm`}
-                >
+                <button onClick={handleRetry} className={`btn-rpg ${isDemo ? 'btn-rpg-amber' : 'btn-rpg-primary'}`}>
                   ↻ Keep Searching
                 </button>
-                <button
-                  onClick={onCancel}
-                  className="px-6 py-2 rounded-lg border border-[#2a2a3a] text-[#b0b0c0] hover:bg-[#11111a] hover:text-white text-sm font-medium"
-                >
+                <button onClick={onCancel} className="btn-rpg">
                   Back to Dashboard
                 </button>
               </>
             ) : (
-              <button
-                onClick={onCancel}
-                className="px-8 py-2 rounded-lg border border-[#2a2a3a] text-[#b0b0c0] hover:bg-[#11111a] hover:text-white text-sm font-medium transition-colors"
-              >
+              <button onClick={onCancel} className="btn-rpg">
                 Cancel
               </button>
             )}

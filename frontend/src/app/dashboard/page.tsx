@@ -313,12 +313,12 @@ export default function Dashboard() {
               </div>
 
               <Link
-                href={playHref}
+                href={canStartMatch ? playHref : '#'}
                 aria-disabled={!canStartMatch}
                 tabIndex={canStartMatch ? undefined : -1}
-                className={`block text-center w-full py-4 rounded-xl font-black text-lg transition-all ${
-                  canStartMatch ? `${accentButton} hover:scale-[1.01]` : disabledButton
-                }`}
+                className={`btn-rpg btn-rpg-block btn-rpg-lg ${
+                  canStartMatch ? (isDemo ? 'btn-rpg-amber' : 'btn-rpg-primary') : ''
+                } ${canStartMatch ? '' : 'opacity-50 cursor-not-allowed pointer-events-none'}`}
               >
                 {canStartMatch ? playLabel : isDemo ? 'Insufficient Demo Balance' : 'Insufficient Balance'}
               </Link>

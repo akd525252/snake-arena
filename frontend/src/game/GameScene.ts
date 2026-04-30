@@ -50,9 +50,13 @@ export class GameScene extends Phaser.Scene {
 
   // Arena (circular)
   private arenaGfx!: Phaser.GameObjects.Graphics;
+  private arenaAnimGfx!: Phaser.GameObjects.Graphics;
   private arenaCenterX = 550;
   private arenaCenterY = 550;
   private arenaRadius = 500;
+
+  // Map theme — randomized per match for variety
+  private mapTheme: 'grass' | 'lava' | 'rock' | 'tile' = 'grass';
 
   // HUD
   private scoreText!: Phaser.GameObjects.Text;
@@ -179,8 +183,11 @@ export class GameScene extends Phaser.Scene {
     // Detect mobile
     this.isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
-    // Arena background
-    this.arenaGfx = this.add.graphics();
+    // Arena background — random map theme each match
+    const themes: ('grass' | 'lava' | 'rock' | 'tile')[] = ['grass', 'lava', 'rock', 'tile'];
+    this.mapTheme = themes[Math.floor(Math.random() * themes.length)];
+    this.arenaGfx = this.add.graphics().setDepth(0);
+    this.arenaAnimGfx = this.add.graphics().setDepth(1);
     this.drawArena();
 
     // Zone danger overlay (full-screen red tint when outside arena)
@@ -362,6 +369,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   update() {
+    // Animated arena overlay (theme-specific pulse / sweep)
+    this.drawArenaAnim(performance.now());
+
     // Mouse steering (desktop only — mobile uses joystick)
     if (!this.isMobile && this.cameraTarget && this.input.activePointer) {
       const pointer = this.input.activePointer;
@@ -813,7 +823,6 @@ export class GameScene extends Phaser.Scene {
     g.clear();
 
     if (!p.alive) {
-      g.lineStyle(2, 0x444444);
       label.setAlpha(0.3);
       scoreLabel.setAlpha(0);
       return;
@@ -821,97 +830,141 @@ export class GameScene extends Phaser.Scene {
     label.setAlpha(1);
     scoreLabel.setAlpha(1);
 
+    if (p.segments.length === 0) return;
+
     const isMe = p.id === this.myPlayerId;
     const skin = p.skinId ? this.SKIN_COLORS[p.skinId] : null;
 
-    // Determine body color based on skin or default
+    // Resolve body & outline colors (skin overrides default)
     let bodyColor: number;
+    let outlineColor: number;
     let glowColor: number | null = null;
 
     if (skin) {
       bodyColor = skin.primary;
+      outlineColor = skin.secondary;
       glowColor = skin.glow;
     } else {
       bodyColor = isMe ? 0x10b981 : this.colorFromId(p.id);
+      outlineColor = this.darkenColor(bodyColor, 0.55);
     }
 
-    // Boost/slow overrides for non-skinned snakes
+    // Boost / slow overrides for non-skinned snakes
     if (!skin) {
-      if (p.boosted) bodyColor = 0xfbbf24;
-      if (p.slowed) bodyColor = 0x6366f1;
-    }
-
-    // Draw glow effect for skins
-    if (glowColor && p.alive) {
-      g.lineStyle(4, glowColor, 0.3);
-      if (p.segments.length > 0) {
-        const head = p.segments[0];
-        g.strokeCircle(head.x, head.y, 12);
+      if (p.boosted) {
+        bodyColor = 0xfbbf24;
+        outlineColor = 0xb45309;
+      }
+      if (p.slowed) {
+        bodyColor = 0x6366f1;
+        outlineColor = 0x312e81;
       }
     }
 
-    // Build a flexible continuous body path through all segment points
-    if (p.segments.length > 1) {
-      g.lineStyle(14, bodyColor, 1);
-      g.beginPath();
-      const tail = p.segments[p.segments.length - 1];
-      g.moveTo(tail.x, tail.y);
-      for (let i = p.segments.length - 2; i >= 0; i--) {
-        const seg = p.segments[i];
-        g.lineTo(seg.x, seg.y);
-      }
-      g.strokePath();
-      g.closePath();
+    // ── Build a smooth Catmull-Rom interpolated path through segments ──
+    const dense = this.buildSmoothPath(p.segments, 4);
+    const len = dense.length;
 
-      // Outer glow / outline
-      if (skin) {
-        g.lineStyle(2, skin.secondary, 0.6);
-        g.beginPath();
-        g.moveTo(tail.x, tail.y);
-        for (let i = p.segments.length - 2; i >= 0; i--) {
-          const seg = p.segments[i];
-          g.lineTo(seg.x, seg.y);
-        }
-        g.strokePath();
-        g.closePath();
-      }
+    // Body radius tapers from head (large) to tail (small) — snake.io style
+    const HEAD_RADIUS = 11;
+    const TAIL_RADIUS = 5;
+
+    // Pass 1: outline circles (darker, slightly larger) — gives body a clean edge
+    for (let i = len - 1; i >= 0; i--) {
+      const t = i / Math.max(1, len - 1); // 0 = head, 1 = tail
+      const r = HEAD_RADIUS - (HEAD_RADIUS - TAIL_RADIUS) * t;
+      const seg = dense[i];
+      g.fillStyle(outlineColor, 1);
+      g.fillCircle(seg.x, seg.y, r + 1.5);
     }
 
-    // Draw head as a distinct circle
-    if (p.segments.length > 0) {
-      const head = p.segments[0];
+    // Pass 2: filled body circles (the snake itself)
+    for (let i = len - 1; i >= 0; i--) {
+      const t = i / Math.max(1, len - 1);
+      const r = HEAD_RADIUS - (HEAD_RADIUS - TAIL_RADIUS) * t;
+      const seg = dense[i];
       g.fillStyle(bodyColor, 1);
-      g.fillCircle(head.x, head.y, 10);
-      g.lineStyle(2, skin ? skin.secondary : 0x000000, 0.4);
-      g.strokeCircle(head.x, head.y, 10);
+      g.fillCircle(seg.x, seg.y, r);
     }
 
-    // Skin skill effects
+    // Boost / glow ring on head
+    const head = dense[0];
+    if (p.boosted) {
+      const ringColor = glowColor ?? 0xfde047;
+      g.lineStyle(3, ringColor, 0.85);
+      g.strokeCircle(head.x, head.y, HEAD_RADIUS + 4);
+    } else if (glowColor) {
+      // Subtle skin glow always
+      g.lineStyle(2, glowColor, 0.3);
+      g.strokeCircle(head.x, head.y, HEAD_RADIUS + 2);
+    }
+
+    // ── Eyes ──
+    const a = p.angle;
+    const perpX = -Math.sin(a);
+    const perpY = Math.cos(a);
+    const fwdX = Math.cos(a);
+    const fwdY = Math.sin(a);
+
+    // Eye whites
+    g.fillStyle(0xffffff, 1);
+    g.fillCircle(head.x + fwdX * 3.5 + perpX * 4, head.y + fwdY * 3.5 + perpY * 4, 3);
+    g.fillCircle(head.x + fwdX * 3.5 - perpX * 4, head.y + fwdY * 3.5 - perpY * 4, 3);
+    // Pupils — black, look slightly forward
+    g.fillStyle(0x000000, 1);
+    g.fillCircle(head.x + fwdX * 4.5 + perpX * 4, head.y + fwdY * 4.5 + perpY * 4, 1.4);
+    g.fillCircle(head.x + fwdX * 4.5 - perpX * 4, head.y + fwdY * 4.5 - perpY * 4, 1.4);
+
+    // Skin skill effects (boost trails, etc.)
     this.handleSkinEffects(p, skin);
 
-    // Eyes on head — positioned based on facing angle
-    if (p.segments.length > 0) {
-      const head = p.segments[0];
-      const a = p.angle;
-      // Perpendicular offsets for left/right eye
-      const perpX = -Math.sin(a);
-      const perpY = Math.cos(a);
-      const fwdX = Math.cos(a);
-      const fwdY = Math.sin(a);
+    // Labels: score above username above head
+    scoreLabel.setText(`$${p.score.toFixed(2)}`);
+    scoreLabel.setPosition(head.x, head.y - 38);
+    label.setPosition(head.x, head.y - 26);
+  }
 
-      g.fillStyle(0xffffff, 1);
-      g.fillCircle(head.x + fwdX * 4 + perpX * 3, head.y + fwdY * 4 + perpY * 3, 2.5);
-      g.fillCircle(head.x + fwdX * 4 - perpX * 3, head.y + fwdY * 4 - perpY * 3, 2.5);
-      // Pupils
-      g.fillStyle(0x000000, 1);
-      g.fillCircle(head.x + fwdX * 5 + perpX * 3, head.y + fwdY * 5 + perpY * 3, 1);
-      g.fillCircle(head.x + fwdX * 5 - perpX * 3, head.y + fwdY * 5 - perpY * 3, 1);
+  /** Catmull-Rom spline interpolation through segment control points. */
+  private buildSmoothPath(segments: Position[], steps: number): Position[] {
+    if (segments.length === 0) return [];
+    if (segments.length === 1) return [{ x: segments[0].x, y: segments[0].y }];
 
-      // Position labels: score above username above head
-      scoreLabel.setText(`$${p.score.toFixed(2)}`);
-      scoreLabel.setPosition(head.x, head.y - 34);
-      label.setPosition(head.x, head.y - 22);
+    const out: Position[] = [];
+    for (let i = 0; i < segments.length - 1; i++) {
+      const p0 = segments[i - 1] || segments[i];
+      const p1 = segments[i];
+      const p2 = segments[i + 1];
+      const p3 = segments[i + 2] || segments[i + 1];
+      for (let s = 0; s < steps; s++) {
+        const t = s / steps;
+        const t2 = t * t;
+        const t3 = t2 * t;
+        const x = 0.5 * (
+          (2 * p1.x) +
+          (-p0.x + p2.x) * t +
+          (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 +
+          (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3
+        );
+        const y = 0.5 * (
+          (2 * p1.y) +
+          (-p0.y + p2.y) * t +
+          (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 +
+          (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3
+        );
+        out.push({ x, y });
+      }
     }
+    const last = segments[segments.length - 1];
+    out.push({ x: last.x, y: last.y });
+    return out;
+  }
+
+  /** Multiply RGB color channels by a factor (< 1 darkens, > 1 brightens). */
+  private darkenColor(color: number, factor: number): number {
+    const r = Math.max(0, Math.min(255, Math.floor(((color >> 16) & 0xff) * factor)));
+    const gC = Math.max(0, Math.min(255, Math.floor(((color >> 8) & 0xff) * factor)));
+    const b = Math.max(0, Math.min(255, Math.floor((color & 0xff) * factor)));
+    return (r << 16) | (gC << 8) | b;
   }
 
   private handleSkinEffects(p: RemotePlayer, skin: { primary: number; secondary: number; glow: number } | null): void {
@@ -1037,37 +1090,172 @@ export class GameScene extends Phaser.Scene {
   private drawArena() {
     this.arenaGfx.clear();
 
-    // Dark fill behind the circle
-    this.arenaGfx.fillStyle(0x0f0f0f, 1);
-    this.arenaGfx.fillCircle(this.arenaCenterX, this.arenaCenterY, this.arenaRadius);
-
-    // Subtle grid lines (clipped to circle via thin segments)
-    this.arenaGfx.lineStyle(1, 0x1f2937, 0.25);
-    const step = 50;
     const cx = this.arenaCenterX;
     const cy = this.arenaCenterY;
     const r = this.arenaRadius;
 
-    // Vertical grid lines
-    for (let x = cx - r; x <= cx + r; x += step) {
-      const dx = x - cx;
-      const halfH = Math.sqrt(Math.max(0, r * r - dx * dx));
-      if (halfH > 0) this.arenaGfx.lineBetween(x, cy - halfH, x, cy + halfH);
-    }
-    // Horizontal grid lines
-    for (let y = cy - r; y <= cy + r; y += step) {
-      const dy = y - cy;
-      const halfW = Math.sqrt(Math.max(0, r * r - dy * dy));
-      if (halfW > 0) this.arenaGfx.lineBetween(cx - halfW, y, cx + halfW, y);
+    // Theme palettes
+    const palettes = {
+      grass: {
+        bg: 0x14361d,        // deep green field
+        gridA: 0x1f5a30,     // darker green grid
+        gridB: 0x2d7a44,     // accent green
+        border: 0x3fbe5c,    // bright green border
+        danger: 0xef4444,
+      },
+      lava: {
+        bg: 0x2a0500,
+        gridA: 0x5a1500,
+        gridB: 0xb14400,
+        border: 0xff6020,
+        danger: 0xffd000,
+      },
+      rock: {
+        bg: 0x202124,
+        gridA: 0x35373b,
+        gridB: 0x4a4d52,
+        border: 0x808389,
+        danger: 0xef4444,
+      },
+      tile: {
+        bg: 0x05121a,
+        gridA: 0x0a2438,
+        gridB: 0x0f4f7a,
+        border: 0x00d8ff,
+        danger: 0xff2e63,
+      },
+    } as const;
+    const pal = palettes[this.mapTheme];
+
+    // Background fill
+    this.arenaGfx.fillStyle(pal.bg, 1);
+    this.arenaGfx.fillCircle(cx, cy, r);
+
+    // Theme-specific pattern
+    if (this.mapTheme === 'grass') {
+      // Soft dotted/cell pattern resembling tall grass clumps
+      this.arenaGfx.fillStyle(pal.gridA, 0.55);
+      const step = 28;
+      for (let x = cx - r; x <= cx + r; x += step) {
+        for (let y = cy - r; y <= cy + r; y += step) {
+          const dx = x - cx, dy = y - cy;
+          if (dx * dx + dy * dy > r * r) continue;
+          // Tiny pseudo-random offset
+          const ox = ((x * 13 + y * 7) % 9) - 4;
+          const oy = ((x * 5 + y * 17) % 9) - 4;
+          this.arenaGfx.fillCircle(x + ox, y + oy, 2.2);
+        }
+      }
+    } else if (this.mapTheme === 'lava') {
+      // Cracked floor — irregular polygonal cells
+      this.arenaGfx.lineStyle(1, pal.gridA, 0.5);
+      const step = 60;
+      for (let x = cx - r; x <= cx + r; x += step) {
+        const dx = x - cx;
+        const halfH = Math.sqrt(Math.max(0, r * r - dx * dx));
+        if (halfH > 0) this.arenaGfx.lineBetween(x, cy - halfH, x, cy + halfH);
+      }
+      for (let y = cy - r; y <= cy + r; y += step) {
+        const dy = y - cy;
+        const halfW = Math.sqrt(Math.max(0, r * r - dy * dy));
+        if (halfW > 0) this.arenaGfx.lineBetween(cx - halfW, y, cx + halfW, y);
+      }
+      // Hot ember dots
+      this.arenaGfx.fillStyle(pal.gridB, 0.7);
+      for (let i = 0; i < 60; i++) {
+        const a = (i / 60) * Math.PI * 2;
+        const rad = Math.sqrt(Math.random()) * (r - 12);
+        this.arenaGfx.fillCircle(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad, 1.8);
+      }
+    } else if (this.mapTheme === 'rock') {
+      // Stone tile grid
+      this.arenaGfx.lineStyle(1, pal.gridA, 0.5);
+      const step = 50;
+      for (let x = cx - r; x <= cx + r; x += step) {
+        const dx = x - cx;
+        const halfH = Math.sqrt(Math.max(0, r * r - dx * dx));
+        if (halfH > 0) this.arenaGfx.lineBetween(x, cy - halfH, x, cy + halfH);
+      }
+      for (let y = cy - r; y <= cy + r; y += step) {
+        const dy = y - cy;
+        const halfW = Math.sqrt(Math.max(0, r * r - dy * dy));
+        if (halfW > 0) this.arenaGfx.lineBetween(cx - halfW, y, cx + halfW, y);
+      }
+      // Cracked highlights
+      this.arenaGfx.lineStyle(1, pal.gridB, 0.4);
+      for (let i = 0; i < 14; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const rad = Math.sqrt(Math.random()) * (r - 30);
+        const x0 = cx + Math.cos(a) * rad;
+        const y0 = cy + Math.sin(a) * rad;
+        const len = 8 + Math.random() * 18;
+        const ang2 = a + (Math.random() - 0.5) * 1.2;
+        this.arenaGfx.lineBetween(x0, y0, x0 + Math.cos(ang2) * len, y0 + Math.sin(ang2) * len);
+      }
+    } else {
+      // tile theme — futuristic hex/grid
+      this.arenaGfx.lineStyle(1, pal.gridA, 0.6);
+      const step = 40;
+      for (let x = cx - r; x <= cx + r; x += step) {
+        const dx = x - cx;
+        const halfH = Math.sqrt(Math.max(0, r * r - dx * dx));
+        if (halfH > 0) this.arenaGfx.lineBetween(x, cy - halfH, x, cy + halfH);
+      }
+      for (let y = cy - r; y <= cy + r; y += step) {
+        const dy = y - cy;
+        const halfW = Math.sqrt(Math.max(0, r * r - dy * dy));
+        if (halfW > 0) this.arenaGfx.lineBetween(cx - halfW, y, cx + halfW, y);
+      }
+      // Cyan accent dots at intersections
+      this.arenaGfx.fillStyle(pal.gridB, 0.5);
+      for (let x = cx - r; x <= cx + r; x += step * 2) {
+        for (let y = cy - r; y <= cy + r; y += step * 2) {
+          const dx = x - cx, dy = y - cy;
+          if (dx * dx + dy * dy > r * r) continue;
+          this.arenaGfx.fillCircle(x, y, 1.5);
+        }
+      }
     }
 
-    // Arena border
-    this.arenaGfx.lineStyle(3, 0x10b981, 0.6);
-    this.arenaGfx.strokeCircle(this.arenaCenterX, this.arenaCenterY, this.arenaRadius);
+    // Arena border (theme-tinted)
+    this.arenaGfx.lineStyle(4, pal.border, 0.85);
+    this.arenaGfx.strokeCircle(cx, cy, r);
 
-    // Danger zone ring (inner glow when shrinking)
-    this.arenaGfx.lineStyle(1, 0xef4444, 0.15);
-    this.arenaGfx.strokeCircle(this.arenaCenterX, this.arenaCenterY, this.arenaRadius - 2);
+    // Inner danger ring (always shows, ramps up via animation overlay)
+    this.arenaGfx.lineStyle(1, pal.danger, 0.18);
+    this.arenaGfx.strokeCircle(cx, cy, r - 2);
+  }
+
+  /** Animated overlay drawn every frame on top of the static arena. */
+  private drawArenaAnim(now: number) {
+    if (!this.arenaAnimGfx) return;
+    this.arenaAnimGfx.clear();
+    const cx = this.arenaCenterX;
+    const cy = this.arenaCenterY;
+    const r = this.arenaRadius;
+    const tSec = now / 1000;
+
+    if (this.mapTheme === 'lava') {
+      // Pulsing red glow on inner ring
+      const pulse = 0.4 + 0.35 * Math.sin(tSec * 2);
+      this.arenaAnimGfx.lineStyle(6, 0xff5510, pulse * 0.5);
+      this.arenaAnimGfx.strokeCircle(cx, cy, r - 4);
+    } else if (this.mapTheme === 'tile') {
+      // Sweeping cyan ring
+      const ringR = (r * 0.4) + (r * 0.5) * (0.5 + 0.5 * Math.sin(tSec * 0.7));
+      this.arenaAnimGfx.lineStyle(1.5, 0x00d8ff, 0.3);
+      this.arenaAnimGfx.strokeCircle(cx, cy, ringR);
+    } else if (this.mapTheme === 'grass') {
+      // Slow soft pulse on border
+      const pulse = 0.5 + 0.3 * Math.sin(tSec * 1.2);
+      this.arenaAnimGfx.lineStyle(2, 0x3fbe5c, pulse * 0.4);
+      this.arenaAnimGfx.strokeCircle(cx, cy, r - 1);
+    } else {
+      // rock — minimal: subtle dust shimmer (very faint pulse)
+      const pulse = 0.4 + 0.2 * Math.sin(tSec * 0.8);
+      this.arenaAnimGfx.lineStyle(1, 0x808389, pulse * 0.25);
+      this.arenaAnimGfx.strokeCircle(cx, cy, r - 1);
+    }
   }
 
   private colorFromId(id: string): number {
