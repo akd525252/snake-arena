@@ -4,57 +4,60 @@ import { authenticateToken, requireAdmin, AuthRequest } from '../middleware/auth
 
 const router = Router();
 
-// Get dashboard metrics
+// ============================================
+// Dashboard metrics — top-level stats for admin overview
+// ============================================
 router.get('/metrics', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    // Active users count
-    const { count: activeUsers } = await supabase
-      .from('users')
-      .select('*', { count: 'exact', head: true })
-      .eq('account_status', 'active');
+    const [
+      activeUsersRes,
+      depositTxRes,
+      approvedWdRes,
+      activeMatchesRes,
+      pendingWdRes,
+      totalMatchesRes,
+      revenueRes,
+      paymentsRes,
+    ] = await Promise.all([
+      supabase.from('users').select('*', { count: 'exact', head: true }).eq('account_status', 'active'),
+      supabase.from('transactions').select('amount').eq('type', 'deposit').eq('status', 'completed'),
+      supabase.from('withdrawal_requests').select('amount, net_amount').eq('status', 'approved'),
+      supabase.from('matches').select('*', { count: 'exact', head: true }).eq('status', 'active'),
+      supabase.from('withdrawal_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+      supabase.from('matches').select('*', { count: 'exact', head: true }).eq('status', 'completed'),
+      supabase.from('platform_revenue').select('source, amount'),
+      supabase.from('payment_invoices').select('amount').eq('status', 'confirmed'),
+    ]);
 
-    // Total deposits
-    const { data: deposits } = await supabase
-      .from('transactions')
-      .select('amount')
-      .eq('type', 'deposit')
-      .eq('status', 'completed');
+    const totalDeposits = (depositTxRes.data || []).reduce((s, t) => s + parseFloat(t.amount), 0);
+    const totalConfirmedPayments = (paymentsRes.data || []).reduce((s, t) => s + parseFloat(t.amount), 0);
+    const totalWithdrawals = (approvedWdRes.data || []).reduce((s, w) => s + parseFloat(w.amount), 0);
+    const totalNetWithdrawn = (approvedWdRes.data || []).reduce((s, w) => s + parseFloat(w.net_amount || w.amount), 0);
 
-    const totalDeposits = deposits?.reduce((sum, t) => sum + parseFloat(t.amount), 0) || 0;
-
-    // Total withdrawals (approved)
-    const { data: withdrawals } = await supabase
-      .from('withdrawal_requests')
-      .select('amount')
-      .eq('status', 'approved');
-
-    const totalWithdrawals = withdrawals?.reduce((sum, w) => sum + parseFloat(w.amount), 0) || 0;
-
-    // Active matches
-    const { count: activeMatches } = await supabase
-      .from('matches')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'active');
-
-    // Pending withdrawals count
-    const { count: pendingWithdrawals } = await supabase
-      .from('withdrawal_requests')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'pending');
-
-    // Total matches played
-    const { count: totalMatches } = await supabase
-      .from('matches')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'completed');
+    const revenueRows = revenueRes.data || [];
+    const totalRevenue = revenueRows.reduce((s, r) => s + parseFloat(r.amount), 0);
+    const revenueBySource: Record<string, number> = {};
+    for (const r of revenueRows) {
+      revenueBySource[r.source] = (revenueBySource[r.source] || 0) + parseFloat(r.amount);
+    }
 
     res.json({
-      activeUsers: activeUsers || 0,
+      activeUsers: activeUsersRes.count || 0,
       totalDeposits,
+      totalConfirmedPayments,
       totalWithdrawals,
-      activeMatches: activeMatches || 0,
-      pendingWithdrawals: pendingWithdrawals || 0,
-      totalMatches: totalMatches || 0,
+      totalNetWithdrawn,
+      activeMatches: activeMatchesRes.count || 0,
+      pendingWithdrawals: pendingWdRes.count || 0,
+      totalMatches: totalMatchesRes.count || 0,
+      totalRevenue,
+      revenueBySource: {
+        match_rake: revenueBySource.match_rake || 0,
+        withdraw_fee: revenueBySource.withdraw_fee || 0,
+        skin_purchase: revenueBySource.skin_purchase || 0,
+        zone_penalty: revenueBySource.zone_penalty || 0,
+        deposit_fee: revenueBySource.deposit_fee || 0,
+      },
     });
   } catch (err) {
     console.error('Get metrics error:', err);
@@ -62,7 +65,59 @@ router.get('/metrics', authenticateToken, requireAdmin, async (req: AuthRequest,
   }
 });
 
-// List all users
+// ============================================
+// Revenue history (paginated, latest first)
+// ============================================
+router.get('/revenue/history', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+    const source = req.query.source as string | undefined;
+    let query = supabase
+      .from('platform_revenue')
+      .select('*, users(email, username)')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (source) {
+      query = query.eq('source', source);
+    }
+    const { data, error } = await query;
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+    res.json({ events: data || [] });
+  } catch (err) {
+    console.error('Revenue history error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================
+// All deposits with user info
+// ============================================
+router.get('/deposits', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { data: invoices, error } = await supabase
+      .from('payment_invoices')
+      .select('*, users(email, username, avatar)')
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+
+    res.json({ deposits: invoices });
+  } catch (err) {
+    console.error('Admin get deposits error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================
+// All users (paginated)
+// ============================================
 router.get('/users', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -87,7 +142,9 @@ router.get('/users', authenticateToken, requireAdmin, async (req: AuthRequest, r
   }
 });
 
-// Ban/unban user
+// ============================================
+// Ban / unban / suspend a user
+// ============================================
 router.patch('/users/:id/status', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -115,28 +172,9 @@ router.patch('/users/:id/status', authenticateToken, requireAdmin, async (req: A
   }
 });
 
-// Get all deposits
-router.get('/deposits', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const { data: invoices, error } = await supabase
-      .from('payment_invoices')
-      .select('*, users(email, username)')
-      .order('created_at', { ascending: false })
-      .limit(100);
-
-    if (error) {
-      res.status(500).json({ error: error.message });
-      return;
-    }
-
-    res.json({ deposits: invoices });
-  } catch (err) {
-    console.error('Admin get deposits error:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Get match history
+// ============================================
+// Recent matches
+// ============================================
 router.get('/matches', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { data: matches, error } = await supabase

@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { CONFIG } from '../config';
-import { creditWinnings } from '../db';
+import { creditWinnings, recordRevenue } from '../db';
 import {
   GameRoom,
   Player,
@@ -412,12 +412,31 @@ export function endGame(room: GameRoom): void {
   // (demo_balance for demo, wallets.balance for pro). Bots are skipped.
   // Dead players already had their score zeroed in killPlayer() — they lose everything.
   // Bet was already deducted at match start, so net = score - bet.
+  let totalProBets = 0;
+  let totalProCredited = 0;
   for (const player of room.players.values()) {
     if (player.isBot) continue;
+    if (!player.isDemo) {
+      totalProBets += room.betAmount;
+    }
     if (!player.snake.alive) continue; // dead = lose everything (already zeroed)
     if (player.snake.score > 0) {
+      if (!player.isDemo) totalProCredited += player.snake.score;
       void creditWinnings(player.id, !!player.isDemo, player.snake.score, room.id);
     }
+  }
+
+  // Platform rake = whatever the house keeps from pro matches (the gap between
+  // what was charged in bets and what was actually returned to surviving players).
+  // For demo matches we ignore it entirely — no real money in/out.
+  const rake = +(totalProBets - totalProCredited).toFixed(2);
+  if (rake > 0) {
+    void recordRevenue('match_rake', rake, room.id, null, {
+      totalBets: totalProBets,
+      totalCredited: totalProCredited,
+      betAmount: room.betAmount,
+      players: results.length,
+    });
   }
 
   broadcastToRoom(room, { type: 'game_end', results });

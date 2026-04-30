@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { recordRevenue } from '../lib/revenue';
 
 const router = Router();
 
@@ -126,6 +127,12 @@ router.post('/buy', authenticateToken, async (req: AuthRequest, res: Response): 
       .insert({ user_id: userId, skin_id: skinId });
 
     if (insertError) throw insertError;
+
+    // Record platform revenue (skin purchase)
+    await recordRevenue('skin_purchase', parseFloat(skin.price_usd), `skin_${skinId}`, userId, {
+      skin_name: skin.name,
+      skin_key: skin.skin_key,
+    });
 
     res.json({ success: true, skin });
   } catch (err) {

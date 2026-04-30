@@ -2,24 +2,61 @@ import { Router, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { authenticateToken, requireAdmin, AuthRequest } from '../middleware/auth';
 import { addTransaction } from './wallet';
+import { recordRevenue } from '../lib/revenue';
 
 const router = Router();
 
 const MIN_WITHDRAWAL = 5;
 const ACCOUNT_LOCK_HOURS = 24;
+const SERVICE_FEE_RATE = 0.20; // 20% service fee on every withdrawal
+const NETWORK_FEE = 1.00; // BEP20 USDT network fee estimate (USD)
 
-// Create withdrawal request
+// ============================================
+// User: Quote withdrawal fees (so user sees breakdown before submitting)
+// ============================================
+router.get('/quote', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const amount = parseFloat(req.query.amount as string);
+    if (!amount || isNaN(amount) || amount < MIN_WITHDRAWAL) {
+      res.status(400).json({ error: `Minimum withdrawal is ${MIN_WITHDRAWAL} USDT` });
+      return;
+    }
+    const serviceFee = +(amount * SERVICE_FEE_RATE).toFixed(2);
+    const networkFee = NETWORK_FEE;
+    const netAmount = +(amount - serviceFee - networkFee).toFixed(2);
+    if (netAmount <= 0) {
+      res.status(400).json({ error: 'Amount too small to cover fees' });
+      return;
+    }
+    res.json({
+      amount,
+      serviceFee,
+      serviceFeePercent: SERVICE_FEE_RATE * 100,
+      networkFee,
+      netAmount,
+      currency: 'USDT (BEP20)',
+    });
+  } catch (err) {
+    console.error('Quote withdrawal error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================
+// User: Create withdrawal request
+// ============================================
 router.post('/', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { amount, wallet_address } = req.body;
+    const amt = parseFloat(amount);
 
-    if (!amount || amount < MIN_WITHDRAWAL) {
+    if (!amt || amt < MIN_WITHDRAWAL) {
       res.status(400).json({ error: `Minimum withdrawal is ${MIN_WITHDRAWAL} USDT` });
       return;
     }
 
-    if (!wallet_address) {
-      res.status(400).json({ error: 'Wallet address required' });
+    if (!wallet_address || typeof wallet_address !== 'string' || wallet_address.length < 10) {
+      res.status(400).json({ error: 'Valid wallet address required' });
       return;
     }
 
@@ -56,6 +93,16 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response): Pro
       return;
     }
 
+    // Compute fees
+    const serviceFee = +(amt * SERVICE_FEE_RATE).toFixed(2);
+    const networkFee = NETWORK_FEE;
+    const netAmount = +(amt - serviceFee - networkFee).toFixed(2);
+
+    if (netAmount <= 0) {
+      res.status(400).json({ error: 'Amount too small to cover fees' });
+      return;
+    }
+
     // Check balance
     const { data: wallet } = await supabase
       .from('wallets')
@@ -63,7 +110,7 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response): Pro
       .eq('user_id', req.user!.id)
       .single();
 
-    if (!wallet || parseFloat(wallet.balance) < amount) {
+    if (!wallet || parseFloat(wallet.balance) < amt) {
       res.status(400).json({ error: 'Insufficient balance' });
       return;
     }
@@ -80,19 +127,22 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response): Pro
       return;
     }
 
-    // Deduct from wallet
-    const txResult = await addTransaction(req.user!.id, 'withdraw', amount, `withdrawal_request`);
+    // Deduct full amount from wallet (held until approval/rejection)
+    const txResult = await addTransaction(req.user!.id, 'withdraw', amt, `withdrawal_request`);
     if (!txResult.success) {
       res.status(400).json({ error: txResult.error });
       return;
     }
 
-    // Create withdrawal request
+    // Create withdrawal request with fee breakdown
     const { data: withdrawal, error } = await supabase
       .from('withdrawal_requests')
       .insert({
         user_id: req.user!.id,
-        amount,
+        amount: amt,
+        service_fee: serviceFee,
+        network_fee: networkFee,
+        net_amount: netAmount,
         wallet_address,
         status: 'pending',
       })
@@ -104,14 +154,16 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response): Pro
       return;
     }
 
-    res.json({ withdrawal });
+    res.json({ withdrawal, breakdown: { amount: amt, serviceFee, networkFee, netAmount } });
   } catch (err) {
     console.error('Create withdrawal error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// Get my withdrawal requests
+// ============================================
+// User: Get my withdrawal requests
+// ============================================
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { data: withdrawals, error } = await supabase
@@ -132,12 +184,14 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response): Prom
   }
 });
 
-// Admin: Get all pending withdrawals
+// ============================================
+// Admin: Get pending withdrawals (with user info)
+// ============================================
 router.get('/admin/pending', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { data: withdrawals, error } = await supabase
       .from('withdrawal_requests')
-      .select('*, users(email, username)')
+      .select('*, users(email, username, avatar)')
       .eq('status', 'pending')
       .order('created_at', { ascending: true });
 
@@ -153,11 +207,42 @@ router.get('/admin/pending', authenticateToken, requireAdmin, async (req: AuthRe
   }
 });
 
+// ============================================
+// Admin: List all withdrawals (history) with user info
+// ============================================
+router.get('/admin/all', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+    const status = req.query.status as string | undefined;
+    let query = supabase
+      .from('withdrawal_requests')
+      .select('*, users(email, username, avatar)')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (status && ['pending', 'approved', 'rejected'].includes(status)) {
+      query = query.eq('status', status);
+    }
+    const { data: withdrawals, error } = await query;
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+    res.json({ withdrawals });
+  } catch (err) {
+    console.error('Admin get all withdrawals error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================
 // Admin: Approve or reject withdrawal
+// On approve: platform revenue = service_fee - network_fee
+// On reject: refund full amount back to user wallet
+// ============================================
 router.patch('/admin/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { status, admin_note } = req.body;
+    const { status, admin_note, tx_hash } = req.body;
 
     if (!['approved', 'rejected'].includes(status)) {
       res.status(400).json({ error: 'Status must be approved or rejected' });
@@ -177,20 +262,40 @@ router.patch('/admin/:id', authenticateToken, requireAdmin, async (req: AuthRequ
       return;
     }
 
-    // If rejected, refund to wallet
     if (status === 'rejected') {
+      // Refund full amount back to user wallet
       await addTransaction(
         withdrawal.user_id,
         'deposit',
         parseFloat(withdrawal.amount),
-        `withdrawal_refund_${id}`
+        `withdrawal_refund_${id}`,
       );
+    } else {
+      // Approved — record revenue from the service fee minus network fee
+      const serviceFee = parseFloat(withdrawal.service_fee || '0');
+      const networkFee = parseFloat(withdrawal.network_fee || '0');
+      const platformProfit = +(serviceFee - networkFee).toFixed(2);
+      if (platformProfit > 0) {
+        await recordRevenue(
+          'withdraw_fee',
+          platformProfit,
+          `withdrawal_${id}`,
+          withdrawal.user_id,
+          { serviceFee, networkFee, withdrawalAmount: parseFloat(withdrawal.amount) },
+        );
+      }
     }
 
-    // Update status
+    // Update status with admin metadata
     const { error } = await supabase
       .from('withdrawal_requests')
-      .update({ status, admin_note })
+      .update({
+        status,
+        admin_note: admin_note || null,
+        tx_hash: status === 'approved' ? (tx_hash || null) : null,
+        approved_at: new Date().toISOString(),
+        approved_by: req.user!.id,
+      })
       .eq('id', id);
 
     if (error) {

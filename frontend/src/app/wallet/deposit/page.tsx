@@ -1,16 +1,44 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { api } from '../../../lib/api';
+import { api, DepositQuote } from '../../../lib/api';
+
+const MIN_DEPOSIT = 5;
 
 export default function DepositPage() {
   const [amount, setAmount] = useState(10);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
+  const [quote, setQuote] = useState<DepositQuote | null>(null);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+
+  // Live fee preview — debounced quote fetch on amount change
+  useEffect(() => {
+    if (amount < MIN_DEPOSIT) {
+      setQuote(null);
+      setQuoteError(`Minimum deposit is ${MIN_DEPOSIT} USDT`);
+      return;
+    }
+    setQuoteError(null);
+    const timer = setTimeout(async () => {
+      try {
+        const q = await api.quoteDeposit(amount);
+        setQuote(q);
+      } catch (err: unknown) {
+        setQuoteError(err instanceof Error ? err.message : 'Could not estimate fees');
+        setQuote(null);
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [amount]);
 
   const handleDeposit = async () => {
+    if (amount < MIN_DEPOSIT) {
+      setError(`Minimum deposit is ${MIN_DEPOSIT} USDT`);
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -41,7 +69,7 @@ export default function DepositPage() {
               <label className="text-sm text-[#8a8a9a] mb-2 block">Amount (USDT)</label>
               <input
                 type="number"
-                min={1}
+                min={MIN_DEPOSIT}
                 step={1}
                 value={amount}
                 onChange={e => setAmount(parseFloat(e.target.value) || 0)}
@@ -58,7 +86,53 @@ export default function DepositPage() {
                   </button>
                 ))}
               </div>
+              <div className="text-xs text-[#6a6a7a] mt-3">
+                Minimum: <span className="text-white font-bold">${MIN_DEPOSIT} USDT</span>
+              </div>
             </div>
+
+            {/* Fee disclosure card */}
+            {quote && (
+              <div className="p-5 rounded-2xl bg-[#0a0a12] border border-[#1a1a2e]">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-white">Fee Breakdown</h3>
+                  <span className="text-[10px] text-[#6a6a7a] uppercase tracking-wider">Estimated</span>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <Row label="Deposit amount" value={`$${quote.amount.toFixed(2)}`} />
+                  <Row
+                    label={`NOWPayments processing fee (~${quote.processorFeeRate}%)`}
+                    value={`$${quote.processorFee.toFixed(2)}`}
+                    muted
+                  />
+                  <Row
+                    label={`${quote.networkLabel} network fee`}
+                    value={`$${quote.networkFee.toFixed(2)}`}
+                    muted
+                  />
+                  <div className="h-px bg-[#1a1a2e] my-2" />
+                  <Row
+                    label="You will pay (approx)"
+                    value={`$${quote.youPay.toFixed(2)}`}
+                    bold
+                  />
+                  <Row
+                    label="Credited to wallet"
+                    value={`$${quote.youReceiveInWallet.toFixed(2)}`}
+                    accent
+                  />
+                </div>
+                <p className="text-[11px] text-[#5a5a6a] mt-3 leading-relaxed">
+                  Fees are charged by NOWPayments and the TRC20 network — not by Snake Arena.
+                  Final amount may vary slightly with live network rates.
+                </p>
+              </div>
+            )}
+            {quoteError && (
+              <div className="p-3 rounded-lg bg-[#ffb800]/10 border border-[#ffb800]/30 text-[#ffb800] text-xs">
+                {quoteError}
+              </div>
+            )}
 
             {error && (
               <div className="p-3 rounded-lg bg-[#ff2e63]/10 border border-[#ff2e63]/30 text-[#ff2e63] text-sm">
@@ -68,7 +142,7 @@ export default function DepositPage() {
 
             <button
               onClick={handleDeposit}
-              disabled={busy || amount < 1}
+              disabled={busy || amount < MIN_DEPOSIT}
               className="w-full py-3 rounded-lg bg-[#00f0ff] text-[#05050a] font-bold hover:bg-[#33f3ff] disabled:opacity-50 glow-cyan transition-colors"
             >
               {busy ? 'Creating invoice...' : `Deposit $${amount} USDT`}
@@ -104,6 +178,17 @@ export default function DepositPage() {
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+function Row({ label, value, muted, bold, accent }: { label: string; value: string; muted?: boolean; bold?: boolean; accent?: boolean }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className={`${muted ? 'text-[#6a6a7a]' : 'text-[#b0b0c0]'} text-xs`}>{label}</span>
+      <span className={`font-mono ${
+        accent ? 'text-[#00f0ff] font-bold' : bold ? 'text-white font-bold' : muted ? 'text-[#8a8a9a]' : 'text-white'
+      }`}>{value}</span>
     </div>
   );
 }

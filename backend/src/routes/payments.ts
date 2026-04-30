@@ -8,14 +8,47 @@ import { addTransaction } from './wallet';
 const router = Router();
 
 const NOWPAYMENTS_API = 'https://api.nowpayments.io/v1';
+const MIN_DEPOSIT = 5;
+// NOWPayments charges ~0.5% on invoice payments + the user pays the on-chain network fee.
+// We disclose this estimate to the user before they submit.
+const NOWPAY_FEE_RATE = 0.005;
+const TRC20_NETWORK_FEE_USD = 1.00;
+
+// ============================================
+// User: Quote deposit fees (so user sees estimate before paying)
+// ============================================
+router.get('/deposit/quote', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const amount = parseFloat(req.query.amount as string);
+    if (!amount || isNaN(amount) || amount < MIN_DEPOSIT) {
+      res.status(400).json({ error: `Minimum deposit is ${MIN_DEPOSIT} USDT` });
+      return;
+    }
+    const processorFee = +(amount * NOWPAY_FEE_RATE).toFixed(2);
+    const networkFee = TRC20_NETWORK_FEE_USD;
+    const youPay = +(amount + processorFee + networkFee).toFixed(2);
+    res.json({
+      amount,
+      processorFee,
+      processorFeeRate: NOWPAY_FEE_RATE * 100,
+      networkFee,
+      networkLabel: 'TRC20',
+      youPay,
+      youReceiveInWallet: amount,
+    });
+  } catch (err) {
+    console.error('Deposit quote error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // Create deposit invoice
 router.post('/deposit', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { amount } = req.body;
 
-    if (!amount || amount < 1) {
-      res.status(400).json({ error: 'Minimum deposit is 1 USDT' });
+    if (!amount || amount < MIN_DEPOSIT) {
+      res.status(400).json({ error: `Minimum deposit is ${MIN_DEPOSIT} USDT` });
       return;
     }
 

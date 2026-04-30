@@ -89,15 +89,24 @@ export const api = {
       }
     ),
 
+  quoteDeposit: (amount: number) =>
+    request<DepositQuote>(`/api/payments/deposit/quote?amount=${amount}`),
+
   getDeposits: () =>
     request<{ deposits: PaymentInvoice[] }>('/api/payments/deposits'),
 
   // Withdrawals
   createWithdrawal: (amount: number, wallet_address: string) =>
-    request<{ withdrawal: Withdrawal }>('/api/withdrawals', {
-      method: 'POST',
-      body: JSON.stringify({ amount, wallet_address }),
-    }),
+    request<{ withdrawal: Withdrawal; breakdown: WithdrawalBreakdown }>(
+      '/api/withdrawals',
+      {
+        method: 'POST',
+        body: JSON.stringify({ amount, wallet_address }),
+      }
+    ),
+
+  quoteWithdrawal: (amount: number) =>
+    request<WithdrawalQuote>(`/api/withdrawals/quote?amount=${amount}`),
 
   getWithdrawals: () =>
     request<{ withdrawals: Withdrawal[] }>('/api/withdrawals'),
@@ -124,15 +133,7 @@ export const api = {
     }>('/api/matchmaking/status'),
 
   // Admin
-  getMetrics: () =>
-    request<{
-      activeUsers: number;
-      totalDeposits: number;
-      totalWithdrawals: number;
-      activeMatches: number;
-      pendingWithdrawals: number;
-      totalMatches: number;
-    }>('/api/admin/metrics'),
+  getMetrics: () => request<AdminMetrics>('/api/admin/metrics'),
 
   getUsers: (page = 1) =>
     request<{ users: User[]; pagination: { total: number } }>(
@@ -146,13 +147,33 @@ export const api = {
     }),
 
   getPendingWithdrawals: () =>
-    request<{ withdrawals: Withdrawal[] }>('/api/withdrawals/admin/pending'),
+    request<{ withdrawals: AdminWithdrawal[] }>('/api/withdrawals/admin/pending'),
 
-  approveWithdrawal: (id: string, status: 'approved' | 'rejected', admin_note?: string) =>
+  getAllWithdrawals: (status?: 'pending' | 'approved' | 'rejected') =>
+    request<{ withdrawals: AdminWithdrawal[] }>(
+      `/api/withdrawals/admin/all${status ? `?status=${status}` : ''}`
+    ),
+
+  approveWithdrawal: (
+    id: string,
+    status: 'approved' | 'rejected',
+    options?: { admin_note?: string; tx_hash?: string }
+  ) =>
     request(`/api/withdrawals/admin/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ status, admin_note }),
+      body: JSON.stringify({ status, ...(options || {}) }),
     }),
+
+  getAdminDeposits: () =>
+    request<{ deposits: AdminDeposit[] }>('/api/admin/deposits'),
+
+  getRevenueHistory: (source?: string, limit = 100) => {
+    const params = new URLSearchParams({ limit: limit.toString() });
+    if (source) params.set('source', source);
+    return request<{ events: RevenueEvent[] }>(
+      `/api/admin/revenue/history?${params.toString()}`
+    );
+  },
 
   // Skins
   getSkins: () => request<{ skins: Skin[] }>('/api/skins'),
@@ -225,8 +246,78 @@ export interface Withdrawal {
   id: string;
   user_id: string;
   amount: number;
+  service_fee?: number;
+  network_fee?: number;
+  net_amount?: number;
   wallet_address: string;
   status: 'pending' | 'approved' | 'rejected';
   admin_note?: string;
+  tx_hash?: string | null;
+  approved_at?: string | null;
   created_at: string;
+}
+
+// Withdrawal with joined user info (for admin views)
+export interface AdminWithdrawal extends Withdrawal {
+  users?: { email: string; username: string | null; avatar: string | null } | null;
+}
+
+export interface AdminDeposit extends PaymentInvoice {
+  users?: { email: string; username: string | null; avatar: string | null } | null;
+}
+
+export interface AdminMetrics {
+  activeUsers: number;
+  totalDeposits: number;
+  totalConfirmedPayments: number;
+  totalWithdrawals: number;
+  totalNetWithdrawn: number;
+  activeMatches: number;
+  pendingWithdrawals: number;
+  totalMatches: number;
+  totalRevenue: number;
+  revenueBySource: {
+    match_rake: number;
+    withdraw_fee: number;
+    skin_purchase: number;
+    zone_penalty: number;
+    deposit_fee: number;
+  };
+}
+
+export interface RevenueEvent {
+  id: string;
+  source: 'match_rake' | 'withdraw_fee' | 'skin_purchase' | 'zone_penalty' | 'deposit_fee';
+  amount: number;
+  reference: string | null;
+  user_id: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  users?: { email: string; username: string | null } | null;
+}
+
+export interface DepositQuote {
+  amount: number;
+  processorFee: number;
+  processorFeeRate: number;
+  networkFee: number;
+  networkLabel: string;
+  youPay: number;
+  youReceiveInWallet: number;
+}
+
+export interface WithdrawalQuote {
+  amount: number;
+  serviceFee: number;
+  serviceFeePercent: number;
+  networkFee: number;
+  netAmount: number;
+  currency: string;
+}
+
+export interface WithdrawalBreakdown {
+  amount: number;
+  serviceFee: number;
+  networkFee: number;
+  netAmount: number;
 }

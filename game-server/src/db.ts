@@ -4,6 +4,32 @@ import { CONFIG } from './config';
 export const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_SERVICE_KEY);
 
 /**
+ * Record a platform revenue event from inside the game server.
+ * Source examples: 'match_rake', 'zone_penalty'
+ */
+export async function recordRevenue(
+  source: 'match_rake' | 'zone_penalty',
+  amount: number,
+  reference: string | null,
+  userId: string | null = null,
+  metadata: Record<string, unknown> | null = null,
+): Promise<void> {
+  if (amount <= 0) return;
+  try {
+    const { error } = await supabase.from('platform_revenue').insert({
+      source,
+      amount,
+      reference,
+      user_id: userId,
+      metadata,
+    });
+    if (error) console.error('[recordRevenue]', error.message);
+  } catch (err) {
+    console.error('[recordRevenue] exception', err);
+  }
+}
+
+/**
  * Deduct the bet amount from a player's balance at match start.
  * - Demo players: subtract from `users.demo_balance`
  * - Pro players: subtract from `wallets.balance` + insert `bet` transaction

@@ -61,6 +61,10 @@ export class GameScene extends Phaser.Scene {
 
   // Camera offset
   private cameraTarget: Position | null = null;
+  // Smoothed camera position (lerped toward cameraTarget) to avoid jitter
+  private cameraSmooth: Position | null = null;
+  // Locked spectate target ID after death — prevents flipping between leaders
+  private spectateTargetId: string | null = null;
 
   // Zone danger overlay
   private zoneOverlay!: Phaser.GameObjects.Graphics;
@@ -334,9 +338,16 @@ export class GameScene extends Phaser.Scene {
       this.joystickGraphics.fillCircle(cx, cy, 18);
     }
 
-    // Camera follow
+    // Camera follow with LERP smoothing — eliminates jitter between server ticks (50ms apart)
     if (this.cameraTarget) {
-      this.cameras.main.centerOn(this.cameraTarget.x, this.cameraTarget.y);
+      if (!this.cameraSmooth) {
+        this.cameraSmooth = { x: this.cameraTarget.x, y: this.cameraTarget.y };
+      } else {
+        // 0.2 lerp factor at 60fps gives smooth ~100ms follow without lag
+        this.cameraSmooth.x += (this.cameraTarget.x - this.cameraSmooth.x) * 0.25;
+        this.cameraSmooth.y += (this.cameraTarget.y - this.cameraSmooth.y) * 0.25;
+      }
+      this.cameras.main.centerOn(this.cameraSmooth.x, this.cameraSmooth.y);
     }
   }
 
@@ -486,9 +497,11 @@ export class GameScene extends Phaser.Scene {
     let aliveCount = 0;
     let myPlayerAlive = false;
     let highestAlive: RemotePlayer | null = null;
+    const playersById = new Map<string, RemotePlayer>();
 
     for (const p of state.players) {
       seenPlayers.add(p.id);
+      playersById.set(p.id, p);
       this.renderSnake(p);
       if (p.alive) {
         aliveCount++;
@@ -503,6 +516,7 @@ export class GameScene extends Phaser.Scene {
         this.onScoreChange?.(p.score);
         if (p.alive && p.segments.length > 0) {
           this.cameraTarget = p.segments[0];
+          this.spectateTargetId = null; // alive — clear any locked spectate
         }
         // Zone danger overlay: show red tint when outside safe zone
         if (p.inZone === false) {
@@ -513,9 +527,19 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // If I'm dead, spectate the highest-scoring alive player smoothly
-    if (!myPlayerAlive && highestAlive && highestAlive.segments.length > 0) {
-      this.cameraTarget = highestAlive.segments[0];
+    // If I'm dead, spectate. Lock target until they die — prevents flickering between leaders.
+    if (!myPlayerAlive) {
+      // Re-evaluate spectate target only if locked one is gone or dead
+      const currentTarget = this.spectateTargetId ? playersById.get(this.spectateTargetId) : null;
+      if (!currentTarget || !currentTarget.alive || currentTarget.segments.length === 0) {
+        this.spectateTargetId = highestAlive ? highestAlive.id : null;
+      }
+      const target = this.spectateTargetId ? playersById.get(this.spectateTargetId) : null;
+      if (target && target.segments.length > 0) {
+        this.cameraTarget = target.segments[0];
+      }
+      // Hide zone overlay while dead — avoids stale red tint
+      this.drawZoneOverlay(false);
     }
 
     // Send time update to React overlay
