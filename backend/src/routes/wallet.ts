@@ -60,64 +60,80 @@ router.get('/transactions', authenticateToken, async (req: AuthRequest, res: Res
 
 export default router;
 
-// Utility: Add transaction and update balance (used internally)
+// Utility: Add transaction and update balance (used internally).
+// Uses an atomic Postgres RPC (`increment_wallet_balance`) so concurrent writes
+// from multiple workers / webhook IPN / game-server can't clobber each other.
+const DEDUCTION_TYPES = new Set(['bet', 'skill_purchase', 'withdraw', 'withdraw_fee']);
+
 export async function addTransaction(
   userId: string,
   type: string,
   amount: number,
   reference?: string
 ): Promise<{ success: boolean; error?: string }> {
+  if (!userId) {
+    console.error('[addTransaction] missing userId');
+    return { success: false, error: 'Missing userId' };
+  }
+
+  const absAmount = Math.abs(amount);
+  if (!Number.isFinite(absAmount) || absAmount <= 0) {
+    console.error(`[addTransaction] invalid amount user=${userId} type=${type} amount=${amount}`);
+    return { success: false, error: 'Invalid amount' };
+  }
+
+  const isDeduction = DEDUCTION_TYPES.has(type);
+  const delta = isDeduction ? -absAmount : absAmount;
+
   try {
-    // Create transaction record
+    // Step 1: atomic balance update via Postgres function
+    const { data: newBalance, error: rpcErr } = await supabase.rpc(
+      'increment_wallet_balance',
+      { p_user_id: userId, p_delta: delta }
+    );
+
+    if (rpcErr) {
+      console.error(
+        `[addTransaction] RPC failed user=${userId} type=${type} delta=${delta}:`,
+        rpcErr.message
+      );
+      // Map Postgres EXCEPTIONs to clean error strings
+      if (rpcErr.message?.includes('INSUFFICIENT_BALANCE')) {
+        return { success: false, error: 'Insufficient balance' };
+      }
+      if (rpcErr.message?.includes('WALLET_NOT_FOUND')) {
+        return { success: false, error: 'Wallet not found' };
+      }
+      return { success: false, error: rpcErr.message };
+    }
+
+    // Step 2: insert transaction record (after balance succeeded)
     const { error: txError } = await supabase
       .from('transactions')
       .insert({
         user_id: userId,
         type,
-        amount,
+        amount: absAmount,
         reference: reference || null,
         status: 'completed',
       });
 
     if (txError) {
+      // Balance already moved — log loudly so we can reconcile manually if it happens
+      console.error(
+        `[addTransaction] CRITICAL: balance updated but tx insert failed user=${userId} type=${type} amount=${absAmount} delta=${delta} newBal=${newBalance}:`,
+        txError.message
+      );
       return { success: false, error: txError.message };
     }
 
-    // Update wallet balance
-    // For deductions (bet, skill_purchase, withdraw, withdraw_fee), subtract
-    // For additions (deposit, win), add
-    const isDeduction = ['bet', 'skill_purchase', 'withdraw', 'withdraw_fee'].includes(type);
-
-    const { data: wallet } = await supabase
-      .from('wallets')
-      .select('balance')
-      .eq('user_id', userId)
-      .single();
-
-    if (!wallet) {
-      return { success: false, error: 'Wallet not found' };
-    }
-
-    const currentBalance = parseFloat(wallet.balance);
-    const newBalance = isDeduction
-      ? currentBalance - Math.abs(amount)
-      : currentBalance + Math.abs(amount);
-
-    if (newBalance < 0) {
-      return { success: false, error: 'Insufficient balance' };
-    }
-
-    const { error: updateError } = await supabase
-      .from('wallets')
-      .update({ balance: newBalance })
-      .eq('user_id', userId);
-
-    if (updateError) {
-      return { success: false, error: updateError.message };
-    }
-
+    console.log(
+      `[addTransaction] ok user=${userId.slice(0, 8)} type=${type} delta=${delta} newBal=${newBalance} ref=${reference || '-'}`
+    );
     return { success: true };
-  } catch (err) {
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[addTransaction] unexpected error user=${userId} type=${type}:`, msg);
     return { success: false, error: 'Internal error' };
   }
 }

@@ -31,11 +31,11 @@ export async function recordRevenue(
 
 /**
  * Deduct the bet amount from a player's balance at match start.
- * - Demo players: subtract from `users.demo_balance`
- * - Pro players: subtract from `wallets.balance` + insert `bet` transaction
+ * Atomic — uses the `increment_*_balance` Postgres RPCs (migration 003) so we
+ * never lose money to a concurrent write from a webhook or another match end.
  *
  * Returns true on success, false on insufficient funds or DB error.
- * If returnedfalse for a pro player, the player should NOT be allowed to play.
+ * Bot players are skipped silently (handled by the caller).
  */
 export async function chargeBet(
   userId: string,
@@ -43,83 +43,61 @@ export async function chargeBet(
   amount: number,
   matchId: string,
 ): Promise<boolean> {
-  if (amount <= 0) return true; // free match — nothing to charge
+  if (amount <= 0) return true;
+  if (!Number.isFinite(amount)) {
+    console.error(`[chargeBet] invalid amount user=${userId.slice(0, 8)} amount=${amount}`);
+    return false;
+  }
 
   try {
-    if (isDemo) {
-      const { data: user, error: readErr } = await supabase
-        .from('users')
-        .select('demo_balance')
-        .eq('id', userId)
-        .single();
-      if (readErr || !user) {
-        console.error(`[chargeBet/demo] read failed for ${userId}:`, readErr?.message);
-        return false;
-      }
-      const current = parseFloat(user.demo_balance ?? '0');
-      if (current < amount) {
-        console.warn(`[chargeBet/demo] insufficient demo_balance: ${current} < ${amount}`);
-        return false;
-      }
-      const { error: updErr } = await supabase
-        .from('users')
-        .update({ demo_balance: current - amount })
-        .eq('id', userId);
-      if (updErr) {
-        console.error(`[chargeBet/demo] update failed:`, updErr.message);
-        return false;
-      }
-      return true;
-    }
+    const rpc = isDemo ? 'increment_demo_balance' : 'increment_wallet_balance';
+    const params = isDemo
+      ? { p_user_id: userId, p_delta: -amount }
+      : { p_user_id: userId, p_delta: -amount };
 
-    // Pro: deduct from wallet + write transaction
-    const { data: wallet, error: wErr } = await supabase
-      .from('wallets')
-      .select('balance')
-      .eq('user_id', userId)
-      .single();
-    if (wErr || !wallet) {
-      console.error(`[chargeBet/pro] wallet read failed:`, wErr?.message);
-      return false;
-    }
-    const current = parseFloat(wallet.balance);
-    if (current < amount) {
-      console.warn(`[chargeBet/pro] insufficient balance: ${current} < ${amount}`);
+    const { data: newBalance, error: rpcErr } = await supabase.rpc(rpc, params);
+
+    if (rpcErr) {
+      console.error(
+        `[chargeBet/${isDemo ? 'demo' : 'pro'}] RPC failed user=${userId.slice(0, 8)} amount=${amount}:`,
+        rpcErr.message,
+      );
       return false;
     }
 
-    const { error: txErr } = await supabase.from('transactions').insert({
-      user_id: userId,
-      type: 'bet',
-      amount,
-      reference: `match_${matchId}`,
-      status: 'completed',
-    });
-    if (txErr) {
-      console.error(`[chargeBet/pro] transaction insert failed:`, txErr.message);
-      return false;
+    // For pro players, also record the bet transaction.
+    if (!isDemo) {
+      const { error: txErr } = await supabase.from('transactions').insert({
+        user_id: userId,
+        type: 'bet',
+        amount,
+        reference: `match_${matchId}`,
+        status: 'completed',
+      });
+      if (txErr) {
+        // Balance already deducted — surface this loudly. Better to keep playing
+        // than to refund + re-deduct on retry, since wallet is the source of truth.
+        console.error(
+          `[chargeBet/pro] CRITICAL balance moved but tx insert failed user=${userId.slice(0, 8)} amount=${amount}:`,
+          txErr.message,
+        );
+      }
     }
 
-    const { error: updErr } = await supabase
-      .from('wallets')
-      .update({ balance: current - amount })
-      .eq('user_id', userId);
-    if (updErr) {
-      console.error(`[chargeBet/pro] wallet update failed:`, updErr.message);
-      return false;
-    }
+    console.log(
+      `[chargeBet] ok user=${userId.slice(0, 8)} demo=${isDemo} amount=${amount} newBal=${newBalance} match=${matchId.slice(0, 8)}`,
+    );
     return true;
-  } catch (err) {
-    console.error(`[chargeBet] unexpected error:`, err);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[chargeBet] unexpected error user=${userId.slice(0, 8)}:`, msg);
     return false;
   }
 }
 
 /**
  * Credit a player's final score to their balance at end of match.
- * - Demo: add to `users.demo_balance`
- * - Pro: add to `wallets.balance` + insert `win` transaction (even if score is 0,
- *   we skip writes to avoid useless rows; only credit when amount > 0)
+ * Atomic — uses RPC. Skips zero/negative amounts and bot players.
  */
 export async function creditWinnings(
   userId: string,
@@ -127,58 +105,47 @@ export async function creditWinnings(
   amount: number,
   matchId: string,
 ): Promise<void> {
-  if (amount <= 0) return;
+  if (amount <= 0 || !Number.isFinite(amount)) {
+    console.log(`[creditWinnings] skip user=${userId.slice(0, 8)} amount=${amount}`);
+    return;
+  }
 
   try {
-    if (isDemo) {
-      const { data: user, error: readErr } = await supabase
-        .from('users')
-        .select('demo_balance')
-        .eq('id', userId)
-        .single();
-      if (readErr || !user) {
-        console.error(`[creditWinnings/demo] read failed:`, readErr?.message);
-        return;
-      }
-      const current = parseFloat(user.demo_balance ?? '0');
-      const { error: updErr } = await supabase
-        .from('users')
-        .update({ demo_balance: current + amount })
-        .eq('id', userId);
-      if (updErr) console.error(`[creditWinnings/demo] update failed:`, updErr.message);
-      return;
-    }
-
-    // Pro: insert transaction + bump wallet
-    const { data: wallet, error: wErr } = await supabase
-      .from('wallets')
-      .select('balance')
-      .eq('user_id', userId)
-      .single();
-    if (wErr || !wallet) {
-      console.error(`[creditWinnings/pro] wallet read failed:`, wErr?.message);
-      return;
-    }
-
-    const { error: txErr } = await supabase.from('transactions').insert({
-      user_id: userId,
-      type: 'win',
-      amount,
-      reference: `match_${matchId}`,
-      status: 'completed',
+    const rpc = isDemo ? 'increment_demo_balance' : 'increment_wallet_balance';
+    const { data: newBalance, error: rpcErr } = await supabase.rpc(rpc, {
+      p_user_id: userId,
+      p_delta: amount,
     });
-    if (txErr) {
-      console.error(`[creditWinnings/pro] transaction insert failed:`, txErr.message);
+
+    if (rpcErr) {
+      console.error(
+        `[creditWinnings/${isDemo ? 'demo' : 'pro'}] RPC failed user=${userId.slice(0, 8)} amount=${amount}:`,
+        rpcErr.message,
+      );
       return;
     }
 
-    const newBal = parseFloat(wallet.balance) + amount;
-    const { error: updErr } = await supabase
-      .from('wallets')
-      .update({ balance: newBal })
-      .eq('user_id', userId);
-    if (updErr) console.error(`[creditWinnings/pro] wallet update failed:`, updErr.message);
-  } catch (err) {
-    console.error(`[creditWinnings] unexpected error:`, err);
+    if (!isDemo) {
+      const { error: txErr } = await supabase.from('transactions').insert({
+        user_id: userId,
+        type: 'win',
+        amount,
+        reference: `match_${matchId}`,
+        status: 'completed',
+      });
+      if (txErr) {
+        console.error(
+          `[creditWinnings/pro] CRITICAL balance credited but tx insert failed user=${userId.slice(0, 8)} amount=${amount}:`,
+          txErr.message,
+        );
+      }
+    }
+
+    console.log(
+      `[creditWinnings] ok user=${userId.slice(0, 8)} demo=${isDemo} amount=${amount} newBal=${newBalance} match=${matchId.slice(0, 8)}`,
+    );
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[creditWinnings] unexpected error user=${userId.slice(0, 8)}:`, msg);
   }
 }

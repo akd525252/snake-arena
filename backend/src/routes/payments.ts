@@ -80,17 +80,41 @@ router.post('/deposit', authenticateToken, async (req: AuthRequest, res: Respons
 
     const invoice = response.data;
 
-    // Store invoice — `amount` is what we credit to the user's wallet on success
-    await supabase.from('payment_invoices').insert({
+    // Store invoice — `amount` is what we credit to the user's wallet on success.
+    // Try the schema with the v002 fee tracking columns first; if those columns
+    // don't exist yet (migration 002 not applied) fall back to the base schema.
+    const baseRow = {
       user_id: req.user!.id,
       invoice_id: invoice.id.toString(),
       amount: requested,
-      estimated_fee: +(youPay - requested).toFixed(2),
-      net_credited: requested,
       currency: 'USDT',
       status: 'pending',
       payment_url: invoice.invoice_url,
+    };
+
+    let { error: insertErr } = await supabase.from('payment_invoices').insert({
+      ...baseRow,
+      estimated_fee: +(youPay - requested).toFixed(2),
+      net_credited: requested,
     });
+
+    if (insertErr && /column .* does not exist/i.test(insertErr.message)) {
+      console.warn('[deposit] migration 002 columns missing, retrying with base row');
+      ({ error: insertErr } = await supabase.from('payment_invoices').insert(baseRow));
+    }
+
+    if (insertErr) {
+      console.error(
+        `[deposit] payment_invoices insert failed user=${req.user!.id} invoice=${invoice.id}:`,
+        insertErr.message,
+      );
+      res.status(500).json({ error: 'Failed to record invoice — please contact support' });
+      return;
+    }
+
+    console.log(
+      `[deposit] invoice created user=${req.user!.id.slice(0, 8)} requested=$${requested} youPay=$${youPay} invoice=${invoice.id}`,
+    );
 
     res.json({
       invoice_id: invoice.id,
@@ -152,7 +176,11 @@ router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
 
     const newStatus = statusMap[payment_status] || 'pending';
 
-    await supabase
+    console.log(
+      `[webhook] invoice=${invoice_id} status=${payment_status}->${newStatus} actually_paid=${actually_paid} currency=${pay_currency} order=${order_id}`,
+    );
+
+    const { error: updateInvoiceErr } = await supabase
       .from('payment_invoices')
       .update({
         status: newStatus,
@@ -161,37 +189,56 @@ router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
       })
       .eq('invoice_id', invoice_id.toString());
 
+    if (updateInvoiceErr) {
+      console.error(`[webhook] invoice update failed invoice=${invoice_id}:`, updateInvoiceErr.message);
+    }
+
     // If payment confirmed, credit wallet
     if (payment_status === 'finished' || payment_status === 'confirmed') {
-      // Get invoice to find user
-      const { data: invoiceData } = await supabase
+      const { data: invoiceData, error: lookupErr } = await supabase
         .from('payment_invoices')
         .select('user_id, amount')
         .eq('invoice_id', invoice_id.toString())
         .single();
 
-      if (invoiceData) {
-        // Check if already credited (prevent double credit)
+      if (lookupErr || !invoiceData) {
+        console.error(
+          `[webhook] CRITICAL invoice not found in DB invoice=${invoice_id} status=${payment_status}:`,
+          lookupErr?.message,
+        );
+      } else {
+        // Check if already credited (idempotent — webhook may fire multiple times)
         const { data: existingTx } = await supabase
           .from('transactions')
           .select('id')
           .eq('reference', `invoice_${invoice_id}`)
-          .single();
+          .maybeSingle();
 
-        if (!existingTx) {
-          await addTransaction(
+        if (existingTx) {
+          console.log(`[webhook] already credited invoice=${invoice_id}, skipping`);
+        } else {
+          const result = await addTransaction(
             invoiceData.user_id,
             'deposit',
             parseFloat(invoiceData.amount),
-            `invoice_${invoice_id}`
+            `invoice_${invoice_id}`,
           );
+          if (!result.success) {
+            console.error(
+              `[webhook] CRITICAL failed to credit user=${invoiceData.user_id} amount=${invoiceData.amount} invoice=${invoice_id}: ${result.error}`,
+            );
+          } else {
+            console.log(
+              `[webhook] credited user=${invoiceData.user_id.slice(0, 8)} amount=$${invoiceData.amount} invoice=${invoice_id}`,
+            );
+          }
         }
       }
     }
 
     res.json({ status: 'ok' });
   } catch (err) {
-    console.error('Webhook error:', err);
+    console.error('[webhook] unexpected error:', err);
     res.status(500).json({ error: 'Webhook processing failed' });
   }
 });
