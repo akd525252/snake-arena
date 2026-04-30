@@ -22,10 +22,10 @@ export default function ModeSelectionModal({ onSelected }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl rounded-3xl bg-[#0a0a12] border border-[#1a1a2e] p-8 md:p-12">
-        <h1 className="text-4xl font-black text-center mb-2 text-white">Choose Your Mode</h1>
-        <p className="text-[#8a8a9a] text-center mb-10">
+    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="w-full max-w-2xl rpg-panel p-8 md:p-12">
+        <h1 className="rpg-title text-3xl text-center mb-2">Choose Your Mode</h1>
+        <p className="rpg-text-muted text-center mb-10">
           Pick how you want to play. You can switch later.
         </p>
 
@@ -34,34 +34,34 @@ export default function ModeSelectionModal({ onSelected }: Props) {
           <button
             onClick={() => choose('demo')}
             disabled={loading !== null}
-            className="group relative p-6 rounded-2xl border-2 border-[#ffb800]/30 bg-[#ffb800]/5 hover:border-[#ffcc33] hover:bg-[#ffb800]/10 transition-all text-left disabled:opacity-60"
+            className="group relative p-6 rounded-md border-2 border-[#a86a3a] bg-[#3a2c1f]/40 hover:border-[#f5c265] hover:bg-[#3a2c1f]/70 transition-all text-left disabled:opacity-60"
           >
             {loading === 'demo' && (
-              <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/40">
-                <div className="w-6 h-6 border-2 border-[#ffcc33] border-t-transparent rounded-full animate-spin" />
+              <div className="absolute inset-0 flex items-center justify-center rounded-md bg-black/50">
+                <div className="w-6 h-6 border-2 border-[#f5c265] border-t-transparent rounded-full animate-spin" />
               </div>
             )}
             <div className="text-3xl mb-3">🎮</div>
-            <h2 className="text-xl font-bold text-[#ffb800] mb-2">Demo Mode</h2>
-            <ul className="space-y-1.5 text-sm text-[#8a8a9a]">
+            <h2 className="rpg-title text-xl mb-2">Demo Mode</h2>
+            <ul className="space-y-1.5 text-sm rpg-text-muted">
               <li className="flex items-start gap-2">
-                <span className="text-[#ffb800] mt-0.5">✓</span>
+                <span className="rpg-gold-bright mt-0.5">✓</span>
                 <span>$50 demo balance to start</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-[#ffb800] mt-0.5">✓</span>
+                <span className="rpg-gold-bright mt-0.5">✓</span>
                 <span>Play against 9 AI bots</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-[#ffb800] mt-0.5">✓</span>
+                <span className="rpg-gold-bright mt-0.5">✓</span>
                 <span>Learn the game risk-free</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-[#4a4a5a] mt-0.5">✗</span>
-                <span className="text-[#4a4a5a]">Cannot withdraw demo funds</span>
+                <span className="text-[#5a4028] mt-0.5">✗</span>
+                <span className="text-[#5a4028]">Cannot withdraw demo funds</span>
               </li>
             </ul>
-            <div className="mt-4 py-2 rounded-lg bg-[#ffb800]/20 text-[#ffb800] text-center text-sm font-bold">
+            <div className="mt-4 py-2 rounded-md bg-[#a86a3a]/30 text-[#f5c265] text-center text-sm font-bold tracking-widest">
               Start Demo
             </div>
           </button>
@@ -70,34 +70,34 @@ export default function ModeSelectionModal({ onSelected }: Props) {
           <button
             onClick={() => choose('pro')}
             disabled={loading !== null}
-            className="group relative p-6 rounded-2xl border-2 border-[#00f0ff]/30 bg-[#00f0ff]/5 hover:border-[#99ffff] hover:bg-[#00f0ff]/10 transition-all text-left disabled:opacity-60"
+            className="group relative p-6 rounded-md border-2 border-[#962323] bg-[#2a0e0e]/40 hover:border-[#d83a3a] hover:bg-[#2a0e0e]/70 transition-all text-left disabled:opacity-60"
           >
             {loading === 'pro' && (
-              <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/40">
-                <div className="w-6 h-6 border-2 border-[#99ffff] border-t-transparent rounded-full animate-spin" />
+              <div className="absolute inset-0 flex items-center justify-center rounded-md bg-black/50">
+                <div className="w-6 h-6 border-2 border-[#d83a3a] border-t-transparent rounded-full animate-spin" />
               </div>
             )}
             <div className="text-3xl mb-3">💰</div>
-            <h2 className="text-xl font-bold text-[#00f0ff] mb-2">Pro Mode</h2>
-            <ul className="space-y-1.5 text-sm text-[#4a4a5a]">
+            <h2 className="rpg-title text-xl mb-2" style={{ color: '#d83a3a' }}>Pro Mode</h2>
+            <ul className="space-y-1.5 text-sm rpg-text-muted">
               <li className="flex items-start gap-2">
-                <span className="text-[#00f0ff] mt-0.5">✓</span>
+                <span className="text-[#d83a3a] mt-0.5">✓</span>
                 <span>Play with real USDT</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-[#00f0ff] mt-0.5">✓</span>
+                <span className="text-[#d83a3a] mt-0.5">✓</span>
                 <span>Compete against real players</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-[#00f0ff] mt-0.5">✓</span>
+                <span className="text-[#d83a3a] mt-0.5">✓</span>
                 <span>Bet rooms: $1 / $2 / $5</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-[#00f0ff] mt-0.5">✓</span>
+                <span className="text-[#d83a3a] mt-0.5">✓</span>
                 <span>Withdraw your winnings</span>
               </li>
             </ul>
-            <div className="mt-4 py-2 rounded-lg bg-[#1a1a2e] text-[#00f0ff] text-center text-sm font-bold">
+            <div className="mt-4 py-2 rounded-md bg-[#962323]/30 text-[#d83a3a] text-center text-sm font-bold tracking-widest">
               Go Pro
             </div>
           </button>

@@ -196,7 +196,7 @@ export default function SkinsShopPage() {
   if (loading || loadingData || !user || !current) {
     return (
       <div className="flex flex-1 items-center justify-center min-h-screen">
-        <div className="text-[#6a6a7a]">Loading skins...</div>
+        <div className="rpg-text-muted">Loading skins...</div>
       </div>
     );
   }
@@ -204,16 +204,16 @@ export default function SkinsShopPage() {
   const skills = SKIN_SKILLS[current.skin_key] || SKIN_SKILLS.default;
 
   return (
-    <div className="flex flex-col flex-1 min-h-screen bg-[#05050a]">
+    <div className="flex flex-col flex-1 min-h-screen">
       {/* Nav */}
-      <nav className="flex justify-between items-center px-8 py-4 border-b border-[#1a1a2e]">
-        <Link href="/dashboard" className="flex items-center gap-2 text-[#8a8a9a] hover:text-white transition-colors">
+      <nav className="flex justify-between items-center px-8 py-4 border-b border-[#3a2c1f]">
+        <Link href="/dashboard" className="flex items-center gap-2 rpg-text-muted hover:rpg-gold-bright transition-colors">
           <span className="text-lg">←</span>
           <span className="text-sm">Back to Dashboard</span>
         </Link>
-        <h1 className="text-lg font-bold text-white">Snake Skins</h1>
-        <div className="text-sm text-[#8a8a9a]">
-          Balance: <span className="text-[#00f0ff] font-bold text-glow-cyan">${balance.toFixed(2)}</span>
+        <h1 className="rpg-title text-xl">Snake Skins</h1>
+        <div className="text-sm rpg-text-muted">
+          Balance: <span className="rpg-gold-bright font-bold">${balance.toFixed(2)}</span>
         </div>
       </nav>
 
@@ -252,20 +252,20 @@ export default function SkinsShopPage() {
               </span>
             )}
           </div>
-          <p className="text-[#8a8a9a] text-sm max-w-2xl mx-auto">{current.description}</p>
+          <p className="rpg-text-muted text-sm max-w-2xl mx-auto">{current.description}</p>
           {!isCurrentDefault && (
-            <div className="mt-2 text-[#6a6a7a] text-xs">
-              Price: <span className="text-white font-bold">${current.price_usd.toFixed(2)}</span>
+            <div className="mt-2 rpg-text-muted text-xs">
+              Price: <span className="rpg-gold-bright font-bold">${current.price_usd.toFixed(2)}</span>
             </div>
           )}
         </div>
 
         {/* Snake preview with L/R nav */}
-        <div className="relative rounded-2xl border border-[#1a1a2e] bg-[#0a0a12] overflow-hidden">
+        <div className="relative rpg-panel overflow-hidden">
           {/* Left arrow */}
           <button
             onClick={goPrev}
-            className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-12 h-12 rounded-full bg-[#11111a]/80 hover:bg-[#1a1a2e] border border-[#2a2a3a] backdrop-blur flex items-center justify-center text-2xl text-white transition-colors"
+            className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-12 h-12 rounded-full rpg-stone-panel hover:bg-[#3a2c1f] backdrop-blur flex items-center justify-center text-2xl rpg-text transition-colors"
             aria-label="Previous skin"
           >
             ‹
@@ -273,7 +273,7 @@ export default function SkinsShopPage() {
           {/* Right arrow */}
           <button
             onClick={goNext}
-            className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-12 h-12 rounded-full bg-[#11111a]/80 hover:bg-[#1a1a2e] border border-[#2a2a3a] backdrop-blur flex items-center justify-center text-2xl text-white transition-colors"
+            className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-12 h-12 rounded-full rpg-stone-panel hover:bg-[#3a2c1f] backdrop-blur flex items-center justify-center text-2xl rpg-text transition-colors"
             aria-label="Next skin"
           >
             ›
@@ -300,7 +300,7 @@ export default function SkinsShopPage() {
               onMouseLeave={() => setBoostPreview(false)}
               onTouchStart={() => setBoostPreview(true)}
               onTouchEnd={() => setBoostPreview(false)}
-              className="px-4 py-1.5 rounded-full text-xs font-bold bg-[#11111a] hover:bg-[#1a1a2e] border border-[#2a2a3a] text-[#b0b0c0] transition-colors select-none"
+              className="btn-rpg btn-rpg-sm select-none"
             >
               {boostPreview ? '⚡ Boosting!' : 'Hold to preview boost'}
             </button>
@@ -312,14 +312,14 @@ export default function SkinsShopPage() {
           {skills.map((skill, i) => (
             <div
               key={i}
-              className="rounded-xl border border-[#1a1a2e] bg-[#0a0a12] p-4"
+              className="rpg-panel p-4"
               style={{
-                borderColor: i === 0 ? current.color_primary + '60' : undefined,
+                borderColor: i === 0 ? current.color_primary + '80' : undefined,
               }}
             >
               <div className="flex items-center gap-2 mb-2">
                 <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-lg font-black"
+                  className="w-8 h-8 rounded-md flex items-center justify-center text-lg font-black"
                   style={{
                     background: `linear-gradient(135deg, ${current.color_primary}40, ${current.color_secondary}40)`,
                     color: current.color_primary,
@@ -327,19 +327,19 @@ export default function SkinsShopPage() {
                 >
                   {skill.icon}
                 </div>
-                <h3 className="font-bold text-sm">{skill.name}</h3>
+                <h3 className="font-bold text-sm rpg-text">{skill.name}</h3>
               </div>
-              <p className="text-xs text-[#8a8a9a]">{skill.description}</p>
+              <p className="text-xs rpg-text-muted">{skill.description}</p>
             </div>
           ))}
         </div>
 
         {/* Action message */}
         {actionMsg && (
-          <div className={`p-3 rounded-lg text-sm text-center ${
+          <div className={`p-3 rounded-md text-sm text-center ${
             actionMsg.type === 'success'
-              ? 'bg-[#00f0ff]/10 border border-[#00f0ff]/30 text-[#00f0ff]'
-              : 'bg-[#ff2e63]/10 border border-[#ff2e63]/30 text-[#ff2e63]'
+              ? 'bg-[#1c2c1c] border border-[#3a7a3a] text-[#7cd17c]'
+              : 'bg-[#2a0e0e] border border-[#962323] text-[#d83a3a]'
           }`}>
             {actionMsg.text}
           </div>
@@ -390,8 +390,8 @@ export default function SkinsShopPage() {
           )}
         </div>
 
-        <p className="text-center text-xs text-[#4a4a5a]">
-          ⚠ All skins are <span className="text-[#8a8a9a] font-medium">cosmetic only</span> — no gameplay advantage. Pure flex.
+        <p className="text-center text-xs rpg-text-muted">
+          ⚠ All skins are <span className="rpg-text font-medium">cosmetic only</span> — no gameplay advantage.
         </p>
       </main>
     </div>

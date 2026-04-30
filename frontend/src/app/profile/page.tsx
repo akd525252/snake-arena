@@ -138,7 +138,7 @@ export default function ProfilePage() {
   if (loading || !user) {
     return (
       <div className="flex flex-1 items-center justify-center min-h-screen">
-        <div className="text-[#6a6a7a]">Loading...</div>
+        <div className="rpg-text-muted">Loading...</div>
       </div>
     );
   }
@@ -146,34 +146,36 @@ export default function ProfilePage() {
   return (
     <div className="flex flex-col flex-1 min-h-screen">
       {/* Nav */}
-      <nav className="flex justify-between items-center px-8 py-4 border-b border-[#1a1a2e]">
-        <Link href="/dashboard" className="flex items-center gap-2 text-[#8a8a9a] hover:text-white transition-colors">
+      <nav className="flex justify-between items-center px-8 py-4 border-b border-[#3a2c1f]">
+        <Link href="/dashboard" className="flex items-center gap-2 rpg-text-muted hover:rpg-gold-bright transition-colors">
           <span className="text-lg">←</span>
           <span className="text-sm">Back to Dashboard</span>
         </Link>
-        <h1 className="text-3xl font-bold text-white">Profile Settings</h1>
+        <h1 className="rpg-title text-2xl">Profile Settings</h1>
         <div className="w-32" />
       </nav>
 
       <main className="flex-1 max-w-3xl w-full mx-auto px-6 py-10 space-y-8">
         {/* Profile preview card */}
-        <div className="rounded-2xl bg-[#0a0a12] border border-[#1a1a2e] p-6 flex items-center gap-6">
-          <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-[#3a3a4a] flex-shrink-0 glow-cyan">
+        <div className="rpg-panel p-6 flex items-center gap-6">
+          <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-[#d4a04a] flex-shrink-0">
             {avatar ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={avatar} alt={username || 'avatar'} className="w-full h-full object-cover" />
             ) : (
-              <div className="w-full h-full flex items-center justify-center bg-[#00f0ff] text-[#05050a] font-black text-4xl">
-                {(username || user.email || '?').charAt(0).toUpperCase()}
+              <div className="w-full h-full flex items-center justify-center rpg-stone-panel">
+                <span className="rpg-title text-4xl">{(username || user.email || '?').charAt(0).toUpperCase()}</span>
               </div>
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-2xl font-black text-white truncate">{username || user.email}</div>
-            <div className="text-sm text-[#8a8a9a] truncate">{user.email}</div>
+            <div className="text-2xl font-black rpg-text truncate">{username || user.email}</div>
+            <div className="text-sm rpg-text-muted truncate">{user.email}</div>
             {user.game_mode && (
-              <span className={`inline-block mt-2 px-2 py-0.5 rounded-full text-xs font-bold ${
-                user.game_mode === 'demo' ? 'bg-[#ffb800]/20 text-[#ffb800]' : 'bg-[#00f0ff]/20 text-[#00f0ff]'
+              <span className={`inline-block mt-2 px-2 py-0.5 rounded-md text-xs font-bold border ${
+                user.game_mode === 'demo'
+                  ? 'bg-[#3a2c1f] border-[#a86a3a] text-[#f5c265]'
+                  : 'bg-[#2a0e0e] border-[#962323] text-[#d83a3a]'
               }`}>
                 {user.game_mode === 'demo' ? 'DEMO' : 'PRO'}
               </span>
@@ -182,16 +184,16 @@ export default function ProfilePage() {
         </div>
 
         {/* Username section */}
-        <div className="rounded-2xl bg-[#0a0a12] border border-[#1a1a2e] p-6">
+        <div className="rpg-panel p-6">
           <div className="flex items-start justify-between mb-4">
             <div>
-              <h2 className="text-lg font-bold text-white">Username</h2>
-              <p className="text-sm text-[#6a6a7a]">3-20 characters. Letters, numbers, and underscores only.</p>
+              <h2 className="rpg-subtitle text-base">Username</h2>
+              <p className="text-sm rpg-text-muted">3-20 characters. Letters, numbers, and underscores only.</p>
             </div>
             {cooldown && (
               <div className="text-right">
-                <div className="text-xs text-[#ff2e63] font-bold">LOCKED</div>
-                <div className="text-xs text-[#6a6a7a]">
+                <div className="text-xs text-[#d83a3a] font-bold">LOCKED</div>
+                <div className="text-xs rpg-text-muted">
                   {cooldown.days}d {cooldown.hours}h remaining
                 </div>
               </div>
@@ -206,19 +208,19 @@ export default function ProfilePage() {
               placeholder="your_username"
               minLength={3}
               maxLength={20}
-              className="w-full px-4 py-3 bg-[#05050a] border border-[#1a1a2e] rounded-lg text-white focus:border-[#00f0ff] focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full px-4 py-3 rpg-parchment-inset rpg-text focus:outline-none focus:ring-2 focus:ring-[#d4a04a] disabled:opacity-50 disabled:cursor-not-allowed"
             />
             {usernameMsg && (
-              <div className={`p-3 rounded-lg text-sm ${
+              <div className={`p-3 rounded-md text-sm ${
                 usernameMsg.type === 'success'
-                  ? 'bg-[#00f0ff]/10 border border-[#00f0ff]/30 text-[#00f0ff]'
-                  : 'bg-[#ff2e63]/10 border border-[#ff2e63]/30 text-[#ff2e63]'
+                  ? 'bg-[#1c2c1c] border border-[#3a7a3a] text-[#7cd17c]'
+                  : 'bg-[#2a0e0e] border border-[#962323] text-[#d83a3a]'
               }`}>
                 {usernameMsg.text}
               </div>
             )}
             <div className="flex items-center justify-between">
-              <p className="text-xs text-[#6a6a7a]">
+              <p className="text-xs rpg-text-muted">
                 {cooldown
                   ? '⚠ You can change your username again after the cooldown expires.'
                   : 'ℹ After saving, you cannot change your username for 7 days.'}
@@ -226,7 +228,7 @@ export default function ProfilePage() {
               <button
                 type="submit"
                 disabled={!!cooldown || savingUsername || !username.trim() || username.trim() === user.username}
-                className="px-6 py-2 rounded-lg bg-[#00f0ff] text-[#05050a] font-bold hover:bg-[#33f3ff] disabled:opacity-50 disabled:cursor-not-allowed text-sm glow-cyan"
+                className="btn-rpg btn-rpg-primary disabled:opacity-50 disabled:cursor-not-allowed text-sm"
               >
                 {savingUsername ? 'Saving...' : 'Save Username'}
               </button>
@@ -235,13 +237,13 @@ export default function ProfilePage() {
         </div>
 
         {/* Avatar section */}
-        <div className="rounded-2xl bg-[#0a0a12] border border-[#1a1a2e] p-6">
-          <h2 className="text-lg font-bold text-white">Profile Photo</h2>
-          <p className="text-sm text-[#6a6a7a] mb-6">Upload a photo. Max {MAX_FILE_MB}MB. PNG, JPG, WEBP, GIF.</p>
+        <div className="rpg-panel p-6">
+          <h2 className="rpg-subtitle text-base">Profile Photo</h2>
+          <p className="text-sm rpg-text-muted mb-6">Upload a photo. Max {MAX_FILE_MB}MB. PNG, JPG, WEBP, GIF.</p>
 
           <div className="flex flex-col sm:flex-row items-start gap-6">
             {/* Preview */}
-            <div className="w-32 h-32 rounded-2xl overflow-hidden border-2 border-[#3a3a4a] bg-[#05050a] flex-shrink-0 relative">
+            <div className="w-32 h-32 rounded-md overflow-hidden border-2 border-[#5a4028] rpg-stone-panel flex-shrink-0 relative">
               {(previewUrl || avatar) ? (
                 <img
                   src={previewUrl || avatar}
@@ -249,8 +251,8 @@ export default function ProfilePage() {
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center bg-[#00f0ff] text-[#05050a] font-black text-4xl">
-                  {(username || user.email || '?').charAt(0).toUpperCase()}
+                <div className="w-full h-full flex items-center justify-center">
+                  <span className="rpg-title text-4xl">{(username || user.email || '?').charAt(0).toUpperCase()}</span>
                 </div>
               )}
               {(previewUrl || avatar) && (
@@ -258,7 +260,7 @@ export default function ProfilePage() {
                   type="button"
                   onClick={handleRemoveAvatar}
                   disabled={savingAvatar}
-                  className="absolute top-1 right-1 w-6 h-6 rounded-full bg-[#ff2e63]/80 hover:bg-[#ff2e63] text-white text-xs flex items-center justify-center"
+                  className="absolute top-1 right-1 w-6 h-6 rounded-full bg-[#962323] hover:bg-[#d83a3a] text-white text-xs flex items-center justify-center"
                   title="Remove avatar"
                 >
                   ×
@@ -279,7 +281,7 @@ export default function ProfilePage() {
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={savingAvatar}
-                className="px-5 py-2.5 rounded-lg bg-[#11111a] hover:bg-[#1a1a2e] text-white font-bold text-sm border border-[#1a1a2e] transition-colors disabled:opacity-50"
+                className="btn-rpg disabled:opacity-50 text-sm"
               >
                 Choose File
               </button>
@@ -290,7 +292,7 @@ export default function ProfilePage() {
                     type="button"
                     onClick={handleUploadAvatar}
                     disabled={savingAvatar}
-                    className="px-5 py-2.5 rounded-lg bg-[#00f0ff] hover:bg-[#33f3ff] text-[#05050a] font-bold text-sm transition-colors disabled:opacity-50 glow-cyan"
+                    className="btn-rpg btn-rpg-primary disabled:opacity-50 text-sm"
                   >
                     {savingAvatar ? 'Uploading...' : 'Save Avatar'}
                   </button>
@@ -298,7 +300,7 @@ export default function ProfilePage() {
                     type="button"
                     onClick={() => { setPreviewUrl(null); setPendingBase64(null); }}
                     disabled={savingAvatar}
-                    className="px-4 py-2.5 rounded-lg bg-[#11111a] hover:bg-[#1a1a2e] text-[#8a8a9a] font-bold text-sm transition-colors disabled:opacity-50"
+                    className="btn-rpg disabled:opacity-50 text-sm"
                   >
                     Cancel
                   </button>
@@ -306,10 +308,10 @@ export default function ProfilePage() {
               )}
 
               {avatarMsg && (
-                <div className={`p-3 rounded-lg text-sm ${
+                <div className={`p-3 rounded-md text-sm ${
                   avatarMsg.type === 'success'
-                    ? 'bg-[#00f0ff]/10 border border-[#00f0ff]/30 text-[#00f0ff]'
-                    : 'bg-[#ff2e63]/10 border border-[#ff2e63]/30 text-[#ff2e63]'
+                    ? 'bg-[#1c2c1c] border border-[#3a7a3a] text-[#7cd17c]'
+                    : 'bg-[#2a0e0e] border border-[#962323] text-[#d83a3a]'
                 }`}>
                   {avatarMsg.text}
                 </div>

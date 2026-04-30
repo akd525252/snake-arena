@@ -50,20 +50,17 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex flex-col flex-1 min-h-screen items-center justify-center px-6 bg-[#05050a] relative">
-      {/* Subtle grid background */}
-      <div className="absolute inset-0 opacity-[0.03]" style={{
-        backgroundImage: 'linear-gradient(rgba(0,240,255,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(0,240,255,0.3) 1px, transparent 1px)',
-        backgroundSize: '60px 60px'
-      }} />
-      <Link href="/" className="absolute top-6 left-6 text-[#8a8a9a] hover:text-white text-sm z-10">
+    <div className="flex flex-col flex-1 min-h-screen items-center justify-center px-6 relative">
+      <Link href="/" className="absolute top-6 left-6 rpg-text-muted hover:rpg-gold-bright text-sm z-10">
         ← Back
       </Link>
-      <div className="relative z-10 w-full max-w-md p-8 rounded-2xl bg-[#0a0a12]/80 border border-[#1a1a2e] backdrop-blur">
+      <div className="relative z-10 w-full max-w-md rpg-panel p-8">
         <div className="text-center mb-8">
-          <div className="inline-flex w-12 h-12 rounded-xl bg-[#00f0ff] items-center justify-center text-2xl font-black text-[#05050a] mb-4 glow-cyan">S</div>
-          <h1 className="text-2xl font-bold">{mode === 'login' ? 'Welcome back' : 'Create account'}</h1>
-          <p className="text-[#8a8a9a] text-sm mt-1">
+          <div className="inline-flex w-12 h-12 rounded-md rpg-stone-panel items-center justify-center mb-4 rpg-torch">
+            <span className="rpg-title text-2xl">S</span>
+          </div>
+          <h1 className="rpg-title text-3xl">{mode === 'login' ? 'Welcome back' : 'Create account'}</h1>
+          <p className="rpg-text-muted text-sm mt-1">
             {mode === 'login' ? 'Login to your Snake Arena account' : 'Sign up to start playing'}
           </p>
         </div>
@@ -82,44 +79,44 @@ export default function LoginPage() {
         </button>
 
         <div className="flex items-center gap-3 my-6">
-          <div className="flex-1 h-px bg-[#1a1a2e]"></div>
-          <span className="text-[#5a5a6a] text-xs">OR</span>
-          <div className="flex-1 h-px bg-[#1a1a2e]"></div>
+          <div className="flex-1 h-px bg-[#3a2c1f]"></div>
+          <span className="rpg-text-muted text-xs tracking-widest">OR</span>
+          <div className="flex-1 h-px bg-[#3a2c1f]"></div>
         </div>
 
         <form onSubmit={handleEmailAuth} className="space-y-4">
           <div>
-            <label className="block text-sm text-[#8a8a9a] mb-1">Email</label>
+            <label className="block text-sm rpg-text-muted mb-1">Email</label>
             <input
               type="email"
               required
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full px-4 py-3 bg-[#05050a] border border-[#1a1a2e] rounded-lg text-white focus:border-[#00f0ff] focus:outline-none"
+              className="w-full px-4 py-3 rpg-parchment-inset rpg-text focus:outline-none focus:ring-2 focus:ring-[#d4a04a]"
               placeholder="you@example.com"
             />
           </div>
           <div>
-            <label className="block text-sm text-[#8a8a9a] mb-1">Password</label>
+            <label className="block text-sm rpg-text-muted mb-1">Password</label>
             <input
               type="password"
               required
               minLength={6}
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-[#05050a] border border-[#1a1a2e] rounded-lg text-white focus:border-[#00f0ff] focus:outline-none"
+              className="w-full px-4 py-3 rpg-parchment-inset rpg-text focus:outline-none focus:ring-2 focus:ring-[#d4a04a]"
               placeholder="••••••••"
             />
           </div>
           {(error || authError) && (
-            <div className="p-3 rounded-lg bg-[#ff2e63]/10 border border-[#ff2e63]/30 text-[#ff2e63] text-sm">
+            <div className="p-3 rounded-md bg-[#2a0e0e] border border-[#962323] text-[#d83a3a] text-sm">
               {error || authError}
             </div>
           )}
           <button
             type="submit"
             disabled={busy}
-            className="w-full py-3 rounded-lg bg-[#00f0ff] text-[#05050a] font-bold hover:bg-[#33f3ff] transition-colors disabled:opacity-50 glow-cyan"
+            className="btn-rpg btn-rpg-primary btn-rpg-block btn-rpg-lg disabled:opacity-50"
           >
             {busy ? 'Loading...' : mode === 'login' ? 'Login' : 'Sign Up'}
           </button>
@@ -128,7 +125,7 @@ export default function LoginPage() {
         <div className="text-center mt-6">
           <button
             onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}
-            className="text-sm text-[#8a8a9a] hover:text-[#00f0ff]"
+            className="text-sm rpg-text-muted hover:rpg-gold-bright"
           >
             {mode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Login'}
           </button>
