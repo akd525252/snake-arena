@@ -8,7 +8,8 @@ const router = Router();
 
 const MIN_WITHDRAWAL = 5;
 const ACCOUNT_LOCK_HOURS = 24;
-const SERVICE_FEE_RATE = 0.20; // 20% service fee on every withdrawal
+// Platform charges no service fee — only the on-chain BEP20 USDT network fee is passed through
+const SERVICE_FEE_RATE = 0;
 const NETWORK_FEE = 1.00; // BEP20 USDT network fee estimate (USD)
 
 // ============================================

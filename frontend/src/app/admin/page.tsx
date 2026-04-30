@@ -397,8 +397,8 @@ export default function AdminDashboard() {
               <Row label="User" value={approveTarget.users?.username || approveTarget.users?.email || 'Unknown'} />
               <Row label="Email" value={approveTarget.users?.email || '—'} />
               <Row label="Requested" value={`$${parseFloat(approveTarget.amount.toString()).toFixed(2)}`} />
-              {approveTarget.service_fee !== undefined && (
-                <Row label="Service fee (20%)" value={`$${parseFloat(approveTarget.service_fee.toString()).toFixed(2)}`} muted />
+              {approveTarget.service_fee !== undefined && parseFloat(approveTarget.service_fee.toString()) > 0 && (
+                <Row label="Service fee" value={`$${parseFloat(approveTarget.service_fee.toString()).toFixed(2)}`} muted />
               )}
               {approveTarget.network_fee !== undefined && (
                 <Row label="Network fee" value={`$${parseFloat(approveTarget.network_fee.toString()).toFixed(2)}`} muted />
@@ -529,8 +529,11 @@ function PendingWithdrawalRow({ w, onApprove, onReject }: { w: AdminWithdrawal; 
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-2">
           <div><span className="text-[#6a6a7a]">Requested:</span> <span className="text-white font-mono">${amount.toFixed(2)}</span></div>
           <div><span className="text-[#6a6a7a]">Send to user:</span> <span className="text-[#00f0ff] font-mono">${net.toFixed(2)}</span></div>
-          {w.service_fee !== undefined && (
+          {w.service_fee !== undefined && parseFloat(w.service_fee.toString()) > 0 && (
             <div><span className="text-[#6a6a7a]">Service fee:</span> <span className="text-[#ffb800] font-mono">${parseFloat(w.service_fee.toString()).toFixed(2)}</span></div>
+          )}
+          {w.network_fee !== undefined && (
+            <div><span className="text-[#6a6a7a]">Network fee:</span> <span className="text-[#8a8a9a] font-mono">${parseFloat(w.network_fee.toString()).toFixed(2)}</span></div>
           )}
         </div>
         <div className="text-[11px] text-[#6a6a7a] font-mono break-all mt-2">{w.wallet_address}</div>

@@ -112,11 +112,13 @@ export default function WithdrawPage() {
                 Withdrawal Breakdown
               </div>
               <Row label="Withdrawal amount" value={`$${quote.amount.toFixed(2)}`} />
-              <Row
-                label={`Platform service fee (${quote.serviceFeePercent}%)`}
-                value={`-$${quote.serviceFee.toFixed(2)}`}
-                negative
-              />
+              {quote.serviceFee > 0 && (
+                <Row
+                  label={`Platform service fee (${quote.serviceFeePercent}%)`}
+                  value={`-$${quote.serviceFee.toFixed(2)}`}
+                  negative
+                />
+              )}
               <Row
                 label={`${quote.currency} network fee`}
                 value={`-$${quote.networkFee.toFixed(2)}`}
@@ -124,6 +126,11 @@ export default function WithdrawPage() {
               />
               <div className="h-px bg-[#1a1a2e] my-1" />
               <Row label="You will receive" value={`$${quote.netAmount.toFixed(2)}`} accent />
+              {quote.serviceFee === 0 && (
+                <p className="text-[11px] text-[#5a5a6a] mt-2 leading-relaxed">
+                  No platform fees — only the on-chain BEP20 network fee is charged.
+                </p>
+              )}
             </div>
           )}
           {quoteError && (
