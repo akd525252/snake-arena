@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 :root {
+  /* Cyberpunk palette (legacy — still used in Pro mode accents) */
   --background: #05050a;
   --foreground: #e0e0e8;
   --neon-cyan: #00f0ff;
@@ -11,6 +12,25 @@
   --surface-elevated: #11111a;
   --border-subtle: #1a1a2e;
   --border-glow: rgba(0, 240, 255, 0.15);
+
+  /* ── RPG palette ───────────────────────────────────────────────── */
+  --rpg-bg: #1a1410;             /* dark stone backdrop */
+  --rpg-bg-deep: #0e0a08;        /* deepest shadow */
+  --rpg-panel: #2a1f15;          /* aged leather */
+  --rpg-panel-light: #3a2c1f;    /* lit leather */
+  --rpg-parchment: #d8c39a;      /* aged parchment */
+  --rpg-parchment-dark: #a89070; /* shadow on parchment */
+  --rpg-text: #ead7b1;           /* warm cream */
+  --rpg-text-muted: #a89070;     /* faded ivory */
+  --rpg-gold: #d4a04a;           /* polished gold */
+  --rpg-gold-bright: #f5c265;    /* highlight gold */
+  --rpg-copper: #a86a3a;         /* tarnished copper */
+  --rpg-crimson: #962323;        /* deep crimson */
+  --rpg-crimson-bright: #d83a3a; /* battle red */
+  --rpg-emerald: #3a7a3a;        /* mystic green */
+  --rpg-mystic: #5b3a8a;         /* purple magic */
+  --rpg-stone: #4a4540;          /* mossy stone */
+  --rpg-stone-light: #6a655c;    /* lit stone */
 }
 
 @theme inline {
@@ -23,14 +43,164 @@
   --color-surface: var(--surface);
   --color-surface-elevated: var(--surface-elevated);
   --color-border-subtle: var(--border-subtle);
+  /* RPG palette as Tailwind tokens */
+  --color-rpg-bg: var(--rpg-bg);
+  --color-rpg-bg-deep: var(--rpg-bg-deep);
+  --color-rpg-panel: var(--rpg-panel);
+  --color-rpg-panel-light: var(--rpg-panel-light);
+  --color-rpg-parchment: var(--rpg-parchment);
+  --color-rpg-text: var(--rpg-text);
+  --color-rpg-text-muted: var(--rpg-text-muted);
+  --color-rpg-gold: var(--rpg-gold);
+  --color-rpg-gold-bright: var(--rpg-gold-bright);
+  --color-rpg-copper: var(--rpg-copper);
+  --color-rpg-crimson: var(--rpg-crimson);
+  --color-rpg-crimson-bright: var(--rpg-crimson-bright);
+  --color-rpg-emerald: var(--rpg-emerald);
+  --color-rpg-mystic: var(--rpg-mystic);
+  --color-rpg-stone: var(--rpg-stone);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-rpg-heading: var(--font-cinzel);
+  --font-rpg-body: var(--font-cormorant);
 }
 
 body {
-  background: #05050a;
-  color: #e0e0e8;
-  font-family: Arial, Helvetica, sans-serif;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(212, 160, 74, 0.06) 0%, transparent 60%),
+    radial-gradient(ellipse at 50% 100%, rgba(150, 35, 35, 0.05) 0%, transparent 70%),
+    var(--rpg-bg);
+  color: var(--rpg-text);
+  font-family: var(--font-cormorant), Georgia, serif;
+  font-size: 1.05rem;
+}
+
+/* ── RPG typography & utility classes ──────────────────────────────────── */
+.font-rpg-heading { font-family: var(--font-cinzel), "Trajan Pro", Georgia, serif; letter-spacing: 0.04em; }
+.font-rpg-body { font-family: var(--font-cormorant), Georgia, serif; }
+
+.rpg-title {
+  font-family: var(--font-cinzel), Georgia, serif;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #f5c265 0%, #d4a04a 50%, #8b5a2b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+  filter: drop-shadow(0 0 12px rgba(212, 160, 74, 0.25));
+}
+
+.rpg-subtitle {
+  font-family: var(--font-cinzel), Georgia, serif;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rpg-gold);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.rpg-text { color: var(--rpg-text); }
+.rpg-text-muted { color: var(--rpg-text-muted); }
+.rpg-gold { color: var(--rpg-gold); }
+.rpg-gold-bright { color: var(--rpg-gold-bright); }
+.rpg-crimson { color: var(--rpg-crimson-bright); }
+
+/* Parchment-style panel: aged paper inside a leather frame */
+.rpg-panel {
+  position: relative;
+  background:
+    radial-gradient(ellipse at 30% 0%, rgba(255, 240, 200, 0.05) 0%, transparent 60%),
+    radial-gradient(ellipse at 70% 100%, rgba(0, 0, 0, 0.3) 0%, transparent 60%),
+    linear-gradient(180deg, #2a1f15 0%, #1c1410 100%);
+  border: 2px solid var(--rpg-copper);
+  border-radius: 8px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 230, 180, 0.08),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.4),
+    0 6px 16px rgba(0, 0, 0, 0.6),
+    0 0 24px rgba(212, 160, 74, 0.06);
+}
+.rpg-panel::before,
+.rpg-panel::after {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  background:
+    linear-gradient(135deg, var(--rpg-gold) 0%, var(--rpg-copper) 100%);
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+.rpg-panel::before {
+  top: -4px;
+  left: -4px;
+  clip-path: polygon(0 0, 100% 0, 100% 30%, 30% 30%, 30% 100%, 0 100%);
+}
+.rpg-panel::after {
+  bottom: -4px;
+  right: -4px;
+  clip-path: polygon(70% 0, 100% 0, 100% 100%, 0 100%, 0 70%, 70% 70%);
+}
+
+/* Stone panel — heavier, more brutal */
+.rpg-stone-panel {
+  background:
+    linear-gradient(180deg, #3a3530 0%, #1f1c19 100%);
+  border: 2px solid #1a1714;
+  border-radius: 6px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.6),
+    0 4px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* Parchment-on-leather: lighter inset */
+.rpg-parchment-inset {
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(232, 215, 177, 0.08) 0%, transparent 70%),
+    linear-gradient(180deg, #1c1610 0%, #0e0a08 100%);
+  border: 1px solid rgba(212, 160, 74, 0.25);
+  border-radius: 6px;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+/* Ornamental divider with center diamond */
+.rpg-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--rpg-gold);
+}
+.rpg-divider::before,
+.rpg-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, var(--rpg-copper) 50%, transparent 100%);
+}
+
+/* Torch flicker animation */
+@keyframes torch-flicker {
+  0%, 100% { opacity: 1; filter: brightness(1); }
+  20% { opacity: 0.96; filter: brightness(0.95); }
+  40% { opacity: 1; filter: brightness(1.05); }
+  60% { opacity: 0.92; filter: brightness(0.9); }
+  80% { opacity: 1; filter: brightness(1.02); }
+}
+.rpg-torch {
+  animation: torch-flicker 2.4s ease-in-out infinite;
+}
+
+/* Slow pulse for mystical UI elements */
+@keyframes rpg-pulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(212, 160, 74, 0.2), 0 0 16px rgba(212, 160, 74, 0.05); }
+  50% { box-shadow: 0 0 14px rgba(212, 160, 74, 0.35), 0 0 28px rgba(212, 160, 74, 0.12); }
+}
+.rpg-glow-pulse {
+  animation: rpg-pulse 3.5s ease-in-out infinite;
 }
 
 /* Cyberpunk glow utilities */
