@@ -231,7 +231,9 @@ export class GameScene extends Phaser.Scene {
     this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.trapKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
 
-    this.spaceKey.on('down', () => this.send({ type: 'boost' }));
+    // Hold-to-boost: $0.01/sec while spacebar held. Auto-stops on release/death.
+    this.spaceKey.on('down', () => this.send({ type: 'boost_start' }));
+    this.spaceKey.on('up', () => this.send({ type: 'boost_end' }));
     this.trapKey.on('down', () => this.send({ type: 'skill_use', skill: 'trap' }));
 
     // Camera — zoom in so snake is larger on screen
@@ -283,9 +285,11 @@ export class GameScene extends Phaser.Scene {
     const btnRadius = 36;
     const boostX = w - btnRadius * 2.5;
     const boostY = h - btnRadius * 2;
-    this.mobileBoostBtn = this.createMobileButton(boostX, boostY, btnRadius, 'BOOST', 0x00f0ff, () => {
-      this.send({ type: 'boost' });
-    });
+    this.mobileBoostBtn = this.createMobileButton(
+      boostX, boostY, btnRadius, 'BOOST', 0x00f0ff,
+      () => this.send({ type: 'boost_start' }),
+      () => this.send({ type: 'boost_end' }),
+    );
 
     // Trap button (right side above boost)
     const trapX = w - btnRadius * 2.5;
@@ -295,7 +299,15 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private createMobileButton(x: number, y: number, r: number, label: string, color: number, onDown: () => void): Phaser.GameObjects.Container {
+  private createMobileButton(
+    x: number,
+    y: number,
+    r: number,
+    label: string,
+    color: number,
+    onDown: () => void,
+    onUp?: () => void,
+  ): Phaser.GameObjects.Container {
     const container = this.add.container(x, y).setScrollFactor(0).setDepth(200);
     const circle = this.add.graphics();
     circle.fillStyle(color, 0.25);
@@ -326,6 +338,15 @@ export class GameScene extends Phaser.Scene {
       circle.fillCircle(0, 0, r);
       circle.lineStyle(2, color, 0.8);
       circle.strokeCircle(0, 0, r);
+      if (onUp) onUp();
+    });
+    zone.on('pointerout', () => {
+      circle.clear();
+      circle.fillStyle(color, 0.25);
+      circle.fillCircle(0, 0, r);
+      circle.lineStyle(2, color, 0.8);
+      circle.strokeCircle(0, 0, r);
+      if (onUp) onUp();
     });
 
     return container;

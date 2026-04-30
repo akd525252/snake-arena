@@ -86,12 +86,14 @@ export function createProBot(room: GameRoom, betAmount: number): Player {
       speed: CONFIG.SNAKE_SPEED,
       alive: true,
       boosted: false,
+      boostLastChargedAt: 0,
       boostEndTime: 0,
       slowed: false,
       slowEndTime: 0,
       score: betAmount,
       coinsCollected: 0,
       outOfZoneSince: null,
+      lastZonePenaltyAt: null,
     },
   };
 

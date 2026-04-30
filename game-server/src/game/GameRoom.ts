@@ -88,12 +88,14 @@ export function addPlayerToRoom(room: GameRoom, player: Player): void {
     speed: CONFIG.SNAKE_SPEED,
     alive: true,
     boosted: false,
+    boostLastChargedAt: 0,
     boostEndTime: 0,
     slowed: false,
     slowEndTime: 0,
     score: player.betAmount,
     coinsCollected: 0,
     outOfZoneSince: null,
+    lastZonePenaltyAt: null,
   };
 
   room.players.set(player.id, player);
@@ -154,11 +156,28 @@ function gameLoop(room: GameRoom): void {
   for (const [, player] of room.players) {
     if (!player.snake.alive) continue;
 
-    // Update boost/slow status
-    if (player.snake.boosted && now > player.snake.boostEndTime) {
-      player.snake.boosted = false;
-      player.snake.speed = CONFIG.SNAKE_SPEED;
+    // ─── Boost cost: $0.01 per second while held ─────────────────────────
+    if (player.snake.boosted) {
+      // Bot boost still uses fixed expiry; humans use hold-to-boost (no expiry).
+      if (player.isBot && now > player.snake.boostEndTime) {
+        player.snake.boosted = false;
+        player.snake.speed = CONFIG.SNAKE_SPEED;
+      } else if (!player.isBot) {
+        const lastCharged = player.snake.boostLastChargedAt || now;
+        const ms = now - lastCharged;
+        const cost = (CONFIG.BOOST_COST_PER_SECOND * ms) / 1000;
+        player.snake.boostLastChargedAt = now;
+        player.snake.score -= cost;
+        // Auto-stop boost if running out of money
+        if (player.snake.score < CONFIG.BOOST_MIN_SCORE) {
+          player.snake.score = Math.max(0, player.snake.score);
+          player.snake.boosted = false;
+          player.snake.speed = CONFIG.SNAKE_SPEED;
+        }
+      }
     }
+
+    // Slow expires by timer
     if (player.snake.slowed && now > player.snake.slowEndTime) {
       player.snake.slowed = false;
       player.snake.speed = CONFIG.SNAKE_SPEED;
@@ -172,36 +191,37 @@ function gameLoop(room: GameRoom): void {
     );
     moveSnake(player.snake);
 
-    // Circular wall collision - zone penalty instead of instant death
+    // ─── Zone penalty: $0.01/sec while outside, die at $0 ───────────────
     const head = player.snake.segments[0];
     const distFromCenter = distance(head, { x: room.arenaCenterX, y: room.arenaCenterY });
     const isOutside = distFromCenter > room.arenaRadius;
 
     if (isOutside) {
       if (!inGrace) {
-        // Player is outside arena - apply zone penalty ($0.30/sec)
         if (player.snake.outOfZoneSince === null) {
           player.snake.outOfZoneSince = now;
+          player.snake.lastZonePenaltyAt = now;
         }
-        // Calculate penalty based on time outside
-        const msOutside = now - player.snake.outOfZoneSince;
-        const penalty = (CONFIG.ZONE_PENALTY_PER_SECOND * msOutside) / 1000;
-        // Apply penalty (but don't go below 1, to give them a chance to get back)
-        player.snake.score = Math.max(1, player.snake.score - penalty);
-        // If score hits 0 or below, they die
+        // Apply only the delta since last tick’s charge — prevents quadratic deduction.
+        const msSincePenalty = now - (player.snake.lastZonePenaltyAt ?? now);
+        const penalty = (CONFIG.ZONE_PENALTY_PER_SECOND * msSincePenalty) / 1000;
+        player.snake.lastZonePenaltyAt = now;
+        player.snake.score -= penalty;
         if (player.snake.score <= 0) {
+          player.snake.score = 0;
           killPlayer(room, player); // zone death — no killer
           continue;
         }
       } else {
-        // During grace, push back inside
+        // During grace, push back inside instead of penalizing
         const ang = Math.atan2(head.y - room.arenaCenterY, head.x - room.arenaCenterX);
         head.x = room.arenaCenterX + Math.cos(ang) * (room.arenaRadius - 2);
         head.y = room.arenaCenterY + Math.sin(ang) * (room.arenaRadius - 2);
       }
     } else {
-      // Player is inside - reset the timer
+      // Inside arena — reset penalty tracking
       player.snake.outOfZoneSince = null;
+      player.snake.lastZonePenaltyAt = null;
     }
 
     if (inGrace) continue;
@@ -248,12 +268,32 @@ function gameLoop(room: GameRoom): void {
 
 // ─── Movement ───────────────────────────────────────────────────────────────
 
+/**
+ * Chain-follow movement: head moves freely; each subsequent segment trails
+ * the one in front of it at exactly SNAKE_SEGMENT_SIZE distance. This keeps
+ * the body visible regardless of speed (the old unshift/pop variant collapsed
+ * all segments into one tiny region around the head when SPEED < SEGMENT_SIZE).
+ */
 function moveSnake(snake: Snake): void {
-  const head = { ...snake.segments[0] };
+  // Step the head
+  const head = snake.segments[0];
   head.x += Math.cos(snake.angle) * snake.speed;
   head.y += Math.sin(snake.angle) * snake.speed;
-  snake.segments.unshift(head);
-  snake.segments.pop();
+
+  // Pull each follower toward the segment in front, holding fixed spacing
+  const spacing = CONFIG.SNAKE_SEGMENT_SIZE;
+  for (let i = 1; i < snake.segments.length; i++) {
+    const lead = snake.segments[i - 1];
+    const cur = snake.segments[i];
+    const dx = lead.x - cur.x;
+    const dy = lead.y - cur.y;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    if (dist > spacing) {
+      const t = (dist - spacing) / dist;
+      cur.x += dx * t;
+      cur.y += dy * t;
+    }
+  }
 }
 
 /** Called when a client sends { type: 'turn', angle: <radians> } */
@@ -262,15 +302,35 @@ export function setTargetAngle(player: Player, angle: number): void {
   player.snake.targetAngle = angle;
 }
 
-export function activateBoost(player: Player): boolean {
-  if (player.snake.boosted || !player.snake.alive) return false;
-  if (player.snake.score < CONFIG.BOOST_COST) return false;
+/**
+ * Hold-to-boost API. Client sends { type:'boost_start' } on press and
+ * { type:'boost_end' } on release. Cost ($0.01/sec) is billed per game tick
+ * inside gameLoop while `boosted` is true.
+ */
+export function setBoostHeld(player: Player, held: boolean): void {
+  if (!player.snake.alive) return;
+  if (held) {
+    if (player.snake.boosted) return;
+    if (player.snake.score < CONFIG.BOOST_MIN_SCORE) return;
+    player.snake.boosted = true;
+    player.snake.speed = CONFIG.SNAKE_BOOST_SPEED;
+    player.snake.boostLastChargedAt = Date.now();
+  } else {
+    if (!player.snake.boosted) return;
+    player.snake.boosted = false;
+    player.snake.speed = CONFIG.SNAKE_SPEED;
+    player.snake.boostLastChargedAt = 0;
+  }
+}
 
-  player.snake.score -= CONFIG.BOOST_COST;
-  player.snake.boosted = true;
-  player.snake.speed = CONFIG.SNAKE_BOOST_SPEED;
-  player.snake.boostEndTime = Date.now() + CONFIG.BOOST_DURATION;
-  return true;
+/** Legacy fire-and-forget boost — kept for compatibility, redirects to hold-API. */
+export function activateBoost(player: Player): boolean {
+  if (player.snake.boosted) {
+    setBoostHeld(player, false);
+    return false;
+  }
+  setBoostHeld(player, true);
+  return player.snake.boosted;
 }
 
 export function placeTrap(room: GameRoom, player: Player): boolean {
@@ -303,17 +363,24 @@ function killPlayer(room: GameRoom, player: Player, killerId?: string): void {
 
   const totalValue = Math.max(0, player.snake.score);
 
-  // Platform rake: 10% of every pro (non-demo, non-bot) death goes to the platform.
-  // The remaining 90% drops as coins for other players to collect.
-  const isPaidHumanPlayer = !player.isBot && !player.isDemo;
-  const platformRake = isPaidHumanPlayer ? +(totalValue * CONFIG.MATCH_RAKE_RATE).toFixed(4) : 0;
-  const dropValue = totalValue - platformRake;
+  // Rake split per actor type:
+  //   Pro human: 10% → platform, 90% drops as coins
+  //   Pro bot:   50% → platform, 50% drops as coins
+  //   Demo (any): 0% rake (no real money in play)
+  let rakeRate = 0;
+  if (!player.isDemo) {
+    rakeRate = player.isBot ? CONFIG.BOT_RAKE_RATE : CONFIG.MATCH_RAKE_RATE;
+  }
+  const platformRake = +(totalValue * rakeRate).toFixed(4);
+  const dropValue = +(totalValue - platformRake).toFixed(4);
 
   if (platformRake > 0) {
     room.platformRakeAccrued += platformRake;
     void recordRevenue('match_rake', platformRake, room.id, player.id, {
       reason: killerId ? 'killed' : 'zone_or_self',
       killerId: killerId || null,
+      isBot: !!player.isBot,
+      rakeRate,
       betAmount: room.betAmount,
       scoreAtDeath: totalValue,
     });

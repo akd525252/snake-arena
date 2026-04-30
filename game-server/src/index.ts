@@ -12,6 +12,7 @@ import {
   endGame,
   setTargetAngle,
   activateBoost,
+  setBoostHeld,
   placeTrap,
 } from './game/GameRoom';
 import { createBot, updateBotDirection } from './game/BotAI';
@@ -239,6 +240,7 @@ function handleMessage(
     }
 
     case 'boost': {
+      // Legacy toggle (kept for old clients)
       const roomId = playerRooms.get(playerId);
       if (!roomId) return;
       const room = rooms.get(roomId);
@@ -246,6 +248,18 @@ function handleMessage(
       const player = room.players.get(playerId);
       if (!player) return;
       activateBoost(player);
+      break;
+    }
+
+    case 'boost_start':
+    case 'boost_end': {
+      const roomId = playerRooms.get(playerId);
+      if (!roomId) return;
+      const room = rooms.get(roomId);
+      if (!room) return;
+      const player = room.players.get(playerId);
+      if (!player) return;
+      setBoostHeld(player, message.type === 'boost_start');
       break;
     }
 
@@ -437,12 +451,14 @@ async function createMatch(entries: QueueEntry[]): Promise<void> {
         speed: CONFIG.SNAKE_SPEED,
         alive: true,
         boosted: false,
+        boostLastChargedAt: 0,
         boostEndTime: 0,
         slowed: false,
         slowEndTime: 0,
         score: 0,
         coinsCollected: 0,
         outOfZoneSince: null,
+        lastZonePenaltyAt: null,
       },
     };
 

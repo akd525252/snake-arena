@@ -26,9 +26,11 @@ export const CONFIG = {
   SNAKE_INITIAL_LENGTH: 5,
   SNAKE_SEGMENT_SIZE: 15,
 
-  BOOST_COST: 0.05,
-  BOOST_DURATION: 3000, // ms
-  TRAP_COST: 0.10,
+  // Boost is now hold-to-activate: $0.01 per second deducted continuously while held.
+  // No fixed duration — player controls it. Auto-stops when score < BOOST_MIN_SCORE.
+  BOOST_COST_PER_SECOND: 0.01,
+  BOOST_MIN_SCORE: 0.05, // safety floor; auto-stop boost when score dips below this
+  TRAP_COST: 0.05,
   TRAP_SLOW_DURATION: 3000, // ms
   TRAP_SLOW_FACTOR: 0.5,
 
@@ -42,10 +44,14 @@ export const CONFIG = {
   MIN_BET: 1, // minimum dollar bet for paid matches
   DEATH_DROP_MAX_COINS: 20, // upper bound on death-drop coin count (each carries proportional value)
 
-  // Zone penalty (outside arena)
-  ZONE_PENALTY_PER_SECOND: 3.00, // dollars deducted per second while outside arena — dangerous!
+  // Zone penalty (outside arena): gentle bleed so the player has time to return.
+  // Player dies if score reaches 0 while still outside.
+  ZONE_PENALTY_PER_SECOND: 0.01,
 
-  // Platform rake: when a pro player dies, this fraction of their score is taken as
-  // platform revenue; the remainder drops as coins for other players to collect.
+  // Pro player rake: 10% of score on death goes to platform revenue, 90% drops as coins.
   MATCH_RAKE_RATE: 0.10,
+
+  // Pro bot rake: when a pro bot dies, 50% goes to platform, 50% drops as coins.
+  // (Bots make money for the platform; humans get a better drop rate.)
+  BOT_RAKE_RATE: 0.50,
 };

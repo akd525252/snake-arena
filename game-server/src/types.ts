@@ -12,12 +12,17 @@ export interface Snake {
   speed: number;
   alive: boolean;
   boosted: boolean;
+  /** When boost was last "tick-charged" — used to bill $0.01/sec while held. */
+  boostLastChargedAt: number;
+  /** Legacy auto-expiry for bot boosts (humans now hold-to-boost). */
   boostEndTime: number;
   slowed: boolean;
   slowEndTime: number;
   score: number;
   coinsCollected: number;
   outOfZoneSince: number | null; // timestamp when player went outside arena (null if inside)
+  /** When zone penalty was last applied — used to deduct only the delta each tick. */
+  lastZonePenaltyAt: number | null;
 }
 
 // Legacy 4-direction type kept for backward compatibility in a few helpers.

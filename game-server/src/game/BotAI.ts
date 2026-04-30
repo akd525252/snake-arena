@@ -36,12 +36,14 @@ export function createBot(room: GameRoom, betAmount: number = 1): Player {
       speed: CONFIG.SNAKE_SPEED,
       alive: true,
       boosted: false,
+      boostLastChargedAt: 0,
       boostEndTime: 0,
       slowed: false,
       slowEndTime: 0,
       score: betAmount,
       coinsCollected: 0,
       outOfZoneSince: null,
+      lastZonePenaltyAt: null,
     },
   };
 
