@@ -186,9 +186,12 @@ export class GameScene extends Phaser.Scene {
     // Arena background — random map theme each match
     const themes: ('grass' | 'lava' | 'rock' | 'tile')[] = ['grass', 'lava', 'rock', 'tile'];
     this.mapTheme = themes[Math.floor(Math.random() * themes.length)];
-    this.arenaGfx = this.add.graphics().setDepth(0);
-    this.arenaAnimGfx = this.add.graphics().setDepth(1);
+    this.arenaGfx = this.add.graphics();
+    this.arenaGfx.setDepth(-10);
+    this.arenaAnimGfx = this.add.graphics();
+    this.arenaAnimGfx.setDepth(-9);
     this.drawArena();
+    this.applyThemeCameraBg();
 
     // Zone danger overlay (full-screen red tint when outside arena)
     this.zoneOverlay = this.add.graphics();
@@ -494,12 +497,27 @@ export class GameScene extends Phaser.Scene {
       if (!this.cameraSmooth) {
         this.cameraSmooth = { x: camTarget.x, y: camTarget.y };
       } else {
-        // Single, gentle lerp on top of interpolated target — smooth and responsive
-        this.cameraSmooth.x += (camTarget.x - this.cameraSmooth.x) * 0.25;
-        this.cameraSmooth.y += (camTarget.y - this.cameraSmooth.y) * 0.25;
+        // Smaller lerp factor + sub-pixel rounding for jitter-free camera
+        this.cameraSmooth.x += (camTarget.x - this.cameraSmooth.x) * 0.18;
+        this.cameraSmooth.y += (camTarget.y - this.cameraSmooth.y) * 0.18;
       }
-      this.cameras.main.centerOn(this.cameraSmooth.x, this.cameraSmooth.y);
+      // Round to integer pixels to eliminate sub-pixel shimmering
+      this.cameras.main.centerOn(
+        Math.round(this.cameraSmooth.x),
+        Math.round(this.cameraSmooth.y),
+      );
     }
+  }
+
+  /** Set Phaser camera background to a darker variant of the current theme. */
+  private applyThemeCameraBg() {
+    const themeBgs = {
+      grass: '#0a1f10',
+      lava: '#150300',
+      rock: '#0f1012',
+      tile: '#02080d',
+    };
+    this.cameras.main.setBackgroundColor(themeBgs[this.mapTheme]);
   }
 
   /** Returns shortest signed delta between two angles, handling wrap-around. */
@@ -825,6 +843,10 @@ export class GameScene extends Phaser.Scene {
     if (!p.alive) {
       label.setAlpha(0.3);
       scoreLabel.setAlpha(0);
+      // Clear all skin effects (trails, clones) when dead so they don't linger
+      this.clearBoostTrails(p.id);
+      this.clearShadowClones(p.id);
+      this.lastBoostStates.set(p.id, false);
       return;
     }
     label.setAlpha(1);
@@ -868,6 +890,15 @@ export class GameScene extends Phaser.Scene {
     // Body radius tapers from head (large) to tail (small) — snake.io style
     const HEAD_RADIUS = 11;
     const TAIL_RADIUS = 5;
+
+    // Pass 0: drop shadow under body for depth (offset slightly down-right)
+    g.fillStyle(0x000000, 0.35);
+    for (let i = len - 1; i >= 0; i--) {
+      const t = i / Math.max(1, len - 1);
+      const r = HEAD_RADIUS - (HEAD_RADIUS - TAIL_RADIUS) * t;
+      const seg = dense[i];
+      g.fillCircle(seg.x + 3, seg.y + 4, r + 1);
+    }
 
     // Pass 1: outline circles (darker, slightly larger) — gives body a clean edge
     for (let i = len - 1; i >= 0; i--) {
@@ -999,27 +1030,26 @@ export class GameScene extends Phaser.Scene {
 
   private updateBoostTrails(p: RemotePlayer, color: number, count: number): void {
     const trails = this.playerBoostTrails.get(p.id) || [];
-    const head = p.segments[0];
-    if (!head) return;
+    if (p.segments.length === 0) return;
 
-    // Create or update trail graphics
+    // Trails ride along the snake's actual body so they curve with it.
     for (let i = 0; i < count; i++) {
       let trail = trails[i];
       if (!trail) {
-        trail = this.add.graphics();
+        trail = this.add.graphics().setDepth(9); // just behind snake body
         trails[i] = trail;
       }
       trail.clear();
 
-      // Trail follows behind head
-      const offset = (i + 1) * 15;
-      const angle = p.angle + Math.PI; // Opposite direction
-      const tx = head.x + Math.cos(angle) * offset;
-      const ty = head.y + Math.sin(angle) * offset;
-
-      const alpha = 1 - (i / count);
-      trail.fillStyle(color, alpha * 0.8);
-      trail.fillCircle(tx, ty, 10 - i);
+      // Pick a body segment proportional to trail index (skipping the head)
+      const segIdx = Math.min(
+        p.segments.length - 1,
+        Math.max(1, Math.floor(1 + i * 1.4)),
+      );
+      const seg = p.segments[segIdx];
+      const alpha = 1 - i / count;
+      trail.fillStyle(color, alpha * 0.7);
+      trail.fillCircle(seg.x, seg.y, 9 - i * 0.6);
     }
 
     this.playerBoostTrails.set(p.id, trails);
@@ -1030,6 +1060,14 @@ export class GameScene extends Phaser.Scene {
     if (trails) {
       trails.forEach(t => t.destroy());
       this.playerBoostTrails.delete(playerId);
+    }
+  }
+
+  private clearShadowClones(playerId: string): void {
+    const clones = this.playerCloneSprites.get(playerId);
+    if (clones) {
+      clones.forEach(c => { if (c.active) c.destroy(); });
+      this.playerCloneSprites.delete(playerId);
     }
   }
 
@@ -1094,34 +1132,34 @@ export class GameScene extends Phaser.Scene {
     const cy = this.arenaCenterY;
     const r = this.arenaRadius;
 
-    // Theme palettes
+    // Theme palettes — brightened for clear visibility against dark camera bg
     const palettes = {
       grass: {
-        bg: 0x14361d,        // deep green field
-        gridA: 0x1f5a30,     // darker green grid
-        gridB: 0x2d7a44,     // accent green
-        border: 0x3fbe5c,    // bright green border
+        bg: 0x1f5a2c,        // brighter forest green
+        gridA: 0x2f8040,     // grass clump highlight
+        gridB: 0x4cb364,     // lighter grass
+        border: 0x88ee88,    // vivid green border
         danger: 0xef4444,
       },
       lava: {
-        bg: 0x2a0500,
-        gridA: 0x5a1500,
-        gridB: 0xb14400,
-        border: 0xff6020,
+        bg: 0x4a0a00,        // deep red lava base
+        gridA: 0x822000,     // crack lines
+        gridB: 0xff6010,     // hot ember color
+        border: 0xff8030,    // glowing border
         danger: 0xffd000,
       },
       rock: {
-        bg: 0x202124,
-        gridA: 0x35373b,
-        gridB: 0x4a4d52,
-        border: 0x808389,
+        bg: 0x2c2d31,        // medium gray stone
+        gridA: 0x4a4d52,     // tile grout
+        gridB: 0x6a6d72,     // highlight
+        border: 0xa8aab0,    // bright stone edge
         danger: 0xef4444,
       },
       tile: {
-        bg: 0x05121a,
-        gridA: 0x0a2438,
-        gridB: 0x0f4f7a,
-        border: 0x00d8ff,
+        bg: 0x0a2030,        // deeper navy
+        gridA: 0x144a6a,     // visible grid
+        gridB: 0x2cc8ff,     // bright cyan dots
+        border: 0x33eaff,    // luminous border
         danger: 0xff2e63,
       },
     } as const;

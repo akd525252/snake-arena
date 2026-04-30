@@ -169,6 +169,10 @@ function gameLoop(room: GameRoom): void {
   const now = Date.now();
   const inGrace = now - room.startTime < CONFIG.SPAWN_GRACE_MS;
 
+  // Magnetic pull: coins and food drift toward nearest alive player head
+  // when within range. This gives the satisfying snake.io-style "vacuum" pickup.
+  applyMagneticPull(room);
+
   for (const [, player] of room.players) {
     if (!player.snake.alive) continue;
 
@@ -298,6 +302,54 @@ function gameLoop(room: GameRoom): void {
   // so the last survivor gets the full win.
 
   broadcastGameState(room);
+}
+
+// ─── Magnetic pickup ────────────────────────────────────────────────────────
+
+const MAGNET_RANGE = 70;        // distance within which items are attracted
+const MAGNET_PULL_RATE = 0.18;  // lerp factor per tick (higher = stronger pull)
+
+function applyMagneticPull(room: GameRoom): void {
+  // Coins (skip traps so the trap mechanic remains)
+  for (const coin of room.coins) {
+    if (coin.isTrap) continue;
+    let bestHead: Position | null = null;
+    let bestDist = MAGNET_RANGE;
+    for (const [, p] of room.players) {
+      if (!p.snake.alive) continue;
+      const head = p.snake.segments[0];
+      if (!head) continue;
+      const d = Math.hypot(head.x - coin.position.x, head.y - coin.position.y);
+      if (d < bestDist) {
+        bestDist = d;
+        bestHead = head;
+      }
+    }
+    if (bestHead) {
+      coin.position.x += (bestHead.x - coin.position.x) * MAGNET_PULL_RATE;
+      coin.position.y += (bestHead.y - coin.position.y) * MAGNET_PULL_RATE;
+    }
+  }
+
+  // Food
+  for (const f of room.food) {
+    let bestHead: Position | null = null;
+    let bestDist = MAGNET_RANGE;
+    for (const [, p] of room.players) {
+      if (!p.snake.alive) continue;
+      const head = p.snake.segments[0];
+      if (!head) continue;
+      const d = Math.hypot(head.x - f.position.x, head.y - f.position.y);
+      if (d < bestDist) {
+        bestDist = d;
+        bestHead = head;
+      }
+    }
+    if (bestHead) {
+      f.position.x += (bestHead.x - f.position.x) * MAGNET_PULL_RATE;
+      f.position.y += (bestHead.y - f.position.y) * MAGNET_PULL_RATE;
+    }
+  }
 }
 
 // ─── Movement ───────────────────────────────────────────────────────────────
