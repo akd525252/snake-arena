@@ -146,16 +146,20 @@ export default function Dashboard() {
       )}
 
       {/* Nav */}
-      <nav className="relative z-10 flex justify-between items-center px-4 sm:px-6 lg:px-8 py-4 border-b border-[#1a1a2e] bg-[#05050a]/80 backdrop-blur">
+      <nav className="relative z-10 flex justify-between items-center px-4 sm:px-6 lg:px-8 py-4 border-b border-[#3a2c1f] bg-[#0e0a08]/80 backdrop-blur">
         <Link href="/" className="flex items-center gap-3 min-w-0">
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl font-black ${
-            isDemo ? 'bg-[#ffb800] text-[#05050a]' : 'bg-[#00f0ff] text-[#05050a] glow-cyan'
-          }`}>S</div>
-          <div className="min-w-0">
-            <div className="text-lg sm:text-xl font-black tracking-tight text-white truncate">Snake Arena</div>
-            <div className="hidden sm:block text-xs text-[#6a6a7a]">Neon multiplayer battle console</div>
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center text-xl rpg-stone-panel rpg-torch">
+            <span className="rpg-title text-2xl">S</span>
           </div>
-          <span className={`hidden sm:inline-flex px-2.5 py-1 rounded-full text-[10px] font-black border ${accentBorder} ${accentSoftBg} ${accentText}`}>
+          <div className="min-w-0">
+            <div className="rpg-title text-lg sm:text-xl truncate">Snake Arena</div>
+            <div className="hidden sm:block text-xs rpg-text-muted italic">Arena of the bold</div>
+          </div>
+          <span className={`hidden sm:inline-flex px-2.5 py-1 rounded-md text-[10px] font-black border tracking-widest font-rpg-heading ${
+            isDemo
+              ? 'border-[#a86a3a] bg-[#3a2c1f] text-[#f5c265]'
+              : 'border-[#962323] bg-[#2a0e0e] text-[#d83a3a]'
+          }`}>
             {isDemo ? 'DEMO' : 'PRO'}
           </span>
         </Link>
@@ -167,9 +171,11 @@ export default function Dashboard() {
           )}
           <Link
             href="/profile"
-            className="flex items-center gap-2 text-sm text-[#8a8a9a] hover:text-[#00f0ff] group"
+            className="flex items-center gap-2 text-sm rpg-text-muted hover:rpg-gold-bright group"
           >
-            <span className={`w-9 h-9 rounded-full overflow-hidden border-2 ${accentBorder} transition-colors flex-shrink-0`}>
+            <span className={`w-9 h-9 rounded-full overflow-hidden border-2 transition-colors flex-shrink-0 ${
+              isDemo ? 'border-[#a86a3a]' : 'border-[#d4a04a]'
+            }`}>
               {user.avatar ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={user.avatar} alt="avatar" className="w-full h-full object-cover" />
@@ -185,7 +191,7 @@ export default function Dashboard() {
           </Link>
           <button
             onClick={signOut}
-            className="text-sm text-[#8a8a9a] hover:text-[#ff2e63]"
+            className="text-sm rpg-text-muted hover:text-[#d83a3a] font-rpg-heading tracking-wider"
           >
             Sign out
           </button>
@@ -195,68 +201,71 @@ export default function Dashboard() {
       <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Balance & Quick Play */}
         <div className="grid grid-cols-1 lg:grid-cols-[1.35fr_0.65fr] gap-6">
-          {/* Balance Card */}
-          <div className={`relative overflow-hidden rounded-[2rem] border ${accentBorder} bg-[#0a0a12]/95 p-6 md:p-8`}>
-            <div className={`absolute inset-0 ${isDemo ? 'bg-gradient-to-br from-[#ffb800]/18 via-transparent to-[#ff2e63]/10' : 'bg-gradient-to-br from-[#00f0ff]/18 via-transparent to-[#ff2e63]/10'}`} />
+          {/* Banner: Hero panel */}
+          <div className="rpg-panel relative overflow-hidden p-6 md:p-8">
             <div className="relative z-10 flex flex-col xl:flex-row xl:items-end justify-between gap-8">
               <div className="space-y-6">
-                <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${accentBorder} ${accentSoftBg} ${accentText} text-xs font-black`}>
-                  <span className={`w-2 h-2 rounded-full ${isDemo ? 'bg-[#ffb800]' : 'bg-[#00f0ff]'} animate-pulse`} />
+                <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-md text-xs font-black tracking-widest font-rpg-heading ${
+                  isDemo
+                    ? 'border border-[#a86a3a] bg-[#3a2c1f] text-[#f5c265]'
+                    : 'border border-[#962323] bg-[#2a0e0e] text-[#d83a3a]'
+                }`}>
+                  <span className={`w-2 h-2 rounded-full ${isDemo ? 'bg-[#f5c265]' : 'bg-[#d83a3a]'} animate-pulse`} />
                   {modeLabel}
                 </div>
                 <div>
-                  <h1 className="text-3xl md:text-5xl font-black text-white tracking-tight">
-                    Ready, {user.username || user.email.split('@')[0]}?
+                  <h1 className="rpg-title text-4xl md:text-6xl">
+                    Hark, {user.username || user.email.split('@')[0]}
                   </h1>
-                  <p className="mt-3 text-[#b0b0c0] max-w-2xl">
-                    Pick your entry, enter the arena, collect coins, use skills, and survive the neon snake war.
+                  <p className="mt-3 rpg-text-muted max-w-2xl text-lg italic">
+                    Choose thy wager, enter the arena, devour coins, wield thy skills, and outlive every challenger.
                   </p>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="rounded-2xl bg-[#05050a]/70 border border-[#1a1a2e] p-4">
-                    <div className="text-[11px] uppercase tracking-[0.2em] text-[#6a6a7a]">Balance</div>
-                    <div className="mt-1 text-2xl font-black text-white">${activeBalance.toFixed(2)}</div>
-                    <div className={`text-xs font-bold ${accentText}`}>{isDemo ? 'DEMO' : 'USDT'}</div>
+                  <div className="rpg-stone-panel p-4">
+                    <div className="text-[11px] uppercase tracking-[0.2em] rpg-text-muted font-rpg-heading">Treasury</div>
+                    <div className="mt-1 text-2xl font-black rpg-gold-bright">${activeBalance.toFixed(2)}</div>
+                    <div className="text-xs font-bold rpg-text-muted">{isDemo ? 'DEMO' : 'USDT'}</div>
                   </div>
-                  <div className="rounded-2xl bg-[#05050a]/70 border border-[#1a1a2e] p-4">
-                    <div className="text-[11px] uppercase tracking-[0.2em] text-[#6a6a7a]">Entry</div>
-                    <div className="mt-1 text-2xl font-black text-white">${activeBet}</div>
-                    <div className="text-xs font-bold text-[#8a8a9a]">Current bet</div>
+                  <div className="rpg-stone-panel p-4">
+                    <div className="text-[11px] uppercase tracking-[0.2em] rpg-text-muted font-rpg-heading">Wager</div>
+                    <div className="mt-1 text-2xl font-black rpg-text">${activeBet}</div>
+                    <div className="text-xs font-bold rpg-text-muted">Current bet</div>
                   </div>
-                  <div className="rounded-2xl bg-[#05050a]/70 border border-[#1a1a2e] p-4">
-                    <div className="text-[11px] uppercase tracking-[0.2em] text-[#6a6a7a]">Arena</div>
-                    <div className="mt-1 text-2xl font-black text-white">10</div>
-                    <div className="text-xs font-bold text-[#8a8a9a]">Max players</div>
+                  <div className="rpg-stone-panel p-4">
+                    <div className="text-[11px] uppercase tracking-[0.2em] rpg-text-muted font-rpg-heading">Arena</div>
+                    <div className="mt-1 text-2xl font-black rpg-text">10</div>
+                    <div className="text-xs font-bold rpg-text-muted">Max warriors</div>
                   </div>
-                  <div className="rounded-2xl bg-[#05050a]/70 border border-[#1a1a2e] p-4">
-                    <div className="text-[11px] uppercase tracking-[0.2em] text-[#6a6a7a]">Coin</div>
-                    <div className="mt-1 text-2xl font-black text-white">$0.10</div>
-                    <div className="text-xs font-bold text-[#8a8a9a]">Value</div>
+                  <div className="rpg-stone-panel p-4">
+                    <div className="text-[11px] uppercase tracking-[0.2em] rpg-text-muted font-rpg-heading">Coin</div>
+                    <div className="mt-1 text-2xl font-black rpg-gold">$0.10</div>
+                    <div className="text-xs font-bold rpg-text-muted">Per drop</div>
                   </div>
                 </div>
               </div>
-              <div className="xl:w-72 rounded-[1.5rem] border border-[#1a1a2e] bg-[#05050a]/70 p-5">
+              <div className="xl:w-72 rpg-stone-panel p-5">
                 <div className="flex items-center justify-between mb-5">
                   <div>
-                    <div className="text-xs text-[#6a6a7a]">Account status</div>
-                    <div className={`font-black ${accentText}`}>READY</div>
+                    <div className="text-xs rpg-text-muted font-rpg-heading tracking-widest">Status</div>
+                    <div className="font-black rpg-gold-bright text-lg font-rpg-heading">READY</div>
                   </div>
-                  <div className={`h-12 w-12 rounded-2xl flex items-center justify-center font-black ${isDemo ? 'bg-[#ffb800] text-[#05050a]' : 'bg-[#00f0ff] text-[#05050a] glow-cyan'}`}>
-                    {userInitial}
+                  <div className="h-12 w-12 rounded-lg flex items-center justify-center rpg-panel rpg-torch">
+                    <span className="rpg-title text-xl">{userInitial}</span>
                   </div>
                 </div>
-                <div className="space-y-3 rounded-2xl bg-[#0a0a12] border border-[#1a1a2e] p-4">
+                <div className="space-y-3 rpg-parchment-inset p-4">
                   <div className="flex items-center justify-between gap-4">
-                    <span className="text-sm text-[#8a8a9a]">Mode</span>
-                    <span className={`text-sm font-black ${accentText}`}>{isDemo ? 'Demo' : 'Pro'}</span>
+                    <span className="text-sm rpg-text-muted font-rpg-heading">Mode</span>
+                    <span className={`text-sm font-black ${isDemo ? 'rpg-gold-bright' : 'rpg-crimson'}`}>{isDemo ? 'Demo' : 'Pro'}</span>
                   </div>
                   <div className="flex items-center justify-between gap-4">
-                    <span className="text-sm text-[#8a8a9a]">Balance</span>
-                    <span className="text-sm font-black text-white">${activeBalance.toFixed(2)}</span>
+                    <span className="text-sm rpg-text-muted font-rpg-heading">Treasury</span>
+                    <span className="text-sm font-black rpg-text">${activeBalance.toFixed(2)}</span>
                   </div>
                   <div className="flex items-center justify-between gap-4">
-                    <span className="text-sm text-[#8a8a9a]">Entry</span>
-                    <span className="text-sm font-black text-white">${activeBet}</span>
+                    <span className="text-sm rpg-text-muted font-rpg-heading">Wager</span>
+                    <span className="text-sm font-black rpg-text">${activeBet}</span>
                   </div>
                 </div>
               </div>
@@ -264,22 +273,28 @@ export default function Dashboard() {
           </div>
 
           {/* Quick Play */}
-          <div className="rounded-[2rem] bg-[#0a0a12]/95 border border-[#1a1a2e] p-6 shadow-2xl">
+          <div className="rpg-panel p-6">
             <div className="flex items-start justify-between gap-4 mb-5">
               <div>
-                <div className={`text-xs font-black uppercase tracking-[0.25em] ${accentText}`}>
-                  Match Console
+                <div className="rpg-subtitle text-xs">
+                  Battle Console
                 </div>
-                <h2 className="text-2xl font-black text-white mt-1">{isDemo ? 'Demo Match' : 'Quick Match'}</h2>
+                <h2 className="rpg-title text-3xl mt-1">{isDemo ? 'Demo Match' : 'Quick Match'}</h2>
               </div>
-              <span className={`px-3 py-1 rounded-full text-xs font-black border ${accentBorder} ${accentSoftBg} ${accentText}`}>
+              <span className={`px-3 py-1 rounded-md text-xs font-black border font-rpg-heading tracking-widest ${
+                isDemo
+                  ? 'border-[#a86a3a] bg-[#3a2c1f] text-[#f5c265]'
+                  : 'border-[#962323] bg-[#2a0e0e] text-[#d83a3a]'
+              }`}>
                 {isDemo ? 'Safe' : 'Ranked'}
               </span>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="text-xs text-[#6a6a7a]">{isDemo ? 'Bet Amount (Demo $, min $1)' : 'Bet Amount (USDT, min $1)'}</label>
+                <label className="text-xs rpg-text-muted font-rpg-heading tracking-widest uppercase">
+                  {isDemo ? 'Wager (Demo $, min $1)' : 'Wager (USDT, min $1)'}
+                </label>
                 <input
                   type="number"
                   min={1}
@@ -289,22 +304,20 @@ export default function Dashboard() {
                     const parsed = parseFloat(e.target.value);
                     setBetAmount(Number.isFinite(parsed) ? Math.max(1, parsed) : 1);
                   }}
-                  className={`w-full mt-2 px-4 py-3 bg-[#05050a] border rounded-xl text-white text-lg font-bold focus:outline-none ${
-                    isDemo ? 'border-[#ffb800]/30 focus:border-[#ffb800]' : 'border-[#00f0ff]/20 focus:border-[#00f0ff]'
+                  className={`w-full mt-2 px-4 py-3 rpg-parchment-inset rpg-text text-lg font-bold focus:outline-none focus:ring-2 ${
+                    isDemo ? 'focus:ring-[#d4a04a]' : 'focus:ring-[#962323]'
                   }`}
                 />
               </div>
 
-              {/* Preset bet buttons */}
+              {/* Preset wager buttons */}
               <div className="grid grid-cols-4 gap-2">
                 {[1, 2, 5, 10].map(amt => (
                   <button
                     key={amt}
                     onClick={() => setBetAmount(amt)}
-                    className={`py-2 rounded-xl text-sm font-black transition-colors ${
-                      activeBet === amt
-                        ? `${isDemo ? 'bg-[#ffb800]' : 'bg-[#00f0ff]'} text-[#05050a]`
-                        : 'bg-[#11111a] text-[#8a8a9a] hover:bg-[#1a1a2e] hover:text-white'
+                    className={`btn-rpg btn-rpg-sm ${
+                      activeBet === amt ? (isDemo ? 'btn-rpg-amber' : 'btn-rpg-danger') : ''
                     }`}
                   >
                     ${amt}

@@ -133,46 +133,46 @@ export default function MatchmakingLobby({
       };
 
   return (
-    <div className="absolute inset-0 z-40 bg-[#05050a]/95 backdrop-blur flex items-center justify-center px-4">
-      <div className="w-full max-w-3xl bg-[#0a0a12] border border-[#1a1a2e] rounded-2xl p-8 shadow-2xl">
+    <div className="absolute inset-0 z-40 bg-[#0e0a08]/95 backdrop-blur flex items-center justify-center px-4">
+      <div className="w-full max-w-3xl rpg-panel p-8">
         <div className="text-center mb-8">
-          <h1 className={`text-3xl font-black mb-2 ${
-            matchStarting ? 'text-white' : scanExpired ? 'text-[#ff2e63]' : accent.textTitle
+          <h1 className={`mb-2 ${
+            matchStarting ? 'rpg-title text-4xl' : scanExpired ? 'rpg-title text-3xl' : 'rpg-title text-3xl rpg-torch'
           }`}>
             {matchStarting
               ? 'Match Found!'
               : scanExpired
                 ? 'Still Searching...'
-                : `Finding Players${dots}`}
+                : `Finding Warriors${dots}`}
           </h1>
-          <p className="text-[#8a8a9a] text-sm">
+          <p className="rpg-text-muted text-sm italic">
             {matchStarting
-              ? 'Preparing arena...'
+              ? 'Preparing the arena...'
               : scanExpired
-                ? 'Taking longer than usual. You can keep waiting or try again.'
+                ? 'The hunt takes longer than usual. Stand fast or retry.'
                 : isDemo
-                  ? 'Finding opponents for your match...'
-                  : `Players ready: ${players.length}`}
+                  ? 'Seeking worthy opponents...'
+                  : `Warriors ready: ${players.length}`}
           </p>
           {!matchStarting && !scanExpired && !isDemo && (
-            <div className="flex justify-center gap-6 mt-3 text-xs text-[#6a6a7a]">
-              <span>Bet: <span className="text-white font-bold">${betAmount}</span></span>
+            <div className="flex justify-center gap-6 mt-3 text-xs rpg-text-muted font-rpg-heading tracking-widest">
+              <span>Wager: <span className="rpg-gold-bright font-bold">${betAmount}</span></span>
               <span>
-                Scanning: <span className="text-white font-mono font-bold">{remaining}s</span>
+                Scanning: <span className="rpg-text font-mono font-bold">{remaining}s</span>
               </span>
-              <span>Mode: <span className="text-white font-bold">Pro</span></span>
+              <span>Mode: <span className="rpg-crimson font-bold">Pro</span></span>
             </div>
           )}
           {!matchStarting && !scanExpired && isDemo && (
-            <div className="flex justify-center gap-6 mt-3 text-xs text-[#6a6a7a]">
-              <span>Bet: <span className="text-white font-bold">${betAmount}</span></span>
-              <span>Time waiting: <span className="text-white font-mono">{localElapsed}s</span></span>
-              <span>Mode: <span className="text-white font-bold">Demo</span></span>
+            <div className="flex justify-center gap-6 mt-3 text-xs rpg-text-muted font-rpg-heading tracking-widest">
+              <span>Wager: <span className="rpg-gold-bright font-bold">${betAmount}</span></span>
+              <span>Waiting: <span className="rpg-text font-mono">{localElapsed}s</span></span>
+              <span>Mode: <span className="rpg-gold-bright font-bold">Demo</span></span>
             </div>
           )}
         </div>
 
-        {/* Player slots grid */}
+        {/* Warrior slots grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-6">
           {Array.from({ length: slots }).map((_, i) => {
             const p = i < visibleSlots ? players[i] : undefined;
@@ -180,12 +180,12 @@ export default function MatchmakingLobby({
               return (
                 <div
                   key={`empty-${i}`}
-                  className="aspect-square rounded-xl border-2 border-dashed border-[#1a1a2e] flex flex-col items-center justify-center text-[#5a5a6a] animate-pulse"
+                  className="aspect-square rpg-parchment-inset border-dashed flex flex-col items-center justify-center rpg-text-muted animate-pulse"
                 >
-                  <div className="w-12 h-12 rounded-full bg-[#11111a] mb-2 flex items-center justify-center text-[#5a5a6a]">
+                  <div className="w-12 h-12 rounded-full rpg-stone-panel mb-2 flex items-center justify-center rpg-text-muted">
                     ?
                   </div>
-                  <span className="text-xs">Waiting...</span>
+                  <span className="text-xs italic">Empty seat</span>
                 </div>
               );
             }
@@ -195,8 +195,10 @@ export default function MatchmakingLobby({
             return (
               <div
                 key={p.id}
-                className={`aspect-square rounded-xl border-2 flex flex-col items-center justify-center p-3 transition-all animate-in fade-in zoom-in duration-300 ${
-                  isMe ? `${accent.slotBorder} ${accent.slotBg} shadow-lg ${accent.slotShadow}` : 'border-[#2a2a3a] bg-[#11111a]/50'
+                className={`aspect-square rounded-md border-2 flex flex-col items-center justify-center p-3 transition-all animate-in fade-in zoom-in duration-300 ${
+                  isMe
+                    ? 'border-[#d4a04a] bg-[#3a2c1f] shadow-lg shadow-[#d4a04a]/30 rpg-glow-pulse'
+                    : 'border-[#3a2c1f] bg-[#1c1410]/50'
                 }`}
                 style={{ animationDelay: `${i * 120}ms` }}
               >
@@ -221,11 +223,11 @@ export default function MatchmakingLobby({
                     <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full border border-white/20" style={{ backgroundColor: skinColor! }} />
                   )}
                 </div>
-                <span className="text-xs text-white font-bold truncate w-full text-center">
-                  {p.username}{isMe && ' (you)'}
+                <span className="text-xs rpg-text font-bold truncate w-full text-center font-rpg-heading">
+                  {p.username}{isMe && ' (thee)'}
                 </span>
                 {p.betAmount !== undefined && (
-                  <span className={`text-[10px] mt-0.5 ${isMe ? accent.textSub : 'text-[#6a6a7a]'}`}>
+                  <span className={`text-[10px] mt-0.5 ${isMe ? 'rpg-gold-bright' : 'rpg-text-muted'}`}>
                     ${p.betAmount}
                   </span>
                 )}
@@ -237,16 +239,16 @@ export default function MatchmakingLobby({
         {/* Scan countdown progress bar (pro mode, while scanning) */}
         {!matchStarting && !scanExpired && !isDemo && (
           <div className="mb-6">
-            <div className="h-2 bg-[#11111a] rounded-full overflow-hidden">
+            <div className="h-2 rpg-parchment-inset rounded-full overflow-hidden">
               <div
-                className={`h-full ${accent.bar} transition-all duration-1000 ease-linear`}
+                className="h-full bg-gradient-to-r from-[#a86a3a] via-[#d4a04a] to-[#f5c265] transition-all duration-1000 ease-linear"
                 style={{ width: `${Math.max(0, ((scanSeconds - localElapsed) / scanSeconds) * 100)}%` }}
               />
             </div>
-            <div className="text-center text-xs text-[#6a6a7a] mt-2">
+            <div className="text-center text-xs rpg-text-muted mt-2 font-rpg-heading tracking-widest">
               {remaining > 0
-                ? `Match starts in ${remaining}s`
-                : 'Starting match now...'}
+                ? `Match begins in ${remaining}s`
+                : 'The arena opens...'}
             </div>
           </div>
         )}
