@@ -24,10 +24,10 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Look up user's game_mode, username, and equipped skin from DB
+    // Look up user row from DB — source of truth for is_admin, account_status, etc.
     let { data: userRow, error: userErr } = await supabase
       .from('users')
-      .select('game_mode, username, equipped_skin_id, skins(skin_key)')
+      .select('game_mode, username, avatar, equipped_skin_id, is_admin, account_status, skins(skin_key)')
       .eq('id', user.id)
       .single();
 
@@ -43,7 +43,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
           demo_balance: 50.00,
           account_status: 'active',
         })
-        .select('game_mode, username, equipped_skin_id, skins(skin_key)')
+        .select('game_mode, username, avatar, equipped_skin_id, is_admin, account_status, skins(skin_key)')
         .single();
 
       if (createErr) {
@@ -72,12 +72,17 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     const playerSkinId = skinRelation?.[0]?.skin_key || null;
     const demoBalance = parseFloat((userRow as unknown as { demo_balance?: string }).demo_balance ?? '50');
 
+    // Read admin/status flags from the users table (NOT from Supabase auth metadata)
+    const isAdmin = (userRow as unknown as { is_admin?: boolean }).is_admin === true;
+    const accountStatus = (userRow as unknown as { account_status?: string }).account_status || 'active';
+    const dbAvatar = (userRow as unknown as { avatar?: string | null }).avatar ?? null;
+
     // Issue app JWT
     const token = jwt.sign(
       {
         id: user.id,
         email: user.email,
-        is_admin: user.user_metadata?.is_admin,
+        is_admin: isAdmin,
         game_mode: userRow.game_mode,
         demo_balance: demoBalance,
         equipped_skin_id: userRow.equipped_skin_id,
@@ -93,9 +98,9 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
         id: user.id,
         email: user.email,
         username: playerUsername,
-        avatar: user.user_metadata?.avatar_url || null,
-        account_status: user.user_metadata?.account_status,
-        is_admin: user.user_metadata?.is_admin,
+        avatar: dbAvatar || user.user_metadata?.avatar_url || null,
+        account_status: accountStatus,
+        is_admin: isAdmin,
         game_mode: userRow.game_mode,
         demo_balance: demoBalance,
         equipped_skin_id: userRow.equipped_skin_id,
