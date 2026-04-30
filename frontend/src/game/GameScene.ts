@@ -68,6 +68,7 @@ export class GameScene extends Phaser.Scene {
 
   // Zone danger overlay
   private zoneOverlay!: Phaser.GameObjects.Graphics;
+  private zoneWarningText!: Phaser.GameObjects.Text;
 
   // Mobile controls
   private isMobile = false;
@@ -88,7 +89,7 @@ export class GameScene extends Phaser.Scene {
   private readonly SKIN_COLORS: Record<string, { primary: number; secondary: number; glow: number }> = {
     neon_cyber: { primary: 0x00f0ff, secondary: 0xff00a0, glow: 0x00f0ff },
     inferno_drake: { primary: 0xff4500, secondary: 0xff8c00, glow: 0xff4500 },
-    void_shadow: { primary: 0x1a0a2e, secondary: 0x8b00ff, glow: 0x8b00ff },
+    void_shadow: { primary: 0x4a2080, secondary: 0x8b00ff, glow: 0x8b00ff },
   };
 
   // Callbacks
@@ -156,6 +157,12 @@ export class GameScene extends Phaser.Scene {
     // Zone danger overlay (full-screen red tint when outside arena)
     this.zoneOverlay = this.add.graphics();
     this.zoneOverlay.setScrollFactor(0).setDepth(99);
+    this.zoneWarningText = this.add.text(this.scale.width / 2, this.scale.height * 0.15, 'DANGER ZONE — RETURN!', {
+      fontFamily: 'monospace',
+      fontSize: this.isMobile ? '14px' : '18px',
+      color: '#ef4444',
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(100).setVisible(false);
 
     // HUD
     this.scoreText = this.add.text(16, 16, 'Score: $0.00', {
@@ -343,9 +350,9 @@ export class GameScene extends Phaser.Scene {
       if (!this.cameraSmooth) {
         this.cameraSmooth = { x: this.cameraTarget.x, y: this.cameraTarget.y };
       } else {
-        // 0.2 lerp factor at 60fps gives smooth ~100ms follow without lag
-        this.cameraSmooth.x += (this.cameraTarget.x - this.cameraSmooth.x) * 0.25;
-        this.cameraSmooth.y += (this.cameraTarget.y - this.cameraSmooth.y) * 0.25;
+        // 0.5 lerp factor at 60fps = ~2 frame lag, responsive but smooth
+        this.cameraSmooth.x += (this.cameraTarget.x - this.cameraSmooth.x) * 0.5;
+        this.cameraSmooth.y += (this.cameraTarget.y - this.cameraSmooth.y) * 0.5;
       }
       this.cameras.main.centerOn(this.cameraSmooth.x, this.cameraSmooth.y);
     }
@@ -405,7 +412,7 @@ export class GameScene extends Phaser.Scene {
         break;
 
       case 'queue_status':
-        this.statusText.setText(`In queue (${msg.position} / 3 needed)`);
+        this.statusText.setText(`In queue (${msg.position} / ${msg.minPlayers ?? 2} needed)`);
         break;
 
       case 'queue_state': {
@@ -515,7 +522,14 @@ export class GameScene extends Phaser.Scene {
         this.scoreText.setText(`Score: $${p.score.toFixed(2)}`);
         this.onScoreChange?.(p.score);
         if (p.alive && p.segments.length > 0) {
-          this.cameraTarget = p.segments[0];
+          const head = p.segments[0];
+          if (this.cameraTarget) {
+            // Lerp camera target toward server head to avoid snap-jitter between ticks
+            this.cameraTarget.x += (head.x - this.cameraTarget.x) * 0.3;
+            this.cameraTarget.y += (head.y - this.cameraTarget.y) * 0.3;
+          } else {
+            this.cameraTarget = { x: head.x, y: head.y };
+          }
           this.spectateTargetId = null; // alive — clear any locked spectate
         }
         // Zone danger overlay: show red tint when outside safe zone
@@ -744,7 +758,7 @@ export class GameScene extends Phaser.Scene {
 
     // Inferno Drake: Fire particles when boosting
     if (p.skinId === 'inferno_drake' && isBoosting) {
-      this.updateBoostTrails(p, 0xff4500, 3); // Fire trail
+      this.updateBoostTrails(p, 0xff4500, 6); // Bigger fire trail
     }
 
     // Void Shadow: Shadow clones when boosting starts
@@ -782,8 +796,8 @@ export class GameScene extends Phaser.Scene {
       const ty = head.y + Math.sin(angle) * offset;
 
       const alpha = 1 - (i / count);
-      trail.fillStyle(color, alpha * 0.5);
-      trail.fillCircle(tx, ty, 6 - i);
+      trail.fillStyle(color, alpha * 0.8);
+      trail.fillCircle(tx, ty, 10 - i);
     }
 
     this.playerBoostTrails.set(p.id, trails);
@@ -839,6 +853,7 @@ export class GameScene extends Phaser.Scene {
 
   private drawZoneOverlay(active: boolean) {
     this.zoneOverlay.clear();
+    this.zoneWarningText.setVisible(active);
     if (!active) return;
     const w = this.scale.width;
     const h = this.scale.height;
@@ -848,16 +863,6 @@ export class GameScene extends Phaser.Scene {
     const pulse = 0.3 + Math.sin(Date.now() / 300) * 0.1;
     this.zoneOverlay.lineStyle(8, 0xef4444, pulse);
     this.zoneOverlay.strokeRect(0, 0, w, h);
-    // Warning text
-    this.zoneOverlay.fillStyle(0xffffff, 0.6);
-    const warningText = this.add.text(w / 2, h * 0.15, 'DANGER ZONE — RETURN!', {
-      fontFamily: 'monospace',
-      fontSize: this.isMobile ? '14px' : '18px',
-      color: '#ef4444',
-      fontStyle: 'bold',
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(99);
-    // Auto-remove after one frame (re-created each tick while in danger)
-    this.time.delayedCall(50, () => warningText.destroy());
   }
 
   private drawArena() {

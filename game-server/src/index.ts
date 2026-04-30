@@ -134,11 +134,20 @@ wss.on('connection', (ws: WebSocket, req) => {
     isDemo = userRow.game_mode === 'demo';
     if (userRow.username) playerUsername = userRow.username;
     playerAvatar = (userRow as unknown as { avatar?: string | null }).avatar || null;
-    // skins is returned as array from Supabase even for one-to-one
+    // skins FK join may fail silently if Supabase can't resolve the relationship name;
+    // fallback to a direct query using the UUID if needed.
     const skinRelation = (userRow as unknown as { skins?: { skin_key: string }[] }).skins;
     playerSkinId = skinRelation?.[0]?.skin_key || null;
+    if (!playerSkinId && userRow.equipped_skin_id) {
+      const { data: skinRow } = await supabase
+        .from('skins')
+        .select('skin_key')
+        .eq('id', userRow.equipped_skin_id)
+        .single();
+      playerSkinId = skinRow?.skin_key || null;
+    }
 
-    console.log(`[WS] Player connected: ${playerId} (${playerUsername}) mode=${userRow.game_mode}`);
+    console.log(`[WS] Player connected: ${playerId} (${playerUsername}) mode=${userRow.game_mode} skin=${playerSkinId}`);
 
     ws.send(JSON.stringify({ type: 'welcome', playerId }));
 
@@ -289,8 +298,7 @@ function broadcastQueueState(): void {
   }
 
   // Pro queue: send to each pro player the full pro queue.
-  // minPlayers = 1 because pro matches always include 2 bots that fill
-  // remaining slots, so even a single human can match.
+  // minPlayers = 2 because pro matches need at least 2 humans + 2 bots.
   const proList = proPlayers.map(e => ({
     id: e.userId,
     username: e.username,
@@ -304,7 +312,7 @@ function broadcastQueueState(): void {
     p.ws.send(JSON.stringify({
       type: 'queue_state',
       players: proList,
-      minPlayers: 1,
+      minPlayers: 2,
       maxPlayers: CONFIG.MAX_PLAYERS,
       scanStartTime: proScanStartTime,
       elapsedSeconds: proElapsed,
@@ -340,7 +348,7 @@ function tryMatchPlayers(): void {
   }
 
   // Pro queue: instant match if MIN_PLAYERS humans are already in same bucket.
-  // Otherwise we wait for the timeout (5s) to fill with bots.
+  // Otherwise we wait for the fallback timeout (15s) to fill with bots.
   const proQueue = matchmakingQueue.filter(e => !e.isDemo);
   if (proQueue.length < CONFIG.MIN_PLAYERS) return;
 
@@ -530,7 +538,7 @@ function handleDisconnect(playerId: string): void {
 // Pro mode: how long to scan for real players before filling with bots.
 // During this window we keep matching humans to humans; if no instant match
 // happens within this time we start with whatever humans are queued + bots.
-const PRO_BOT_FALLBACK_MS = 60000;
+const PRO_BOT_FALLBACK_MS = 15000;
 
 setInterval(() => {
   const now = Date.now();
@@ -565,4 +573,5 @@ setInterval(() => {
 // ============================================
 server.listen(CONFIG.PORT, () => {
   console.log(`[Game Server] WebSocket server running on port ${CONFIG.PORT}`);
+  console.log(`[Game Server] MIN_PLAYERS=${CONFIG.MIN_PLAYERS} FALLBACK_MS=${PRO_BOT_FALLBACK_MS}`);
 });

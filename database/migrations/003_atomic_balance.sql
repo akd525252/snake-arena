@@ -21,8 +21,7 @@ DECLARE
   new_balance NUMERIC;
 BEGIN
   UPDATE wallets
-  SET balance = balance + p_delta,
-      updated_at = NOW()
+  SET balance = balance + p_delta
   WHERE user_id = p_user_id
   RETURNING balance INTO new_balance;
 

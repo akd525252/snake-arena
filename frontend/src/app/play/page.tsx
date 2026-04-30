@@ -181,7 +181,7 @@ function PlayPageInner() {
           betAmount={betAmount}
           isDemo={false}
           matchStarting={matchStarting}
-          scanSeconds={60}
+          scanSeconds={15}
           serverElapsed={serverElapsed}
           onCancel={() => router.push('/dashboard')}
           onRetry={() => window.location.reload()}

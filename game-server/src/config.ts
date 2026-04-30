@@ -14,7 +14,7 @@ export const CONFIG = {
   ARENA_SHRINK_INTERVAL: 2000, // ms between shrink steps
   ARENA_SHRINK_AMOUNT: 8, // pixels per shrink (radius decrease)
   MIN_ARENA_RADIUS: 150, // floor so the arena never fully closes before time runs out
-  TURN_SPEED: 0.08, // radians per tick — how fast snakes turn toward target angle
+  TURN_SPEED: 0.18, // radians per tick (~206°/sec at 20 tps) — snappy responsive turning
 
   COIN_VALUE: 0.10,
   COIN_SPAWN_INTERVAL: 3000, // ms
@@ -32,7 +32,7 @@ export const CONFIG = {
   TRAP_SLOW_DURATION: 3000, // ms
   TRAP_SLOW_FACTOR: 0.5,
 
-  MIN_PLAYERS: 3,
+  MIN_PLAYERS: 2,
   MAX_PLAYERS: 10,
   GAME_DURATION: 60000, // 1 minute match
   SPAWN_GRACE_MS: 1500, // collision detection disabled for first 1.5s
