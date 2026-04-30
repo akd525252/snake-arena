@@ -11,7 +11,7 @@ Built with **Next.js + Phaser** (frontend), **Node.js + Express + native WebSock
 | Backend API | Node.js, Express, JWT, Supabase service role |
 | Game Server | Node.js, native `ws` WebSocket library |
 | Database | Supabase (Postgres + Auth) |
-| Payments | NOWPayments (USDT-TRC20) |
+| Payments | NOWPayments (USDT-BEP20 / BNB Smart Chain) |
 | Hosting | Frontend → Vercel · Backend & Game Server → Railway |
 
 ## Folder Structure

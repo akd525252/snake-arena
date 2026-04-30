@@ -10,9 +10,10 @@ const router = Router();
 const NOWPAYMENTS_API = 'https://api.nowpayments.io/v1';
 const MIN_DEPOSIT = 5;
 // NOWPayments charges ~0.5% on invoice payments + the user pays the on-chain network fee.
-// We disclose this estimate to the user before they submit.
+// We use BEP20 (BNB Smart Chain) USDT — much cheaper gas than TRC20 historically.
 const NOWPAY_FEE_RATE = 0.005;
-const TRC20_NETWORK_FEE_USD = 1.00;
+const BEP20_NETWORK_FEE_USD = 0.50;
+const PAY_CURRENCY = 'usdtbsc'; // NOWPayments code for USDT BEP20 (BSC)
 
 // ============================================
 // User: Quote deposit fees (so user sees estimate before paying)
@@ -25,14 +26,14 @@ router.get('/deposit/quote', authenticateToken, async (req: AuthRequest, res: Re
       return;
     }
     const processorFee = +(amount * NOWPAY_FEE_RATE).toFixed(2);
-    const networkFee = TRC20_NETWORK_FEE_USD;
+    const networkFee = BEP20_NETWORK_FEE_USD;
     const youPay = +(amount + processorFee + networkFee).toFixed(2);
     res.json({
       amount,
       processorFee,
       processorFeeRate: NOWPAY_FEE_RATE * 100,
       networkFee,
-      networkLabel: 'TRC20',
+      networkLabel: 'BEP20',
       youPay,
       youReceiveInWallet: amount,
     });
@@ -58,9 +59,9 @@ router.post('/deposit', authenticateToken, async (req: AuthRequest, res: Respons
       {
         price_amount: amount,
         price_currency: 'usd',
-        pay_currency: 'usdttrc20',
+        pay_currency: PAY_CURRENCY,
         order_id: `dep_${req.user!.id}_${Date.now()}`,
-        order_description: `Snake Arena Deposit - ${amount} USDT`,
+        order_description: `Snake Arena Deposit - ${amount} USDT (BEP20)`,
         ipn_callback_url: `${process.env.BACKEND_URL || 'http://localhost:4000'}/api/payments/webhook`,
       },
       {

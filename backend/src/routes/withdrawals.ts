@@ -8,9 +8,10 @@ const router = Router();
 
 const MIN_WITHDRAWAL = 5;
 const ACCOUNT_LOCK_HOURS = 24;
-// Platform charges no service fee — only the on-chain BEP20 USDT network fee is passed through
+// Platform charges no service fee — only the on-chain BEP20 USDT network fee is passed through.
+// BSC gas is typically very low; $0.50 covers usual conditions with a small buffer.
 const SERVICE_FEE_RATE = 0;
-const NETWORK_FEE = 1.00; // BEP20 USDT network fee estimate (USD)
+const NETWORK_FEE = 0.50;
 
 // ============================================
 // User: Quote withdrawal fees (so user sees breakdown before submitting)

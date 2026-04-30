@@ -61,7 +61,7 @@ export default function DepositPage() {
 
       <main className="flex-1 max-w-md w-full mx-auto px-6 py-10">
         <h1 className="text-3xl font-bold mb-2 text-white">Deposit USDT</h1>
-        <p className="text-[#8a8a9a] mb-8">Add USDT to your wallet via NOWPayments (TRC20)</p>
+        <p className="text-[#8a8a9a] mb-8">Add USDT to your wallet via NOWPayments (BEP20 / BNB Smart Chain)</p>
 
         {!paymentUrl ? (
           <div className="space-y-6">
@@ -123,7 +123,7 @@ export default function DepositPage() {
                   />
                 </div>
                 <p className="text-[11px] text-[#5a5a6a] mt-3 leading-relaxed">
-                  Fees are charged by NOWPayments and the TRC20 network — not by Snake Arena.
+                  Fees are charged by NOWPayments and the BEP20 network — not by Snake Arena.
                   Final amount may vary slightly with live network rates.
                 </p>
               </div>
@@ -149,7 +149,7 @@ export default function DepositPage() {
             </button>
 
             <div className="text-xs text-[#4a4a5a] text-center">
-              Payments processed by NOWPayments. USDT-TRC20 only.
+              Payments processed by NOWPayments. USDT-BEP20 (BNB Smart Chain) only.
             </div>
           </div>
         ) : (
