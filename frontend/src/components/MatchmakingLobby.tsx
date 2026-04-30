@@ -136,27 +136,27 @@ export default function MatchmakingLobby({
     <div className="absolute inset-0 z-40 bg-[#0e0a08]/95 backdrop-blur flex items-center justify-center px-4">
       <div className="w-full max-w-3xl rpg-panel p-8">
         <div className="text-center mb-8">
-          <h1 className={`mb-2 ${
-            matchStarting ? 'rpg-title text-4xl' : scanExpired ? 'rpg-title text-3xl' : 'rpg-title text-3xl rpg-torch'
+          <h1 className={`mb-2 rpg-title text-3xl ${
+            !matchStarting && !scanExpired ? 'rpg-torch' : ''
           }`}>
             {matchStarting
               ? 'Match Found!'
               : scanExpired
                 ? 'Still Searching...'
-                : `Finding Warriors${dots}`}
+                : `Finding Players${dots}`}
           </h1>
-          <p className="rpg-text-muted text-sm italic">
+          <p className="rpg-text-muted text-sm">
             {matchStarting
-              ? 'Preparing the arena...'
+              ? 'Preparing arena...'
               : scanExpired
-                ? 'The hunt takes longer than usual. Stand fast or retry.'
+                ? 'Taking longer than usual. You can keep waiting or try again.'
                 : isDemo
-                  ? 'Seeking worthy opponents...'
-                  : `Warriors ready: ${players.length}`}
+                  ? 'Finding opponents for your match...'
+                  : `Players ready: ${players.length}`}
           </p>
           {!matchStarting && !scanExpired && !isDemo && (
-            <div className="flex justify-center gap-6 mt-3 text-xs rpg-text-muted font-rpg-heading tracking-widest">
-              <span>Wager: <span className="rpg-gold-bright font-bold">${betAmount}</span></span>
+            <div className="flex justify-center gap-6 mt-3 text-xs rpg-text-muted">
+              <span>Bet: <span className="rpg-gold-bright font-bold">${betAmount}</span></span>
               <span>
                 Scanning: <span className="rpg-text font-mono font-bold">{remaining}s</span>
               </span>
@@ -164,15 +164,15 @@ export default function MatchmakingLobby({
             </div>
           )}
           {!matchStarting && !scanExpired && isDemo && (
-            <div className="flex justify-center gap-6 mt-3 text-xs rpg-text-muted font-rpg-heading tracking-widest">
-              <span>Wager: <span className="rpg-gold-bright font-bold">${betAmount}</span></span>
-              <span>Waiting: <span className="rpg-text font-mono">{localElapsed}s</span></span>
+            <div className="flex justify-center gap-6 mt-3 text-xs rpg-text-muted">
+              <span>Bet: <span className="rpg-gold-bright font-bold">${betAmount}</span></span>
+              <span>Time waiting: <span className="rpg-text font-mono">{localElapsed}s</span></span>
               <span>Mode: <span className="rpg-gold-bright font-bold">Demo</span></span>
             </div>
           )}
         </div>
 
-        {/* Warrior slots grid */}
+        {/* Player slots grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-6">
           {Array.from({ length: slots }).map((_, i) => {
             const p = i < visibleSlots ? players[i] : undefined;
@@ -185,7 +185,7 @@ export default function MatchmakingLobby({
                   <div className="w-12 h-12 rounded-full rpg-stone-panel mb-2 flex items-center justify-center rpg-text-muted">
                     ?
                   </div>
-                  <span className="text-xs italic">Empty seat</span>
+                  <span className="text-xs">Waiting...</span>
                 </div>
               );
             }
@@ -223,8 +223,8 @@ export default function MatchmakingLobby({
                     <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full border border-white/20" style={{ backgroundColor: skinColor! }} />
                   )}
                 </div>
-                <span className="text-xs rpg-text font-bold truncate w-full text-center font-rpg-heading">
-                  {p.username}{isMe && ' (thee)'}
+                <span className="text-xs rpg-text font-bold truncate w-full text-center">
+                  {p.username}{isMe && ' (you)'}
                 </span>
                 {p.betAmount !== undefined && (
                   <span className={`text-[10px] mt-0.5 ${isMe ? 'rpg-gold-bright' : 'rpg-text-muted'}`}>
@@ -245,10 +245,10 @@ export default function MatchmakingLobby({
                 style={{ width: `${Math.max(0, ((scanSeconds - localElapsed) / scanSeconds) * 100)}%` }}
               />
             </div>
-            <div className="text-center text-xs rpg-text-muted mt-2 font-rpg-heading tracking-widest">
+            <div className="text-center text-xs rpg-text-muted mt-2">
               {remaining > 0
-                ? `Match begins in ${remaining}s`
-                : 'The arena opens...'}
+                ? `Match starts in ${remaining}s`
+                : 'Starting match now...'}
             </div>
           </div>
         )}

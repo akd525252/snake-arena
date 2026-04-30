@@ -76,8 +76,8 @@ export class GameScene extends Phaser.Scene {
   private cameraTarget: Position | null = null;
   // Smoothed camera position (lerped toward cameraTarget) to avoid jitter
   private cameraSmooth: Position | null = null;
-  // Locked spectate target ID after death — prevents flipping between leaders
-  private spectateTargetId: string | null = null;
+  // Frozen final position at the moment the local player died (camera locks here)
+  private deathCameraLock: Position | null = null;
 
   // Snake interpolation: server ticks at 50ms (20Hz) but we render at 60fps.
   // To avoid jitter we keep prev+curr positions per player and lerp each frame.
@@ -258,6 +258,11 @@ export class GameScene extends Phaser.Scene {
     // Camera — zoom in so snake is larger on screen
     this.cameras.main.setBackgroundColor('#0a0a0a');
     this.cameras.main.setZoom(this.isMobile ? 1.2 : 1.6);
+    // Pixel-perfect rendering kills sub-pixel shimmer when camera moves
+    this.cameras.main.setRoundPixels(true);
+    // Pre-position camera at arena center so the first frame doesn't snap from (0,0)
+    this.cameras.main.centerOn(this.arenaCenterX, this.arenaCenterY);
+    this.cameraSmooth = { x: this.arenaCenterX, y: this.arenaCenterY };
 
     // Mobile touch controls
     if (this.isMobile) {
@@ -410,18 +415,17 @@ export class GameScene extends Phaser.Scene {
 
     // ─── Frame-by-frame snake interpolation + render ────────────────
     // Compute interp factor t in [0,1] based on time elapsed since last server tick.
-    // Allow slight extrapolation (up to 1.5) when server is late, so snakes don't freeze.
+    // No extrapolation — limiting t to 1.0 prevents overshoot snap-backs that
+    // cause visible camera jitter when a new server state arrives.
     let t = 1;
     if (this.lastServerStateTime > 0) {
       t = (performance.now() - this.lastServerStateTime) / this.serverInterval;
-      t = Math.max(0, Math.min(1.5, t));
+      t = Math.max(0, Math.min(1, t));
     }
 
     let myInterpHead: Position | null = null;
     let myAlive = false;
     let myInZone = true;
-    let highestAliveId: string | null = null;
-    let highestAliveScore = -Infinity;
 
     for (const [id, data] of this.playerInterp) {
       // Build interpolated snapshot
@@ -464,31 +468,18 @@ export class GameScene extends Phaser.Scene {
           myInterpHead = interpSegments[0];
         }
       }
-      if (data.alive && data.score > highestAliveScore) {
-        highestAliveScore = data.score;
-        highestAliveId = id;
-      }
     }
 
-    // Pick camera target
+    // Pick camera target — each player follows ONLY their own snake.
+    // No spectating; on death the camera locks at the moment of death.
     let camTarget: Position | null = null;
     if (myAlive && myInterpHead) {
       camTarget = myInterpHead;
-      this.spectateTargetId = null;
+      this.deathCameraLock = { x: myInterpHead.x, y: myInterpHead.y };
       this.drawZoneOverlay(!myInZone);
     } else {
-      // Spectating
-      if (!this.spectateTargetId || !this.playerInterp.get(this.spectateTargetId)?.alive) {
-        this.spectateTargetId = highestAliveId;
-      }
-      const target = this.spectateTargetId ? this.playerInterp.get(this.spectateTargetId) : null;
-      if (target && target.currSegments.length > 0) {
-        const a = target.prevSegments[0];
-        const b = target.currSegments[0];
-        camTarget = a && b
-          ? { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
-          : { x: b.x, y: b.y };
-      }
+      // Dead — lock camera at last known head position
+      camTarget = this.deathCameraLock;
       this.drawZoneOverlay(false);
     }
 

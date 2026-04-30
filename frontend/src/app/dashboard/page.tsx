@@ -153,7 +153,7 @@ export default function Dashboard() {
           </div>
           <div className="min-w-0">
             <div className="rpg-title text-lg sm:text-xl truncate">Snake Arena</div>
-            <div className="hidden sm:block text-xs rpg-text-muted italic">Arena of the bold</div>
+            <div className="hidden sm:block text-xs rpg-text-muted">Multiplayer snake arena</div>
           </div>
           <span className={`hidden sm:inline-flex px-2.5 py-1 rounded-md text-[10px] font-black border tracking-widest font-rpg-heading ${
             isDemo
@@ -214,57 +214,57 @@ export default function Dashboard() {
                   {modeLabel}
                 </div>
                 <div>
-                  <h1 className="rpg-title text-4xl md:text-6xl">
-                    Hark, {user.username || user.email.split('@')[0]}
+                  <h1 className="rpg-title text-3xl md:text-5xl">
+                    Welcome, {user.username || user.email.split('@')[0]}
                   </h1>
-                  <p className="mt-3 rpg-text-muted max-w-2xl text-lg italic">
-                    Choose thy wager, enter the arena, devour coins, wield thy skills, and outlive every challenger.
+                  <p className="mt-2 rpg-text-muted max-w-2xl">
+                    Pick your bet, enter the arena, collect coins, use skills, and survive.
                   </p>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="rpg-stone-panel p-4">
-                    <div className="text-[11px] uppercase tracking-[0.2em] rpg-text-muted font-rpg-heading">Treasury</div>
+                    <div className="text-[11px] uppercase tracking-[0.15em] rpg-text-muted">Balance</div>
                     <div className="mt-1 text-2xl font-black rpg-gold-bright">${activeBalance.toFixed(2)}</div>
                     <div className="text-xs font-bold rpg-text-muted">{isDemo ? 'DEMO' : 'USDT'}</div>
                   </div>
                   <div className="rpg-stone-panel p-4">
-                    <div className="text-[11px] uppercase tracking-[0.2em] rpg-text-muted font-rpg-heading">Wager</div>
+                    <div className="text-[11px] uppercase tracking-[0.15em] rpg-text-muted">Bet</div>
                     <div className="mt-1 text-2xl font-black rpg-text">${activeBet}</div>
-                    <div className="text-xs font-bold rpg-text-muted">Current bet</div>
+                    <div className="text-xs font-bold rpg-text-muted">Current</div>
                   </div>
                   <div className="rpg-stone-panel p-4">
-                    <div className="text-[11px] uppercase tracking-[0.2em] rpg-text-muted font-rpg-heading">Arena</div>
+                    <div className="text-[11px] uppercase tracking-[0.15em] rpg-text-muted">Arena</div>
                     <div className="mt-1 text-2xl font-black rpg-text">10</div>
-                    <div className="text-xs font-bold rpg-text-muted">Max warriors</div>
+                    <div className="text-xs font-bold rpg-text-muted">Max players</div>
                   </div>
                   <div className="rpg-stone-panel p-4">
-                    <div className="text-[11px] uppercase tracking-[0.2em] rpg-text-muted font-rpg-heading">Coin</div>
+                    <div className="text-[11px] uppercase tracking-[0.15em] rpg-text-muted">Coin</div>
                     <div className="mt-1 text-2xl font-black rpg-gold">$0.10</div>
-                    <div className="text-xs font-bold rpg-text-muted">Per drop</div>
+                    <div className="text-xs font-bold rpg-text-muted">Value</div>
                   </div>
                 </div>
               </div>
               <div className="xl:w-72 rpg-stone-panel p-5">
                 <div className="flex items-center justify-between mb-5">
                   <div>
-                    <div className="text-xs rpg-text-muted font-rpg-heading tracking-widest">Status</div>
-                    <div className="font-black rpg-gold-bright text-lg font-rpg-heading">READY</div>
+                    <div className="text-xs rpg-text-muted tracking-widest uppercase">Status</div>
+                    <div className="font-black rpg-gold-bright text-lg">READY</div>
                   </div>
-                  <div className="h-12 w-12 rounded-lg flex items-center justify-center rpg-panel rpg-torch">
+                  <div className="h-12 w-12 rounded-md flex items-center justify-center rpg-panel">
                     <span className="rpg-title text-xl">{userInitial}</span>
                   </div>
                 </div>
                 <div className="space-y-3 rpg-parchment-inset p-4">
                   <div className="flex items-center justify-between gap-4">
-                    <span className="text-sm rpg-text-muted font-rpg-heading">Mode</span>
+                    <span className="text-sm rpg-text-muted">Mode</span>
                     <span className={`text-sm font-black ${isDemo ? 'rpg-gold-bright' : 'rpg-crimson'}`}>{isDemo ? 'Demo' : 'Pro'}</span>
                   </div>
                   <div className="flex items-center justify-between gap-4">
-                    <span className="text-sm rpg-text-muted font-rpg-heading">Treasury</span>
+                    <span className="text-sm rpg-text-muted">Balance</span>
                     <span className="text-sm font-black rpg-text">${activeBalance.toFixed(2)}</span>
                   </div>
                   <div className="flex items-center justify-between gap-4">
-                    <span className="text-sm rpg-text-muted font-rpg-heading">Wager</span>
+                    <span className="text-sm rpg-text-muted">Bet</span>
                     <span className="text-sm font-black rpg-text">${activeBet}</span>
                   </div>
                 </div>
@@ -277,9 +277,9 @@ export default function Dashboard() {
             <div className="flex items-start justify-between gap-4 mb-5">
               <div>
                 <div className="rpg-subtitle text-xs">
-                  Battle Console
+                  Match Console
                 </div>
-                <h2 className="rpg-title text-3xl mt-1">{isDemo ? 'Demo Match' : 'Quick Match'}</h2>
+                <h2 className="rpg-title text-2xl mt-1">{isDemo ? 'Demo Match' : 'Quick Match'}</h2>
               </div>
               <span className={`px-3 py-1 rounded-md text-xs font-black border font-rpg-heading tracking-widest ${
                 isDemo
@@ -292,8 +292,8 @@ export default function Dashboard() {
 
             <div className="space-y-4">
               <div>
-                <label className="text-xs rpg-text-muted font-rpg-heading tracking-widest uppercase">
-                  {isDemo ? 'Wager (Demo $, min $1)' : 'Wager (USDT, min $1)'}
+                <label className="text-xs rpg-text-muted tracking-widest uppercase">
+                  {isDemo ? 'Bet Amount (Demo $, min $1)' : 'Bet Amount (USDT, min $1)'}
                 </label>
                 <input
                   type="number"

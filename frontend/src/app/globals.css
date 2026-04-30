@@ -67,12 +67,10 @@
 
 body {
   background:
-    radial-gradient(ellipse at 50% 0%, rgba(212, 160, 74, 0.06) 0%, transparent 60%),
-    radial-gradient(ellipse at 50% 100%, rgba(150, 35, 35, 0.05) 0%, transparent 70%),
+    radial-gradient(ellipse at 50% 0%, rgba(212, 160, 74, 0.04) 0%, transparent 65%),
     var(--rpg-bg);
   color: var(--rpg-text);
-  font-family: var(--font-cormorant), Georgia, serif;
-  font-size: 1.05rem;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
 /* ── RPG typography & utility classes ──────────────────────────────────── */
@@ -81,24 +79,18 @@ body {
 
 .rpg-title {
   font-family: var(--font-cinzel), Georgia, serif;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  background: linear-gradient(180deg, #f5c265 0%, #d4a04a 50%, #8b5a2b 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
-  filter: drop-shadow(0 0 12px rgba(212, 160, 74, 0.25));
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--rpg-gold-bright);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6);
 }
 
 .rpg-subtitle {
   font-family: var(--font-cinzel), Georgia, serif;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--rpg-gold);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
 .rpg-text { color: var(--rpg-text); }
@@ -107,64 +99,31 @@ body {
 .rpg-gold-bright { color: var(--rpg-gold-bright); }
 .rpg-crimson { color: var(--rpg-crimson-bright); }
 
-/* Parchment-style panel: aged paper inside a leather frame */
+/* Indie 2D-RPG panel: simple warm brown frame, no royal ornaments */
 .rpg-panel {
   position: relative;
-  background:
-    radial-gradient(ellipse at 30% 0%, rgba(255, 240, 200, 0.05) 0%, transparent 60%),
-    radial-gradient(ellipse at 70% 100%, rgba(0, 0, 0, 0.3) 0%, transparent 60%),
-    linear-gradient(180deg, #2a1f15 0%, #1c1410 100%);
-  border: 2px solid var(--rpg-copper);
-  border-radius: 8px;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 230, 180, 0.08),
-    inset 0 0 0 1px rgba(0, 0, 0, 0.4),
-    0 6px 16px rgba(0, 0, 0, 0.6),
-    0 0 24px rgba(212, 160, 74, 0.06);
-}
-.rpg-panel::before,
-.rpg-panel::after {
-  content: "";
-  position: absolute;
-  width: 18px;
-  height: 18px;
-  background:
-    linear-gradient(135deg, var(--rpg-gold) 0%, var(--rpg-copper) 100%);
-  border: 1px solid rgba(0, 0, 0, 0.5);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
-  pointer-events: none;
-}
-.rpg-panel::before {
-  top: -4px;
-  left: -4px;
-  clip-path: polygon(0 0, 100% 0, 100% 30%, 30% 30%, 30% 100%, 0 100%);
-}
-.rpg-panel::after {
-  bottom: -4px;
-  right: -4px;
-  clip-path: polygon(70% 0, 100% 0, 100% 100%, 0 100%, 0 70%, 70% 70%);
-}
-
-/* Stone panel — heavier, more brutal */
-.rpg-stone-panel {
-  background:
-    linear-gradient(180deg, #3a3530 0%, #1f1c19 100%);
-  border: 2px solid #1a1714;
+  background: linear-gradient(180deg, #251a12 0%, #1a1410 100%);
+  border: 1px solid #5a4028;
   border-radius: 6px;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    inset 0 -2px 0 rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 220, 180, 0.04),
     0 4px 10px rgba(0, 0, 0, 0.5);
 }
 
-/* Parchment-on-leather: lighter inset */
+/* Inset stat tile — subtle warm gray */
+.rpg-stone-panel {
+  background: linear-gradient(180deg, #2a221b 0%, #1d1712 100%);
+  border: 1px solid #3a2c1f;
+  border-radius: 5px;
+  box-shadow: inset 0 1px 0 rgba(255, 230, 180, 0.04);
+}
+
+/* Inset input/details panel */
 .rpg-parchment-inset {
-  background:
-    radial-gradient(ellipse at 50% 50%, rgba(232, 215, 177, 0.08) 0%, transparent 70%),
-    linear-gradient(180deg, #1c1610 0%, #0e0a08 100%);
-  border: 1px solid rgba(212, 160, 74, 0.25);
-  border-radius: 6px;
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5);
+  background: #15100c;
+  border: 1px solid #2a1f15;
+  border-radius: 5px;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
 }
 
 /* Ornamental divider with center diamond */
@@ -182,16 +141,13 @@ body {
   background: linear-gradient(90deg, transparent 0%, var(--rpg-copper) 50%, transparent 100%);
 }
 
-/* Torch flicker animation */
+/* Subtle torch breathe (less flickery, more ambient) */
 @keyframes torch-flicker {
-  0%, 100% { opacity: 1; filter: brightness(1); }
-  20% { opacity: 0.96; filter: brightness(0.95); }
-  40% { opacity: 1; filter: brightness(1.05); }
-  60% { opacity: 0.92; filter: brightness(0.9); }
-  80% { opacity: 1; filter: brightness(1.02); }
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.04); }
 }
 .rpg-torch {
-  animation: torch-flicker 2.4s ease-in-out infinite;
+  animation: torch-flicker 4s ease-in-out infinite;
 }
 
 /* Slow pulse for mystical UI elements */
