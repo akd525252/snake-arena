@@ -91,29 +91,17 @@ export default function DepositPage() {
               </div>
             </div>
 
-            {/* Fee disclosure card */}
+            {/* Deposit summary card */}
             {quote && (
               <div className="p-5 rounded-2xl bg-[#0a0a12] border border-[#1a1a2e]">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-bold text-white">Fee Breakdown</h3>
-                  <span className="text-[10px] text-[#6a6a7a] uppercase tracking-wider">Estimated</span>
+                  <h3 className="text-sm font-bold text-white">Deposit Summary</h3>
+                  <span className="text-[10px] text-[#00f0ff] uppercase tracking-wider">{quote.networkLabel}</span>
                 </div>
                 <div className="space-y-2 text-sm">
-                  <Row label="Deposit amount" value={`$${quote.amount.toFixed(2)}`} />
                   <Row
-                    label={`NOWPayments processing fee (~${quote.processorFeeRate}%)`}
-                    value={`$${quote.processorFee.toFixed(2)}`}
-                    muted
-                  />
-                  <Row
-                    label={`${quote.networkLabel} network fee`}
-                    value={`$${quote.networkFee.toFixed(2)}`}
-                    muted
-                  />
-                  <div className="h-px bg-[#1a1a2e] my-2" />
-                  <Row
-                    label="You will pay (approx)"
-                    value={`$${quote.youPay.toFixed(2)}`}
+                    label="You will send (approx)"
+                    value={`~${quote.youPayApprox.toFixed(2)} USDT`}
                     bold
                   />
                   <Row
@@ -123,8 +111,7 @@ export default function DepositPage() {
                   />
                 </div>
                 <p className="text-[11px] text-[#5a5a6a] mt-3 leading-relaxed">
-                  Fees are charged by NOWPayments and the BEP20 network — not by Snake Arena.
-                  Final amount may vary slightly with live network rates.
+                  {quote.note}
                 </p>
               </div>
             )}

@@ -9,14 +9,14 @@ const router = Router();
 
 const NOWPAYMENTS_API = 'https://api.nowpayments.io/v1';
 const MIN_DEPOSIT = 5;
-// NOWPayments charges ~0.5% on invoice payments + the user pays the on-chain network fee.
-// We use BEP20 (BNB Smart Chain) USDT — much cheaper gas than TRC20 historically.
-const NOWPAY_FEE_RATE = 0.005;
-const BEP20_NETWORK_FEE_USD = 0.50;
+// NOWPayments handles the conversion to BEP20 USDT and absorbs its merchant fee on
+// our side — the user pays only the USDT amount the invoice quotes (≈ deposit amount
+// at current USDT/USD rate). The BSC gas to broadcast the transfer is paid from the
+// user's own BNB balance and is not part of the invoice total.
 const PAY_CURRENCY = 'usdtbsc'; // NOWPayments code for USDT BEP20 (BSC)
 
 // ============================================
-// User: Quote deposit fees (so user sees estimate before paying)
+// User: Quote deposit fees (so user sees what they'll actually pay)
 // ============================================
 router.get('/deposit/quote', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -25,17 +25,14 @@ router.get('/deposit/quote', authenticateToken, async (req: AuthRequest, res: Re
       res.status(400).json({ error: `Minimum deposit is ${MIN_DEPOSIT} USDT` });
       return;
     }
-    const processorFee = +(amount * NOWPAY_FEE_RATE).toFixed(2);
-    const networkFee = BEP20_NETWORK_FEE_USD;
-    const youPay = +(amount + processorFee + networkFee).toFixed(2);
+    // The invoice will show the user roughly `amount` USDT. The exact figure depends on
+    // the live USDT/USD rate at the moment NOWPayments generates the invoice.
     res.json({
       amount,
-      processorFee,
-      processorFeeRate: NOWPAY_FEE_RATE * 100,
-      networkFee,
+      youPayApprox: amount,
       networkLabel: 'BEP20',
-      youPay,
       youReceiveInWallet: amount,
+      note: 'NOWPayments will display the exact USDT amount to send. A small BSC gas fee is paid from your own BNB balance.',
     });
   } catch (err) {
     console.error('Deposit quote error:', err);
