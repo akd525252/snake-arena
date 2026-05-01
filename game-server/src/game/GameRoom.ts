@@ -118,7 +118,43 @@ export function removePlayerFromRoom(room: GameRoom, playerId: string): void {
 export function startGame(room: GameRoom): void {
   room.status = 'active';
   room.startTime = Date.now();
-  console.log(`[startGame] room=${room.id.slice(0, 8)} players=${room.players.size}`);
+
+  // ─── Dynamic arena scaling ─────────────────────────────────────────────
+  // Smaller match (3 players) = tighter arena for instant action; bigger
+  // match (10 players) = roomier arena so it doesn't feel cramped at start.
+  // Linear interp between MIN/MAX scale based on starting player count.
+  const playerCount = room.players.size;
+  const minPC = CONFIG.MIN_PLAYERS;
+  const maxPC = CONFIG.MAX_PLAYERS;
+  const t = Math.max(0, Math.min(1, (playerCount - minPC) / Math.max(1, maxPC - minPC)));
+  // Scale arena radius from ~70% (small match) to 100% (full match)
+  const scale = 0.70 + 0.30 * t;
+  const dynamicRadius = Math.round(CONFIG.ARENA_RADIUS * scale);
+  room.arenaRadius = dynamicRadius;
+  // Keep center consistent with the new larger bounds (so spawns stay inside)
+  room.arenaCenterX = dynamicRadius + 50;
+  room.arenaCenterY = dynamicRadius + 50;
+  console.log(`[startGame] room=${room.id.slice(0, 8)} players=${playerCount} arenaRadius=${dynamicRadius}px (scale=${scale.toFixed(2)})`);
+
+  // Re-spawn each player so their initial position is inside the new bounds.
+  // (addPlayerToRoom was called before the dynamic radius was applied.)
+  for (const [, player] of room.players) {
+    const spawnAngle = Math.random() * Math.PI * 2;
+    const spawnR = room.arenaRadius * (0.20 + Math.random() * 0.50);
+    const x = room.arenaCenterX + Math.cos(spawnAngle) * spawnR;
+    const y = room.arenaCenterY + Math.sin(spawnAngle) * spawnR;
+    const facingAngle = spawnAngle + Math.PI;
+    const segments: Position[] = [];
+    for (let i = 0; i < CONFIG.SNAKE_INITIAL_LENGTH; i++) {
+      segments.push({
+        x: x - Math.cos(facingAngle) * i * CONFIG.SNAKE_SEGMENT_SIZE,
+        y: y - Math.sin(facingAngle) * i * CONFIG.SNAKE_SEGMENT_SIZE,
+      });
+    }
+    player.snake.segments = segments;
+    player.snake.angle = facingAngle;
+    player.snake.targetAngle = facingAngle;
+  }
 
   for (let i = 0; i < CONFIG.INITIAL_COINS; i++) {
     spawnCoin(room);
@@ -488,13 +524,12 @@ function killPlayer(room: GameRoom, player: Player, killerId?: string): void {
     });
   }
 
-  const coinCount = Math.max(
-    1,
-    Math.min(
-      CONFIG.DEATH_DROP_MAX_COINS,
-      Math.max(player.snake.coinsCollected, Math.ceil(dropValue / CONFIG.COIN_VALUE / 5)),
-    ),
-  );
+  // Death-drop coins are denominated at DEATH_COIN_VALUE ($0.90 each by default).
+  // We compute the raw coin count from total drop value, then clamp by
+  // DEATH_DROP_MAX_COINS for visual sanity. The remaining cents (if any) are
+  // folded into perCoin so total dropped value is conserved.
+  const rawCount = Math.max(1, Math.ceil(dropValue / CONFIG.DEATH_COIN_VALUE));
+  const coinCount = Math.min(CONFIG.DEATH_DROP_MAX_COINS, rawCount);
   const perCoin = dropValue > 0 ? dropValue / coinCount : 0;
 
   const droppedCoins: { id: string; position: Position }[] = [];

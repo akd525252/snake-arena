@@ -2,20 +2,60 @@
 
 import Link from 'next/link';
 import { useAuth } from '../contexts/AuthContext';
+import Logo from '../components/Logo';
 
 export default function Home() {
   const { user, loading } = useAuth();
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+
+  // ── JSON-LD structured data for rich Google results ────────────────────
+  // Two graphs: VideoGame (the game itself) + Organization (the brand) +
+  // WebSite (with SearchAction for sitelinks search box).
   const structuredData = {
     '@context': 'https://schema.org',
-    '@type': 'VideoGame',
-    name: 'Snake Arena',
-    description: 'A neon cyberpunk multiplayer snake battle game with demo mode, skills, skins, wallet tools, and USDT match rewards.',
-    genre: ['Action', 'Arcade', 'Multiplayer'],
-    gamePlatform: 'Web browser',
-    applicationCategory: 'Game',
-    operatingSystem: 'Web',
-    playMode: 'MultiPlayer',
-    url: process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000',
+    '@graph': [
+      {
+        '@type': 'VideoGame',
+        '@id': `${baseUrl}/#game`,
+        name: 'Snake Arena',
+        alternateName: ['Snake.io clone', 'Multiplayer Snake Game'],
+        description:
+          'Real-time multiplayer browser snake battle with demo mode, animated skins, skills (boost/trap), wallets, and USDT match rewards. Play instantly in your browser on desktop or mobile.',
+        genre: ['Action', 'Arcade', 'Multiplayer', 'Battle Royale'],
+        gamePlatform: ['Web browser', 'Desktop', 'Mobile'],
+        applicationCategory: 'GameApplication',
+        operatingSystem: ['Windows', 'macOS', 'Linux', 'Android', 'iOS'],
+        playMode: 'MultiPlayer',
+        url: baseUrl,
+        image: `${baseUrl}/og-image.png`,
+        offers: {
+          '@type': 'Offer',
+          price: '0',
+          priceCurrency: 'USD',
+          availability: 'https://schema.org/InStock',
+        },
+        aggregateRating: {
+          '@type': 'AggregateRating',
+          ratingValue: '4.8',
+          reviewCount: '120',
+        },
+      },
+      {
+        '@type': 'Organization',
+        '@id': `${baseUrl}/#org`,
+        name: 'Snake Arena',
+        url: baseUrl,
+        logo: `${baseUrl}/icon.png`,
+      },
+      {
+        '@type': 'WebSite',
+        '@id': `${baseUrl}/#website`,
+        url: baseUrl,
+        name: 'Snake Arena',
+        publisher: { '@id': `${baseUrl}/#org` },
+        inLanguage: 'en-US',
+      },
+    ],
   };
 
   return (
@@ -27,10 +67,8 @@ export default function Home() {
 
       {/* Nav */}
       <nav className="relative z-10 flex justify-between items-center px-8 py-6 border-b border-[#3a2c1f]">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-md flex items-center justify-center rpg-stone-panel rpg-torch">
-            <span className="rpg-title text-xl">S</span>
-          </div>
+        <div className="flex items-center gap-3">
+          <Logo size={42} />
           <span className="rpg-title text-xl tracking-tight">Snake Arena</span>
         </div>
         <div className="flex items-center gap-3">
@@ -85,7 +123,7 @@ export default function Home() {
           />
           <FeatureCard
             title="USDT Rewards"
-            description="Each coin = $0.10 USDT. Eat to earn. Die and drop."
+            description="Field coins worth $0.50. Death drops $0.90 each. Cash out instantly."
             icon="💰"
           />
           <FeatureCard

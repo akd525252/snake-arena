@@ -348,3 +348,122 @@ canvas {
 ::-webkit-scrollbar-thumb:hover {
   background: #a86a3a;
 }
+
+/* ────────────────────────────────────────────────────────────────────
+   SNAKE ARENA LOGO ANIMATIONS
+   The <Logo /> component (components/Logo.tsx) uses these classes.
+   Three layered animations: ring rotation, breathing pulse, tongue flick,
+   tail flame flicker. All disabled if user prefers reduced motion.
+   ──────────────────────────────────────────────────────────────────── */
+
+@keyframes sa-logo-rotate {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes sa-logo-pulse {
+  0%, 100% { opacity: 0.5; stroke-width: 2; }
+  50%      { opacity: 0.95; stroke-width: 3; }
+}
+
+@keyframes sa-logo-tongue {
+  0%, 100% { transform: translateX(0); opacity: 1; }
+  50%      { transform: translateX(-3px); opacity: 0.4; }
+}
+
+@keyframes sa-logo-flame {
+  0%, 100% { opacity: 0.7; transform: translateY(0) scale(1); }
+  50%      { opacity: 1; transform: translateY(-2px) scale(1.15); }
+}
+
+/* Group classes used inside <Logo /> */
+.sa-logo-animated .sa-ring-rotate {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: sa-logo-rotate 18s linear infinite;
+}
+.sa-logo-animated .sa-ring-pulse {
+  animation: sa-logo-pulse 2.4s ease-in-out infinite;
+}
+.sa-logo-animated .sa-tongue-flick {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: sa-logo-tongue 1.5s ease-in-out infinite;
+}
+.sa-logo-animated .sa-tail-flame {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: sa-logo-flame 0.9s ease-in-out infinite;
+}
+
+/* Respect reduced-motion accessibility setting */
+@media (prefers-reduced-motion: reduce) {
+  .sa-logo-animated .sa-ring-rotate,
+  .sa-logo-animated .sa-ring-pulse,
+  .sa-logo-animated .sa-tongue-flick,
+  .sa-logo-animated .sa-tail-flame {
+    animation: none;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────
+   ANIMATED LOADING BAR
+   Used by <Loader />. The bar is a gradient that sweeps left-to-right
+   with a glowing edge. Looks like an enchanted progress meter.
+   ──────────────────────────────────────────────────────────────────── */
+
+@keyframes sa-loader-sweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
+@keyframes sa-loader-glow {
+  0%, 100% { box-shadow: 0 0 12px 0 rgba(245, 194, 101, 0.4); }
+  50%      { box-shadow: 0 0 24px 4px rgba(245, 194, 101, 0.8); }
+}
+
+.sa-loader-bar {
+  position: relative;
+  height: 6px;
+  width: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #1a1410 0%, #2a1f15 50%, #1a1410 100%);
+  border: 1px solid #3a2c1f;
+  overflow: hidden;
+}
+.sa-loader-bar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 35%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    #d4a04a 30%,
+    #f5c265 50%,
+    #d4a04a 70%,
+    transparent 100%
+  );
+  animation: sa-loader-sweep 1.6s ease-in-out infinite,
+             sa-loader-glow 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sa-loader-bar::before {
+    animation: none;
+    width: 100%;
+    background: linear-gradient(90deg, #d4a04a, #f5c265, #d4a04a);
+  }
+}
+
+@keyframes sa-loader-title-glow {
+  0%, 100% { text-shadow: 0 0 8px rgba(245, 194, 101, 0.3); }
+  50%      { text-shadow: 0 0 18px rgba(245, 194, 101, 0.7), 0 0 4px rgba(245, 194, 101, 0.9); }
+}
+.sa-loader-title {
+  animation: sa-loader-title-glow 2.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sa-loader-title { animation: none; }
+}

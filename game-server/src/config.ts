@@ -16,10 +16,14 @@ export const CONFIG = {
   MIN_ARENA_RADIUS: 150, // floor so the arena never fully closes before time runs out
   TURN_SPEED: 0.18, // radians per tick (~206°/sec at 20 tps) — snappy responsive turning
 
-  COIN_VALUE: 0.10,
-  COIN_SPAWN_INTERVAL: 3000, // ms
-  MAX_COINS: 20,          // reduced — coins are now rare money items
-  INITIAL_COINS: 5,       // fewer starting coins
+  // Coin values (USDT). Field coins are picked up from the arena floor;
+  // death coins drop when a snake dies. Field is the lower-value currency,
+  // death is the high-stakes reward for kills.
+  COIN_VALUE: 0.50,        // field coin worth $0.50 (was $0.10)
+  DEATH_COIN_VALUE: 0.90,  // each death-drop coin is worth $0.90
+  COIN_SPAWN_INTERVAL: 7000, // ms — slower spawn (was 3s) so coins stay rare
+  MAX_COINS: 8,            // tighter cap (was 20) so coins remain a treasure
+  INITIAL_COINS: 3,        // fewer starting coins (was 5)
 
   // Food (cosmetic, dense, grows snake, no money)
   FOOD_SPAWN_INTERVAL: 800, // ms — food respawns quickly for dense coverage

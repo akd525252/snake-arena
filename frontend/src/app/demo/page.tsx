@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState, Suspense } from 'react';
-import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
 import MatchmakingLobby, { LobbyPlayer } from '../../components/MatchmakingLobby';
+import Loader from '../../components/Loader';
 
 interface GameResult {
   username: string;
@@ -140,7 +140,7 @@ function DemoPageInner() {
   }, [user, loading, router, betAmount]);
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center rpg-text-muted">Loading...</div>;
+    return <Loader message="Entering the demo arena…" />;
   }
 
   return (
@@ -221,12 +221,12 @@ function DemoPageInner() {
               >
                 Stay in Demo
               </button>
-              <Link
-                href="/dashboard"
+              <button
+                onClick={() => { window.location.href = '/dashboard'; }}
                 className="btn-rpg btn-rpg-danger flex-1 text-center"
               >
                 Leave & Lose
-              </Link>
+              </button>
             </div>
           </div>
         </div>
@@ -243,18 +243,19 @@ function DemoPageInner() {
             )}
             {!deathInfo.killerName && <p className="text-sm rpg-text-muted mb-6">You hit the wall</p>}
             <div className="flex flex-col gap-3">
+              {/* Hard navigation guarantees fresh WS / matchmaker state. */}
               <button
-                onClick={() => window.location.reload()}
+                onClick={() => { window.location.href = `/demo?bet=${betAmount}`; }}
                 className="btn-rpg btn-rpg-amber btn-rpg-block"
               >
                 Play Again
               </button>
-              <Link
-                href="/dashboard"
+              <button
+                onClick={() => { window.location.href = '/dashboard'; }}
                 className="btn-rpg btn-rpg-block text-center"
               >
                 Back to Dashboard
-              </Link>
+              </button>
               <button
                 onClick={() => setDeathInfo(null)}
                 className="w-full py-3 rounded-md rpg-text-muted hover:rpg-gold-bright text-sm font-rpg-heading tracking-wider transition-colors"
@@ -290,17 +291,17 @@ function DemoPageInner() {
             </div>
             <div className="flex gap-3">
               <button
-                onClick={() => window.location.reload()}
+                onClick={() => { window.location.href = `/demo?bet=${betAmount}`; }}
                 className="btn-rpg btn-rpg-amber flex-1"
               >
                 Play Again
               </button>
-              <Link
-                href="/dashboard"
+              <button
+                onClick={() => { window.location.href = '/dashboard'; }}
                 className="btn-rpg flex-1 text-center"
               >
                 Dashboard
-              </Link>
+              </button>
             </div>
           </div>
         </div>
@@ -311,7 +312,7 @@ function DemoPageInner() {
 
 export default function DemoPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-[#6a6a7a]">Loading...</div>}>
+    <Suspense fallback={<Loader message="Entering the demo arena…" />}>
       <DemoPageInner />
     </Suspense>
   );

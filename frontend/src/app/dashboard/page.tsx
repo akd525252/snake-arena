@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
 import { api, Transaction, Skin } from '../../lib/api';
 import ModeSelectionModal from '../../components/ModeSelectionModal';
+import Loader from '../../components/Loader';
+import Logo from '../../components/Logo';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -80,11 +82,7 @@ export default function Dashboard() {
   }, [user?.id]);
 
   if (loading || !user) {
-    return (
-      <div className="flex flex-1 items-center justify-center min-h-screen">
-        <div className="rpg-text-muted">Loading...</div>
-      </div>
-    );
+    return <Loader message="Loading your arena…" />;
   }
 
   const showModeModal = !modeModalDismissed && !user.game_mode;
@@ -141,9 +139,7 @@ export default function Dashboard() {
       {/* Nav */}
       <nav className="relative z-10 flex justify-between items-center px-4 sm:px-6 lg:px-8 py-4 border-b border-[#3a2c1f] bg-[#0e0a08]/80 backdrop-blur">
         <Link href="/" className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-lg flex items-center justify-center text-xl rpg-stone-panel rpg-torch">
-            <span className="rpg-title text-2xl">S</span>
-          </div>
+          <Logo size={44} />
           <div className="min-w-0">
             <div className="rpg-title text-lg sm:text-xl truncate">Snake Arena</div>
             <div className="hidden sm:block text-xs rpg-text-muted">Multiplayer snake arena</div>

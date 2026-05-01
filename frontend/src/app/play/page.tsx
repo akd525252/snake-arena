@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { useAuth } from '../../contexts/AuthContext';
 import MatchmakingLobby, { LobbyPlayer } from '../../components/MatchmakingLobby';
+import Loader from '../../components/Loader';
 
 interface GameResult {
   username: string;
@@ -156,7 +156,7 @@ function PlayPageInner() {
   }, [user, loading, router, betAmount]);
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center rpg-text-muted">Loading...</div>;
+    return <Loader message="Entering the arena…" />;
   }
 
   return (
@@ -234,12 +234,12 @@ function PlayPageInner() {
               >
                 Stay in Match
               </button>
-              <Link
-                href="/dashboard"
+              <button
+                onClick={() => { window.location.href = '/dashboard'; }}
                 className="btn-rpg btn-rpg-danger flex-1 text-center"
               >
                 Leave & Lose
-              </Link>
+              </button>
             </div>
           </div>
         </div>
@@ -256,18 +256,23 @@ function PlayPageInner() {
             )}
             {!deathInfo.killerName && <p className="text-sm rpg-text-muted mb-6">You hit the wall</p>}
             <div className="flex flex-col gap-3">
+              {/* Hard navigation (window.location) — guarantees a fresh WS session,
+                  cleared matchmaker state, and refreshed wallet balance. Soft
+                  navigation (router.push / Link) caused the dreaded
+                  "match not found / still searching" loop because the prior
+                  game's session lingered in memory until a real refresh. */}
               <button
-                onClick={() => window.location.reload()}
+                onClick={() => { window.location.href = `/play?bet=${betAmount}`; }}
                 className="btn-rpg btn-rpg-amber btn-rpg-block"
               >
                 Play Again
               </button>
-              <Link
-                href="/dashboard"
+              <button
+                onClick={() => { window.location.href = '/dashboard'; }}
                 className="btn-rpg btn-rpg-block text-center"
               >
                 Back to Dashboard
-              </Link>
+              </button>
               <button
                 onClick={() => setDeathInfo(null)}
                 className="w-full py-3 rounded-md rpg-text-muted hover:rpg-gold-bright text-sm font-rpg-heading tracking-wider transition-colors"
@@ -300,12 +305,20 @@ function PlayPageInner() {
                 </div>
               ))}
             </div>
-            <Link
-              href="/dashboard"
+            {/* Hard navigation: full page reload guarantees fresh balance,
+                cleared WS state, and no stale matchmaker entries. */}
+            <button
+              onClick={() => { window.location.href = '/dashboard'; }}
               className="btn-rpg btn-rpg-amber btn-rpg-block text-center"
             >
               Back to Dashboard
-            </Link>
+            </button>
+            <button
+              onClick={() => { window.location.href = `/play?bet=${betAmount}`; }}
+              className="btn-rpg btn-rpg-block mt-3 text-center"
+            >
+              Play Again
+            </button>
           </div>
         </div>
       )}
@@ -315,7 +328,7 @@ function PlayPageInner() {
 
 export default function PlayPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center rpg-text-muted">Loading...</div>}>
+    <Suspense fallback={<Loader message="Entering the arena…" />}>
       <PlayPageInner />
     </Suspense>
   );

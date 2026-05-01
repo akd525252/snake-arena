@@ -143,11 +143,16 @@ export class GameScene extends Phaser.Scene {
   private playerCloneSprites = new Map<string, Phaser.GameObjects.Graphics[]>();
   private lastBoostStates = new Map<string, boolean>();
 
-  // Skin definitions
+  // Skin definitions — keep in sync with database/schema.sql skins table.
+  // primary = body color, secondary = scale highlight, glow = boost trail tint.
   private readonly SKIN_COLORS: Record<string, { primary: number; secondary: number; glow: number }> = {
-    neon_cyber: { primary: 0x00f0ff, secondary: 0xff00a0, glow: 0x00f0ff },
-    inferno_drake: { primary: 0xff4500, secondary: 0xff8c00, glow: 0xff4500 },
-    void_shadow: { primary: 0x4a2080, secondary: 0x8b00ff, glow: 0x8b00ff },
+    neon_cyber:     { primary: 0x00f0ff, secondary: 0xff00a0, glow: 0x00f0ff },
+    inferno_drake:  { primary: 0xff4500, secondary: 0xff8c00, glow: 0xff5210 },
+    void_shadow:    { primary: 0x4a2080, secondary: 0x8b00ff, glow: 0x8b00ff },
+    venom_serpent:  { primary: 0x39ff14, secondary: 0x0f3d0f, glow: 0x6cff3c },
+    frost_wyrm:     { primary: 0xa5f3fc, secondary: 0x0ea5e9, glow: 0xb8e6ff },
+    golden_emperor: { primary: 0xffd700, secondary: 0xb8860b, glow: 0xfff48c },
+    cyber_samurai:  { primary: 0xe2e8f0, secondary: 0xdc2626, glow: 0xff5466 },
   };
 
   // Callbacks
@@ -583,14 +588,16 @@ export class GameScene extends Phaser.Scene {
   update() {
     this.frameCount++;
 
-    // Animated arena overlay — expensive on low-end. Skip entirely on low tier;
-    // throttle to every 2nd frame on mid tier; full 60fps on high.
+    // Animated arena overlay — vivid theme animations (fireflies, embers,
+    // dust motes, circuit pulses). Throttled on lower tiers to keep perf
+    // smooth: high=every frame, mid=every 2nd, low=every 4th.
     if (this.qualityTier === 'high') {
       this.drawArenaAnim(performance.now());
     } else if (this.qualityTier === 'mid' && (this.frameCount & 1) === 0) {
       this.drawArenaAnim(performance.now());
+    } else if (this.qualityTier === 'low' && (this.frameCount & 3) === 0) {
+      this.drawArenaAnim(performance.now());
     }
-    // low: no arena animation
 
     // Mouse steering (desktop only — mobile uses joystick)
     if (!this.isMobile && this.cameraTarget && this.input.activePointer) {
@@ -889,10 +896,24 @@ export class GameScene extends Phaser.Scene {
       state.arena.centerY !== this.arenaCenterY ||
       state.arena.radius !== this.arenaRadius
     ) {
+      const wasFirst = this.arenaRadius === 500; // default before first server update
       this.arenaCenterX = state.arena.centerX;
       this.arenaCenterY = state.arena.centerY;
       this.arenaRadius = state.arena.radius;
       this.drawArena();
+
+      // Scale camera zoom inversely with arena radius on the FIRST arena
+      // update (= match start). Smaller arena (3p) gets a tighter, more
+      // intimate camera; bigger arena (10p) zooms out so the player can
+      // see more of the action. Avoid retroactively zooming when the
+      // shrink interval steps the arena down mid-match.
+      if (wasFirst) {
+        const baseZoom = this.isMobile ? 1.2 : 1.6;
+        const tierFactor = this.qualityTier === 'low' ? 0.85 : this.qualityTier === 'mid' ? 0.95 : 1;
+        // Reference radius = 500 → factor 1.0; smaller → tighter zoom (>1), bigger → wider zoom (<1).
+        const sizeFactor = Math.max(0.85, Math.min(1.20, 500 / Math.max(1, this.arenaRadius)));
+        this.cameras.main.setZoom(baseZoom * tierFactor * sizeFactor);
+      }
     }
 
     // Track real server tick interval — adapt interp duration if server lags
@@ -1326,52 +1347,120 @@ export class GameScene extends Phaser.Scene {
     const wasBoosting = this.lastBoostStates.get(p.id) || false;
     const isBoosting = p.boosted;
 
-    // Neon Cyber: Longer neon trail when boosting
-    if (p.skinId === 'neon_cyber' && isBoosting) {
-      this.updateBoostTrails(p, skin.glow, 5); // 5 trail segments
+    // Per-skin signature boost effect. Each skin uses the same trail engine
+    // but with its own color, particle count, size, and blend mode for a
+    // distinct visual identity. Trails are drawn BEHIND the tail (in motion-
+    // opposite direction) at depth 11 (above body) so they're always visible.
+    if (isBoosting) {
+      switch (p.skinId) {
+        case 'inferno_drake':
+          // Fiery embers: large additive orange/red puffs
+          this.updateBoostTrails(p, 0xff5210, 0xffaa20, 8, 14, true);
+          break;
+        case 'neon_cyber':
+          // Cyan ribbon trail
+          this.updateBoostTrails(p, 0x00f0ff, 0x80ffff, 7, 12, true);
+          break;
+        case 'venom_serpent':
+          // Toxic green poison drops
+          this.updateBoostTrails(p, 0x39ff14, 0x0f3d0f, 6, 12, true);
+          break;
+        case 'frost_wyrm':
+          // Icy crystal shards
+          this.updateBoostTrails(p, 0xb8e6ff, 0x0ea5e9, 7, 11, true);
+          break;
+        case 'golden_emperor':
+          // Gold sparkles
+          this.updateBoostTrails(p, 0xffd700, 0xfff48c, 7, 12, true);
+          break;
+        case 'cyber_samurai':
+          // Crimson slash streaks
+          this.updateBoostTrails(p, 0xff5466, 0xffd6da, 6, 11, true);
+          break;
+        case 'void_shadow':
+          // Purple smoke (shadow clones spawn separately on boost start)
+          this.updateBoostTrails(p, 0x8b00ff, 0xc080ff, 7, 12, true);
+          if (!wasBoosting && p.segments.length > 0) this.spawnShadowClones(p);
+          break;
+        default:
+          // Generic glow trail for any unknown / un-styled skin
+          this.updateBoostTrails(p, skin.glow, skin.primary, 5, 10, false);
+      }
     }
 
-    // Inferno Drake: Fire particles when boosting
-    if (p.skinId === 'inferno_drake' && isBoosting) {
-      this.updateBoostTrails(p, 0xff4500, 6); // Bigger fire trail
-    }
-
-    // Void Shadow: Shadow clones when boosting starts
-    if (p.skinId === 'void_shadow' && isBoosting && !wasBoosting && p.segments.length > 0) {
-      this.spawnShadowClones(p);
-    }
-
-    // Update boost state for next frame
+    // Update boost state tracker
     this.lastBoostStates.set(p.id, isBoosting);
 
-    // Clean up trails when not boosting (except inferno which fades naturally)
-    if (!isBoosting && p.skinId !== 'inferno_drake') {
+    // Clean up trails as soon as boost ends (no stale particles)
+    if (!isBoosting && wasBoosting) {
       this.clearBoostTrails(p.id);
     }
   }
 
-  private updateBoostTrails(p: RemotePlayer, color: number, count: number): void {
+  /**
+   * Render a visible particle trail BEHIND the snake's tail in the opposite
+   * direction of motion. Trails are at depth 11 (above body, depth 10) so
+   * they're always visible. Each particle fades with index. When `additive`
+   * is true the trail uses additive blend for a glowy fire/neon look.
+   *
+   * @param p          remote player snapshot
+   * @param colorCore  inner (smaller) particle color
+   * @param colorGlow  outer (larger) glow color
+   * @param count      number of particles in the trail
+   * @param baseSize   radius of the largest particle in the trail (px)
+   * @param additive   use ADD blend mode (good for fire/neon, bad for solid)
+   */
+  private updateBoostTrails(
+    p: RemotePlayer,
+    colorCore: number,
+    colorGlow: number,
+    count: number,
+    baseSize: number,
+    additive: boolean,
+  ): void {
     const trails = this.playerBoostTrails.get(p.id) || [];
-    if (p.segments.length === 0) return;
+    if (p.segments.length < 2) return;
 
-    // Trails ride along the snake's actual body so they curve with it.
+    // Compute the motion-opposite unit vector from the last two body segments.
+    // This tells us which way is "behind" the tail right now.
+    const tail = p.segments[p.segments.length - 1];
+    const beforeTail = p.segments[p.segments.length - 2];
+    let bx = tail.x - beforeTail.x;
+    let by = tail.y - beforeTail.y;
+    const blen = Math.hypot(bx, by) || 1;
+    bx /= blen;
+    by /= blen;
+
+    // Slight perpendicular wobble so the trail looks lively, not rigid.
+    const tNow = performance.now() / 1000;
+    const wobble = Math.sin(tNow * 18 + (p.segments.length * 0.3)) * 4;
+    const px = -by; // perpendicular
+    const py = bx;
+
     for (let i = 0; i < count; i++) {
       let trail = trails[i];
       if (!trail) {
-        trail = this.add.graphics().setDepth(9); // just behind snake body
+        trail = this.add.graphics().setDepth(11); // ABOVE snake body
+        if (additive) trail.setBlendMode(Phaser.BlendModes.ADD);
         trails[i] = trail;
       }
       trail.clear();
 
-      // Pick a body segment proportional to trail index (skipping the head)
-      const segIdx = Math.min(
-        p.segments.length - 1,
-        Math.max(1, Math.floor(1 + i * 1.4)),
-      );
-      const seg = p.segments[segIdx];
-      const alpha = 1 - i / count;
-      trail.fillStyle(color, alpha * 0.7);
-      trail.fillCircle(seg.x, seg.y, 9 - i * 0.6);
+      // Each particle steps further behind the tail.
+      const step = 9 + i * 6;
+      const wob = (i & 1) === 0 ? wobble : -wobble;
+      const cx = tail.x + bx * step + px * wob * 0.3;
+      const cy = tail.y + by * step + py * wob * 0.3;
+
+      const fade = 1 - i / count; // 1 → 0
+      const r = Math.max(2, baseSize - i * 1.3);
+
+      // Outer glow
+      trail.fillStyle(colorGlow, fade * 0.45);
+      trail.fillCircle(cx, cy, r * 1.5);
+      // Inner core
+      trail.fillStyle(colorCore, fade * 0.85);
+      trail.fillCircle(cx, cy, r);
     }
 
     this.playerBoostTrails.set(p.id, trails);
@@ -1586,7 +1675,14 @@ export class GameScene extends Phaser.Scene {
     this.arenaGfx.strokeCircle(cx, cy, r - 2);
   }
 
-  /** Animated overlay drawn every frame on top of the static arena. */
+  /**
+   * Rich per-theme animated overlay drawn every frame on top of the static
+   * arena. Each theme has distinct moving elements (lava flow, fireflies,
+   * dust motes, circuit pulses) so the ground always feels alive. Particle
+   * counts and wave-frequencies are tuned for visibility without GPU strain.
+   * Skipped on low-tier; throttled to every 2nd frame on mid-tier (handled
+   * upstream in update()).
+   */
   private drawArenaAnim(now: number) {
     if (!this.arenaAnimGfx) return;
     this.arenaAnimGfx.clear();
@@ -1594,27 +1690,150 @@ export class GameScene extends Phaser.Scene {
     const cy = this.arenaCenterY;
     const r = this.arenaRadius;
     const tSec = now / 1000;
+    const g = this.arenaAnimGfx;
 
     if (this.mapTheme === 'lava') {
-      // Pulsing red glow on inner ring
-      const pulse = 0.4 + 0.35 * Math.sin(tSec * 2);
-      this.arenaAnimGfx.lineStyle(6, 0xff5510, pulse * 0.5);
-      this.arenaAnimGfx.strokeCircle(cx, cy, r - 4);
-    } else if (this.mapTheme === 'tile') {
-      // Sweeping cyan ring
-      const ringR = (r * 0.4) + (r * 0.5) * (0.5 + 0.5 * Math.sin(tSec * 0.7));
-      this.arenaAnimGfx.lineStyle(1.5, 0x00d8ff, 0.3);
-      this.arenaAnimGfx.strokeCircle(cx, cy, ringR);
+      // ── LAVA: flowing molten cells + rising embers + pulsing glow ──────
+      // Two pulsing inner rings — outer slow, inner fast
+      const pulseOuter = 0.5 + 0.4 * Math.sin(tSec * 1.4);
+      g.lineStyle(8, 0xff3010, pulseOuter * 0.45);
+      g.strokeCircle(cx, cy, r - 4);
+      const pulseInner = 0.5 + 0.4 * Math.sin(tSec * 2.6);
+      g.lineStyle(4, 0xff8030, pulseInner * 0.35);
+      g.strokeCircle(cx, cy, r - 14);
+
+      // Rising ember particles — deterministic so they're stable across frames
+      const emberCount = 28;
+      for (let i = 0; i < emberCount; i++) {
+        // Each ember has its own seed: angle, radius, vertical offset, speed
+        const seed = i * 137.508; // golden-angle distribution
+        const ang = seed % (Math.PI * 2);
+        const baseRad = (i % 7) / 7 * (r - 30);
+        const lifeT = ((tSec * 0.6 + i * 0.3) % 2.5) / 2.5; // 0..1 loop
+        const rise = lifeT * 60; // upward motion in pixels
+        const emberR = baseRad + rise * 0.2;
+        if (emberR > r - 5) continue;
+        const ex = cx + Math.cos(ang) * emberR;
+        const ey = cy + Math.sin(ang) * emberR - rise;
+        const fade = (1 - lifeT) * 0.85;
+        const size = 2 + (1 - lifeT) * 2;
+        g.fillStyle(0xffaa20, fade * 0.6);
+        g.fillCircle(ex, ey, size * 1.6);
+        g.fillStyle(0xff5010, fade);
+        g.fillCircle(ex, ey, size);
+      }
+
+      // Animated cracked-floor flow: faint glowing arcs that sweep slowly
+      const arcAng = (tSec * 0.3) % (Math.PI * 2);
+      g.lineStyle(2, 0xff6020, 0.35);
+      g.beginPath();
+      g.arc(cx, cy, r * 0.55, arcAng, arcAng + Math.PI * 0.4, false);
+      g.strokePath();
+      g.lineStyle(1.5, 0xff9040, 0.25);
+      g.beginPath();
+      g.arc(cx, cy, r * 0.78, arcAng + Math.PI, arcAng + Math.PI + Math.PI * 0.3, false);
+      g.strokePath();
+
     } else if (this.mapTheme === 'grass') {
-      // Slow soft pulse on border
-      const pulse = 0.5 + 0.3 * Math.sin(tSec * 1.2);
-      this.arenaAnimGfx.lineStyle(2, 0x3fbe5c, pulse * 0.4);
-      this.arenaAnimGfx.strokeCircle(cx, cy, r - 1);
+      // ── GRASS: drifting fireflies + wind ripple + soft pulse ────────────
+      // Border breathing pulse
+      const pulseBorder = 0.5 + 0.35 * Math.sin(tSec * 1.2);
+      g.lineStyle(3, 0x6cff8c, pulseBorder * 0.4);
+      g.strokeCircle(cx, cy, r - 2);
+
+      // Wind ripple — expanding ring that loops
+      const rippleT = (tSec * 0.5) % 1;
+      const rippleR = rippleT * r;
+      g.lineStyle(2, 0x88ee88, (1 - rippleT) * 0.35);
+      g.strokeCircle(cx, cy, rippleR);
+
+      // Fireflies — drifting glowing dots
+      const flyCount = 22;
+      for (let i = 0; i < flyCount; i++) {
+        const seed = i * 73.91;
+        const baseAng = (seed % (Math.PI * 2));
+        const baseRad = ((i * 41) % 100) / 100 * (r - 30);
+        // Drift in a slow circular orbit + small wave
+        const driftAng = baseAng + tSec * 0.15 * (i % 2 === 0 ? 1 : -1);
+        const wobble = Math.sin(tSec * 1.8 + i) * 4;
+        const fx = cx + Math.cos(driftAng) * baseRad + wobble;
+        const fy = cy + Math.sin(driftAng) * baseRad + Math.cos(tSec * 1.5 + i) * 4;
+        // Twinkle
+        const blink = 0.5 + 0.5 * Math.sin(tSec * 3 + i * 0.7);
+        g.fillStyle(0xfff58a, blink * 0.55);
+        g.fillCircle(fx, fy, 3.2);
+        g.fillStyle(0xffff60, blink * 0.85);
+        g.fillCircle(fx, fy, 1.4);
+      }
+
+    } else if (this.mapTheme === 'rock') {
+      // ── ROCK: drifting dust motes + occasional sparkles + shimmer ──────
+      // Subtle border pulse
+      const pulse = 0.4 + 0.25 * Math.sin(tSec * 0.7);
+      g.lineStyle(2, 0xa8aab0, pulse * 0.35);
+      g.strokeCircle(cx, cy, r - 2);
+
+      // Drifting dust motes
+      const dustCount = 30;
+      for (let i = 0; i < dustCount; i++) {
+        const seed = i * 91.7;
+        const baseAng = (seed % (Math.PI * 2));
+        const baseRad = ((i * 23) % 100) / 100 * (r - 30);
+        const drift = tSec * 0.25 * (i % 2 === 0 ? 1 : -1);
+        const ang = baseAng + drift;
+        const wob = Math.sin(tSec * 0.8 + i * 0.5) * 3;
+        const dx = cx + Math.cos(ang) * baseRad;
+        const dy = cy + Math.sin(ang) * baseRad + wob;
+        const fade = 0.3 + 0.2 * Math.sin(tSec * 1.2 + i);
+        g.fillStyle(0xc8cad0, fade);
+        g.fillCircle(dx, dy, 1.3);
+      }
+
+      // Occasional sparkle stars (twinkle in/out)
+      for (let i = 0; i < 8; i++) {
+        const seed = i * 211.4;
+        const ang = seed % (Math.PI * 2);
+        const rad = ((i * 53) % 100) / 100 * (r - 40);
+        const blink = Math.max(0, Math.sin(tSec * 1.5 + i * 0.9));
+        if (blink < 0.6) continue;
+        const sx = cx + Math.cos(ang) * rad;
+        const sy = cy + Math.sin(ang) * rad;
+        const intensity = (blink - 0.6) * 2.5;
+        g.fillStyle(0xfff8e0, intensity * 0.7);
+        g.fillCircle(sx, sy, 2.5);
+        g.lineStyle(1, 0xfff8e0, intensity * 0.5);
+        g.lineBetween(sx - 5, sy, sx + 5, sy);
+        g.lineBetween(sx, sy - 5, sx, sy + 5);
+      }
+
     } else {
-      // rock — minimal: subtle dust shimmer (very faint pulse)
-      const pulse = 0.4 + 0.2 * Math.sin(tSec * 0.8);
-      this.arenaAnimGfx.lineStyle(1, 0x808389, pulse * 0.25);
-      this.arenaAnimGfx.strokeCircle(cx, cy, r - 1);
+      // ── TILE (cyber): circuit pulses + energy ring + accent dots ───────
+      // Sweeping cyan ring
+      const ringR = (r * 0.35) + (r * 0.55) * (0.5 + 0.5 * Math.sin(tSec * 0.7));
+      g.lineStyle(2, 0x00d8ff, 0.4);
+      g.strokeCircle(cx, cy, ringR);
+
+      // Counter-rotating accent ring
+      const ring2R = (r * 0.25) + (r * 0.45) * (0.5 + 0.5 * Math.cos(tSec * 0.5));
+      g.lineStyle(1.5, 0x33eaff, 0.3);
+      g.strokeCircle(cx, cy, ring2R);
+
+      // Pulsing accent dots at orbital positions
+      const dotCount = 12;
+      for (let i = 0; i < dotCount; i++) {
+        const ang = (i / dotCount) * Math.PI * 2 + tSec * 0.2;
+        const rad = r * 0.85;
+        const dx = cx + Math.cos(ang) * rad;
+        const dy = cy + Math.sin(ang) * rad;
+        const blink = 0.5 + 0.5 * Math.sin(tSec * 4 + i * 0.5);
+        g.fillStyle(0x2cc8ff, blink * 0.7);
+        g.fillCircle(dx, dy, 2.5);
+      }
+
+      // Border breathing
+      const borderPulse = 0.6 + 0.3 * Math.sin(tSec * 2);
+      g.lineStyle(2, 0x33eaff, borderPulse * 0.4);
+      g.strokeCircle(cx, cy, r);
     }
   }
 

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../lib/api';
+import Loader from '../../components/Loader';
 
 const COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_FILE_MB = 2;
@@ -136,11 +137,7 @@ export default function ProfilePage() {
   };
 
   if (loading || !user) {
-    return (
-      <div className="flex flex-1 items-center justify-center min-h-screen">
-        <div className="rpg-text-muted">Loading...</div>
-      </div>
-    );
+    return <Loader message="Loading profile…" />;
   }
 
   return (
