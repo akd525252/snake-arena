@@ -69,6 +69,7 @@ export class GameScene extends Phaser.Scene {
   private killNotificationText!: Phaser.GameObjects.Text;
   private killNotificationTween: Phaser.Tweens.Tween | null = null;
   private muteBtn!: Phaser.GameObjects.Text;
+  private qualityBtn!: Phaser.GameObjects.Text;
 
   // Sound FX (synthesized via Web Audio — no asset files)
   private sfx = new SoundFX();
@@ -324,6 +325,41 @@ export class GameScene extends Phaser.Scene {
       });
     });
 
+    // Quality toggle button — click to cycle low/mid/high.
+    // Positioned to the LEFT of the mute button (bottom-right corner area).
+    // Persists choice in localStorage; auto-applied on next match via ?quality=
+    // override path OR the saved setting is checked by detectQualityTier().
+    const qualityLabel = (t: 'low' | 'mid' | 'high') =>
+      t === 'low' ? '◐ LOW' : t === 'mid' ? '◑ MID' : '◉ HIGH';
+    this.qualityBtn = this.add.text(this.scale.width - 54, this.scale.height - 16, qualityLabel(this.qualityTier), {
+      fontFamily: 'monospace',
+      fontSize: this.isMobile ? '11px' : '13px',
+      color: '#d4a04a',
+      backgroundColor: '#1a1410cc',
+      padding: { x: 6, y: 3 },
+    }).setOrigin(1, 1).setScrollFactor(0).setDepth(102).setInteractive({ useHandCursor: true });
+
+    this.qualityBtn.on('pointerdown', () => {
+      // Cycle: high → mid → low → high
+      this.qualityTier = this.qualityTier === 'high' ? 'mid' : this.qualityTier === 'mid' ? 'low' : 'high';
+      this.qualityBtn.setText(qualityLabel(this.qualityTier));
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('snake_quality', this.qualityTier);
+      }
+      // Instantly clear all boost trails and clone sprites if downshifting to low
+      if (this.qualityTier === 'low') {
+        for (const id of this.playerBoostTrails.keys()) this.clearBoostTrails(id);
+        for (const id of this.playerCloneSprites.keys()) this.clearShadowClones(id);
+      }
+      // Visual feedback
+      this.tweens.add({
+        targets: this.qualityBtn,
+        scale: { from: 1.15, to: 1 },
+        duration: 150,
+        ease: 'Sine.out',
+      });
+    });
+
     // Input — keyboard for boost/trap, mouse/touch for steering
     this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.trapKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
@@ -380,7 +416,15 @@ export class GameScene extends Phaser.Scene {
       this.qualityTier = 'high';
     }
 
-    // Allow URL override for testing: ?quality=low|mid|high
+    // User's saved preference from the in-game quality button wins over auto-detect.
+    try {
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('snake_quality') : null;
+      if (saved === 'low' || saved === 'mid' || saved === 'high') {
+        this.qualityTier = saved;
+      }
+    } catch { /* noop */ }
+
+    // URL override (highest priority, for testing): ?quality=low|mid|high
     try {
       const params = new URLSearchParams(window.location.search);
       const q = params.get('quality');
@@ -936,8 +980,9 @@ export class GameScene extends Phaser.Scene {
     this.leaderboardText.setText(lbLines.join('\n'));
     this.leaderboardText.setX(this.scale.width - 16);
 
-    // Reposition mute button in case of resize
+    // Reposition bottom-right HUD (mute + quality) in case of resize/orientation change
     this.muteBtn.setPosition(this.scale.width - 16, this.scale.height - 16);
+    this.qualityBtn.setPosition(this.scale.width - 54, this.scale.height - 16);
 
     const aliveCount = state.players.filter(p => p.alive).length;
     this.aliveText.setText(`Alive: ${aliveCount}/${state.players.length}`);
