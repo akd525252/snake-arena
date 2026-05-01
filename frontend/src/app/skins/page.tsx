@@ -82,6 +82,74 @@ const SKIN_SKILLS: Record<string, SkinSkill[]> = {
       icon: '✕',
     },
   ],
+  venom_serpent: [
+    {
+      name: 'Toxic Trail',
+      description: 'Leaves behind acid puddles that damage opponents who touch them',
+      icon: '☠',
+    },
+    {
+      name: 'Acid Drop',
+      description: 'Death coins appear as bubbling acid pools worth +20% more',
+      icon: '☢',
+    },
+    {
+      name: 'Sludge Boost',
+      description: 'Green toxic cloud trail that obscures vision briefly',
+      icon: '☁',
+    },
+  ],
+  frost_wyrm: [
+    {
+      name: 'Icy Aura',
+      description: 'Nearby enemies move 10% slower when close to you',
+      icon: '❄',
+    },
+    {
+      name: 'Frozen Death',
+      description: 'Shatters into ice shards on death that others can collect',
+      icon: '✦',
+    },
+    {
+      name: 'Cryo Breath',
+      description: 'Brief freezing wave on boost that slows coins nearby',
+      icon: '🌨',
+    },
+  ],
+  golden_emperor: [
+    {
+      name: 'Magnate',
+      description: 'Coins you drop on death are worth 50% more than standard',
+      icon: '💎',
+    },
+    {
+      name: 'Gilded Aura',
+      description: 'Radiant gold particles sparkle as you move',
+      icon: '✨',
+    },
+    {
+      name: 'Royal Decree',
+      description: 'Entry emote: golden crown briefly appears above head',
+      icon: '👑',
+    },
+  ],
+  cyber_samurai: [
+    {
+      name: 'Katana Slash',
+      description: 'Sharp blade trail effect when boosting at max speed',
+      icon: '⚔',
+    },
+    {
+      name: 'Honor Death',
+      description: 'Clean slice death animation — no messy particles',
+      icon: '✦',
+    },
+    {
+      name: 'Steel Discipline',
+      description: 'Boost costs 20% less to activate and maintain',
+      icon: '⛓',
+    },
+  ],
 };
 
 const DEFAULT_SKIN: Skin = {

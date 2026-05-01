@@ -109,27 +109,15 @@ export default function MatchmakingLobby({
 
   const slots = Math.max(maxPlayers, minPlayers);
 
-  // Static class strings for Tailwind JIT
+  // Avatar accent classes (only avatarBorder + avatarGradient are actively used)
   const accent = isDemo
     ? {
-        textTitle: 'text-[#ffb800]',
-        slotBorder: 'border-[#ffb800]',
-        slotBg: 'bg-[#ffb800]/10',
-        slotShadow: 'shadow-[#ffb800]/20',
-        avatarBorder: 'border-[#ffcc33]',
-        avatarGradient: 'from-[#cc8800] to-[#996600]',
-        textSub: 'text-[#ffcc33]',
-        bar: 'bg-[#ffb800]',
+        avatarBorder: 'border-[#f5c265]',
+        avatarGradient: 'from-[#a86a3a] to-[#5a3a1a]',
       }
     : {
-        textTitle: 'text-[#00f0ff]',
-        slotBorder: 'border-[#00f0ff]',
-        slotBg: 'bg-[#00f0ff]/10',
-        slotShadow: 'shadow-[#00f0ff]/20',
-        avatarBorder: 'border-[#00f0ff]',
-        avatarGradient: 'from-[#0088aa] to-[#004455]',
-        textSub: 'text-[#00f0ff]',
-        bar: 'bg-[#00f0ff]',
+        avatarBorder: 'border-[#d83a3a]',
+        avatarGradient: 'from-[#962323] to-[#4a0c0c]',
       };
 
   return (
@@ -203,7 +191,7 @@ export default function MatchmakingLobby({
                 style={{ animationDelay: `${i * 120}ms` }}
               >
                 <div className={`w-14 h-14 rounded-full overflow-hidden border-2 mb-2 relative ${
-                  isMe ? accent.avatarBorder : showSkin ? 'border-[2px]' : 'border-[#3a3a4a]'
+                  isMe ? accent.avatarBorder : showSkin ? 'border-[2px]' : 'border-[#3a2c1f]'
                 }`}
                   style={showSkin && !isMe ? { borderColor: skinColor! } : {}}
                 >
@@ -212,8 +200,8 @@ export default function MatchmakingLobby({
                     <img src={p.avatar} alt={p.username} className="w-full h-full object-cover" />
                   ) : (
                     <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${
-                      isMe ? accent.avatarGradient : showSkin ? 'from-[#1a1a2e] to-[#0f0f1a]' : 'from-[#3a3a4a] to-[#2a2a3a]'
-                    } text-white font-black text-xl`}
+                      isMe ? accent.avatarGradient : showSkin ? 'from-[#1c1410] to-[#0e0a08]' : 'from-[#3a2c1f] to-[#1a1410]'
+                    } rpg-text font-black text-xl`}
                       style={showSkin ? { color: skinColor! } : {}}
                     >
                       {p.username.charAt(0).toUpperCase()}

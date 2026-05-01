@@ -102,15 +102,15 @@ CREATE TABLE IF NOT EXISTS payment_invoices (
 -- ============================================
 -- Indexes
 -- ============================================
-CREATE INDEX idx_transactions_user_id ON transactions(user_id);
-CREATE INDEX idx_transactions_type ON transactions(type);
-CREATE INDEX idx_withdrawal_requests_user_id ON withdrawal_requests(user_id);
-CREATE INDEX idx_withdrawal_requests_status ON withdrawal_requests(status);
-CREATE INDEX idx_matches_status ON matches(status);
-CREATE INDEX idx_match_players_match_id ON match_players(match_id);
-CREATE INDEX idx_match_players_user_id ON match_players(user_id);
-CREATE INDEX idx_payment_invoices_user_id ON payment_invoices(user_id);
-CREATE INDEX idx_payment_invoices_invoice_id ON payment_invoices(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type);
+CREATE INDEX IF NOT EXISTS idx_withdrawal_requests_user_id ON withdrawal_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_withdrawal_requests_status ON withdrawal_requests(status);
+CREATE INDEX IF NOT EXISTS idx_matches_status ON matches(status);
+CREATE INDEX IF NOT EXISTS idx_match_players_match_id ON match_players(match_id);
+CREATE INDEX IF NOT EXISTS idx_match_players_user_id ON match_players(user_id);
+CREATE INDEX IF NOT EXISTS idx_payment_invoices_user_id ON payment_invoices(user_id);
+CREATE INDEX IF NOT EXISTS idx_payment_invoices_invoice_id ON payment_invoices(invoice_id);
 
 -- ============================================
 -- RLS Policies (Row Level Security)
@@ -124,26 +124,32 @@ ALTER TABLE match_players ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payment_invoices ENABLE ROW LEVEL SECURITY;
 
 -- Users can read their own data
+DROP POLICY IF EXISTS "Users can read own data" ON users;
 CREATE POLICY "Users can read own data" ON users
   FOR SELECT USING (auth.uid() = id);
 
 -- Users can update their own profile
+DROP POLICY IF EXISTS "Users can update own data" ON users;
 CREATE POLICY "Users can update own data" ON users
   FOR UPDATE USING (auth.uid() = id);
 
 -- Users can read their own wallet
+DROP POLICY IF EXISTS "Users can read own wallet" ON wallets;
 CREATE POLICY "Users can read own wallet" ON wallets
   FOR SELECT USING (auth.uid() = user_id);
 
 -- Users can read their own transactions
+DROP POLICY IF EXISTS "Users can read own transactions" ON transactions;
 CREATE POLICY "Users can read own transactions" ON transactions
   FOR SELECT USING (auth.uid() = user_id);
 
 -- Users can read their own withdrawal requests
+DROP POLICY IF EXISTS "Users can read own withdrawals" ON withdrawal_requests;
 CREATE POLICY "Users can read own withdrawals" ON withdrawal_requests
   FOR SELECT USING (auth.uid() = user_id);
 
 -- Users can insert withdrawal requests
+DROP POLICY IF EXISTS "Users can create withdrawals" ON withdrawal_requests;
 CREATE POLICY "Users can create withdrawals" ON withdrawal_requests
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
@@ -161,6 +167,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+DROP TRIGGER IF EXISTS on_user_created ON users;
 CREATE TRIGGER on_user_created
   AFTER INSERT ON users
   FOR EACH ROW
@@ -202,13 +209,19 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS username_changed_at TIMESTAMPTZ;
 INSERT INTO skins (skin_key, name, description, price_usd, tier, color_primary, color_secondary) VALUES
   ('neon_cyber', 'Neon Cyber', 'Glowing cyan-to-magenta gradient with circuit patterns', 0.50, 'standard', '#00f0ff', '#ff00a0'),
   ('inferno_drake', 'Inferno Drake', 'Lava-red to ember crackle with fire particle effects', 1.00, 'standard', '#ff4500', '#ff8c00'),
-  ('void_shadow', 'Void Shadow', 'Dark void energy with purple aura and shadow clone skill', 2.00, 'premium', '#1a0a2e', '#8b00ff')
+  ('void_shadow', 'Void Shadow', 'Dark void energy with purple aura and shadow clone skill', 2.00, 'premium', '#1a0a2e', '#8b00ff'),
+  ('venom_serpent', 'Venom Serpent', 'Toxic green sludge trail that leaves acid pools behind', 0.75, 'standard', '#39ff14', '#0f3d0f'),
+  ('frost_wyrm', 'Frost Wyrm', 'Icy blue crystalline snake with freezing breath effect', 1.25, 'standard', '#a5f3fc', '#0ea5e9'),
+  ('golden_emperor', 'Golden Emperor', 'Radiant gold snake that drops larger value coins', 3.00, 'premium', '#ffd700', '#b8860b'),
+  ('cyber_samurai', 'Cyber Samurai', 'Sharp katana-strike death effect with slash trails', 1.50, 'standard', '#e2e8f0', '#dc2626')
 ON CONFLICT (skin_key) DO NOTHING;
 
 -- RLS for skins (readable by all, writable only by service role)
 ALTER TABLE skins ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Skins are viewable by everyone" ON skins;
 CREATE POLICY "Skins are viewable by everyone" ON skins FOR SELECT USING (true);
 
 -- RLS for user_skins (users see their own)
 ALTER TABLE user_skins ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can read own skins" ON user_skins;
 CREATE POLICY "Users can read own skins" ON user_skins FOR SELECT USING (auth.uid() = user_id);

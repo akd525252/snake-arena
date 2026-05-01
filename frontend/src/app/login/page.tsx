@@ -116,7 +116,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={busy}
-            className="btn-rpg btn-rpg-primary btn-rpg-block btn-rpg-lg disabled:opacity-50"
+            className="btn-rpg btn-rpg-amber btn-rpg-block btn-rpg-lg disabled:opacity-50"
           >
             {busy ? 'Loading...' : mode === 'login' ? 'Login' : 'Sign Up'}
           </button>

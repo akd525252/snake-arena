@@ -71,6 +71,18 @@ body {
     var(--rpg-bg);
   color: var(--rpg-text);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
+  /* Prevent overscroll/pull-to-refresh on mobile during gameplay */
+  overscroll-behavior: none;
+  /* Avoid tap-highlight flash on iOS */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Phaser canvas — prevent browser gestures from interfering with the game */
+canvas {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  display: block;
 }
 
 /* ── RPG typography & utility classes ──────────────────────────────────── */
@@ -159,25 +171,25 @@ body {
   animation: rpg-pulse 3.5s ease-in-out infinite;
 }
 
-/* Cyberpunk glow utilities */
+/* RPG glow utilities (legacy cyberpunk names retained for backward compat) */
 .glow-cyan {
-  box-shadow: 0 0 12px rgba(0, 240, 255, 0.25), 0 0 4px rgba(0, 240, 255, 0.4);
+  box-shadow: 0 0 12px rgba(212, 160, 74, 0.3), 0 0 4px rgba(245, 194, 101, 0.5);
 }
 .glow-lime {
-  box-shadow: 0 0 12px rgba(57, 255, 20, 0.25), 0 0 4px rgba(57, 255, 20, 0.4);
+  box-shadow: 0 0 12px rgba(58, 122, 58, 0.3), 0 0 4px rgba(109, 184, 109, 0.5);
 }
 .glow-pink {
-  box-shadow: 0 0 12px rgba(255, 46, 99, 0.25), 0 0 4px rgba(255, 46, 99, 0.4);
+  box-shadow: 0 0 12px rgba(150, 35, 35, 0.3), 0 0 4px rgba(216, 58, 58, 0.5);
 }
 .glow-border-cyan {
-  border-color: rgba(0, 240, 255, 0.35);
-  box-shadow: 0 0 8px rgba(0, 240, 255, 0.1), inset 0 0 8px rgba(0, 240, 255, 0.03);
+  border-color: rgba(168, 106, 58, 0.5);
+  box-shadow: 0 0 8px rgba(212, 160, 74, 0.15), inset 0 0 8px rgba(212, 160, 74, 0.05);
 }
 .text-glow-cyan {
-  text-shadow: 0 0 8px rgba(0, 240, 255, 0.5), 0 0 16px rgba(0, 240, 255, 0.2);
+  text-shadow: 0 0 8px rgba(245, 194, 101, 0.5), 0 0 16px rgba(212, 160, 74, 0.25);
 }
 .text-glow-lime {
-  text-shadow: 0 0 8px rgba(57, 255, 20, 0.5), 0 0 16px rgba(57, 255, 20, 0.2);
+  text-shadow: 0 0 8px rgba(109, 184, 109, 0.5), 0 0 16px rgba(58, 122, 58, 0.25);
 }
 
 /* Scanline overlay for retro gaming feel */
@@ -199,7 +211,8 @@ body {
 /* ── RPG-style buttons ─────────────────────────────────────────────────
    Beveled, tactile, with inner highlight + outer shadow.
    Use as: <button class="btn-rpg btn-rpg-primary">Play</button>
-   Variants: -primary (cyan), -success (lime), -danger (pink), -amber, -dark
+   Variants: -primary (gold), -success (emerald), -danger (crimson), -amber, -dark
+   ALL VARIANTS USE RPG WARM PALETTE — no cyan/lime/pink.
 */
 .btn-rpg {
   position: relative;
@@ -208,41 +221,42 @@ body {
   justify-content: center;
   gap: 0.5rem;
   padding: 0.7rem 1.4rem;
-  font-family: monospace;
-  font-weight: 800;
-  letter-spacing: 0.06em;
+  font-family: var(--font-cinzel), Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
-  border-radius: 8px;
-  border: 2px solid rgba(0, 0, 0, 0.6);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.7);
+  border-radius: 6px;
+  border: 2px solid #1a1208;
   cursor: pointer;
   transition: transform 80ms ease, filter 120ms ease, box-shadow 120ms ease;
   user-select: none;
-  /* Default surface (dark stone-like) */
-  background: linear-gradient(180deg, #2a2a3a 0%, #15151f 60%, #0d0d14 100%);
-  color: #e0e0e8;
+  /* Default surface — aged leather / dark wood */
+  background: linear-gradient(180deg, #3a2c1f 0%, #2a1f15 55%, #1a1208 100%);
+  color: var(--rpg-text);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    inset 0 -2px 0 rgba(0, 0, 0, 0.6),
-    0 3px 0 rgba(0, 0, 0, 0.5),
-    0 6px 12px rgba(0, 0, 0, 0.4);
+    inset 0 1px 0 rgba(255, 220, 170, 0.10),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.5),
+    0 3px 0 #1a1208,
+    0 6px 12px rgba(0, 0, 0, 0.5);
 }
 .btn-rpg::before {
   content: "";
   position: absolute;
   inset: 2px;
-  border-radius: 6px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, transparent 40%);
+  border-radius: 5px;
+  background: linear-gradient(180deg, rgba(255, 220, 170, 0.06) 0%, transparent 40%);
   pointer-events: none;
 }
 .btn-rpg:hover {
   filter: brightness(1.15);
   transform: translateY(-1px);
+  color: var(--rpg-gold-bright);
 }
 .btn-rpg:active {
   transform: translateY(2px);
   box-shadow:
-    inset 0 2px 4px rgba(0, 0, 0, 0.6),
+    inset 0 2px 4px rgba(0, 0, 0, 0.7),
     0 1px 0 rgba(0, 0, 0, 0.5);
 }
 .btn-rpg:disabled {
@@ -251,61 +265,65 @@ body {
   transform: none;
 }
 
-/* Primary — cyan */
+/* Primary — polished gold (was cyan) */
 .btn-rpg-primary {
-  background: linear-gradient(180deg, #00f0ff 0%, #0099b8 55%, #006278 100%);
-  color: #001216;
-  border-color: #003c47;
-  text-shadow: 0 1px 0 rgba(0, 240, 255, 0.4);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.4),
-    inset 0 -2px 0 rgba(0, 0, 0, 0.4),
-    0 3px 0 #003c47,
-    0 0 14px rgba(0, 240, 255, 0.4),
-    0 6px 14px rgba(0, 0, 0, 0.45);
-}
-
-/* Success — lime green */
-.btn-rpg-success {
-  background: linear-gradient(180deg, #50ff5a 0%, #20a033 55%, #14661f 100%);
-  color: #051a08;
-  border-color: #093912;
-  text-shadow: 0 1px 0 rgba(80, 255, 90, 0.4);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.4),
-    inset 0 -2px 0 rgba(0, 0, 0, 0.4),
-    0 3px 0 #093912,
-    0 0 14px rgba(57, 255, 20, 0.4),
-    0 6px 14px rgba(0, 0, 0, 0.45);
-}
-
-/* Danger — pink/red */
-.btn-rpg-danger {
-  background: linear-gradient(180deg, #ff5577 0%, #c01a3c 55%, #7a0f25 100%);
-  color: #1a0309;
-  border-color: #4a0814;
-  text-shadow: 0 1px 0 rgba(255, 100, 130, 0.4);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.4),
-    inset 0 -2px 0 rgba(0, 0, 0, 0.4),
-    0 3px 0 #4a0814,
-    0 0 14px rgba(255, 46, 99, 0.4),
-    0 6px 14px rgba(0, 0, 0, 0.45);
-}
-
-/* Amber — gold */
-.btn-rpg-amber {
-  background: linear-gradient(180deg, #ffd060 0%, #c08810 55%, #7a5400 100%);
+  background: linear-gradient(180deg, #f5c265 0%, #c08810 55%, #7a5400 100%);
   color: #1a1100;
   border-color: #4a3300;
-  text-shadow: 0 1px 0 rgba(255, 200, 80, 0.4);
+  text-shadow: 0 1px 0 rgba(255, 220, 150, 0.4);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 1px 0 rgba(255, 240, 200, 0.5),
     inset 0 -2px 0 rgba(0, 0, 0, 0.4),
     0 3px 0 #4a3300,
-    0 0 14px rgba(255, 184, 0, 0.4),
-    0 6px 14px rgba(0, 0, 0, 0.45);
+    0 0 14px rgba(212, 160, 74, 0.35),
+    0 6px 14px rgba(0, 0, 0, 0.5);
 }
+.btn-rpg-primary:hover { color: #1a1100; }
+
+/* Success — mystic emerald (was lime) */
+.btn-rpg-success {
+  background: linear-gradient(180deg, #6db86d 0%, #3a7a3a 55%, #1f4a1f 100%);
+  color: #0a1a0a;
+  border-color: #0e2a0e;
+  text-shadow: 0 1px 0 rgba(150, 220, 150, 0.4);
+  box-shadow:
+    inset 0 1px 0 rgba(220, 255, 220, 0.4),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.4),
+    0 3px 0 #0e2a0e,
+    0 0 14px rgba(58, 122, 58, 0.4),
+    0 6px 14px rgba(0, 0, 0, 0.5);
+}
+.btn-rpg-success:hover { color: #0a1a0a; }
+
+/* Danger — deep crimson blood-red (was pink) */
+.btn-rpg-danger {
+  background: linear-gradient(180deg, #d83a3a 0%, #962323 55%, #4a0c0c 100%);
+  color: #fdebeb;
+  border-color: #2a0808;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.7);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 200, 200, 0.3),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.5),
+    0 3px 0 #2a0808,
+    0 0 14px rgba(150, 35, 35, 0.4),
+    0 6px 14px rgba(0, 0, 0, 0.5);
+}
+.btn-rpg-danger:hover { color: #fff; }
+
+/* Amber — bright gold highlight */
+.btn-rpg-amber {
+  background: linear-gradient(180deg, #ffd87a 0%, #d4a04a 55%, #8a5e1a 100%);
+  color: #1a1100;
+  border-color: #4a3300;
+  text-shadow: 0 1px 0 rgba(255, 230, 170, 0.5);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 245, 210, 0.5),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.4),
+    0 3px 0 #4a3300,
+    0 0 14px rgba(245, 194, 101, 0.4),
+    0 6px 14px rgba(0, 0, 0, 0.5);
+}
+.btn-rpg-amber:hover { color: #1a1100; }
 
 /* Sizes */
 .btn-rpg-sm { padding: 0.4rem 0.9rem; font-size: 0.78rem; border-radius: 6px; }
@@ -315,17 +333,18 @@ body {
 /* Block variant */
 .btn-rpg-block { width: 100%; }
 
-/* Scrollbar styling */
+/* Scrollbar styling — RPG copper */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #05050a;
+  background: #0e0a08;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1a1a2e;
-  border-radius: 3px;
+  background: #3a2c1f;
+  border-radius: 4px;
+  border: 1px solid #1a1208;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #00f0ff40;
+  background: #a86a3a;
 }

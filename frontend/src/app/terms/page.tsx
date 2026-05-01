@@ -98,31 +98,31 @@ const sections = [
 
 export default function TermsPage() {
   return (
-    <main className="min-h-screen bg-[#05050a] text-[#e0e0e8] px-6 py-10">
+    <main className="min-h-screen bg-[#1a1410] px-6 py-10">
       <div className="max-w-4xl mx-auto">
-        <Link href="/" className="inline-flex items-center text-sm text-[#8a8a9a] hover:text-[#00f0ff] mb-8">
+        <Link href="/" className="inline-flex items-center text-sm rpg-text-muted hover:rpg-gold-bright mb-8">
           ← Back to Snake Arena
         </Link>
 
-        <div className="rounded-3xl border border-[#1a1a2e] bg-[#0a0a12]/90 p-8 md:p-10 glow-border-cyan">
-          <div className="inline-flex px-3 py-1 rounded-full bg-[#ff2e63]/10 border border-[#ff2e63]/20 text-[#ff2e63] text-xs font-bold mb-5">
-            Legal
+        <div className="rpg-panel p-8 md:p-10">
+          <div className="inline-flex px-3 py-1 rounded-md border border-[#962323] bg-[#2a0e0e] rpg-crimson text-xs font-rpg-heading tracking-widest mb-5">
+            LEGAL
           </div>
-          <h1 className="text-4xl md:text-5xl font-black text-white mb-4">Terms of Service</h1>
-          <p className="text-[#8a8a9a] leading-7 mb-2">
+          <h1 className="rpg-title text-4xl md:text-5xl mb-4">Terms of Service</h1>
+          <p className="rpg-text leading-7 mb-2">
             These Terms govern your use of Snake Arena, including accounts, demo mode, pro mode, USDT deposits, withdrawals, multiplayer matches, skins, skills, wallets, and related services.
           </p>
-          <p className="text-sm text-[#6a6a7a]">Last updated: April 29, 2026</p>
+          <p className="text-sm rpg-text-muted">Last updated: April 29, 2026</p>
         </div>
 
         <div className="mt-8 space-y-5">
           {sections.map(section => (
-            <section key={section.title} className="rounded-2xl border border-[#1a1a2e] bg-[#0a0a12] p-6">
-              <h2 className="text-xl font-black text-white mb-4">{section.title}</h2>
-              <ul className="space-y-3 text-[#b0b0c0] leading-7">
+            <section key={section.title} className="rpg-panel p-6">
+              <h2 className="rpg-title text-2xl mb-4">{section.title}</h2>
+              <ul className="space-y-3 rpg-text leading-7">
                 {section.body.map(item => (
                   <li key={item} className="flex gap-3">
-                    <span className="mt-2 h-2 w-2 rounded-full bg-[#ff2e63] flex-shrink-0" />
+                    <span className="mt-2 h-2 w-2 rounded-full bg-[#d83a3a] flex-shrink-0" />
                     <span>{item}</span>
                   </li>
                 ))}
@@ -131,7 +131,7 @@ export default function TermsPage() {
           ))}
         </div>
 
-        <div className="mt-8 rounded-2xl border border-[#ffb800]/20 bg-[#ffb800]/10 p-6 text-[#ffcc33] text-sm leading-7">
+        <div className="mt-8 rpg-parchment-inset p-6 rpg-gold-bright text-sm leading-7">
           These Terms are a strong starting point but should be reviewed by a qualified legal professional before public launch, especially because your platform includes crypto payments, withdrawals, skill-based matches, and regional compliance considerations.
         </div>
       </div>

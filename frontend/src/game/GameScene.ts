@@ -68,9 +68,11 @@ export class GameScene extends Phaser.Scene {
   private aliveText!: Phaser.GameObjects.Text;
   private killNotificationText!: Phaser.GameObjects.Text;
   private killNotificationTween: Phaser.Tweens.Tween | null = null;
+  private muteBtn!: Phaser.GameObjects.Text;
 
   // Sound FX (synthesized via Web Audio — no asset files)
   private sfx = new SoundFX();
+  private isMuted = false;
   // Track score / length to detect pickups for sound triggers
   private prevMyScore = 0;
   private prevMyLength = 0;
@@ -111,6 +113,19 @@ export class GameScene extends Phaser.Scene {
   // Zone danger overlay
   private zoneOverlay!: Phaser.GameObjects.Graphics;
   private zoneWarningText!: Phaser.GameObjects.Text;
+
+  // ── Performance tuning ───────────────────────────────────────────
+  // Device quality tier — auto-detected once on create().
+  // low  : mobile + slow CPU/RAM. Skips shadow pass, no smoothing, no arena anim, no tongue
+  // mid  : mobile or modest desktop. Half smoothing, drop shadow on, lighter anim
+  // high : desktop with decent GPU. Full quality (default behavior)
+  private qualityTier: 'low' | 'mid' | 'high' = 'high';
+  // Frame counter used to throttle arena animation on low tier
+  private frameCount = 0;
+  // Cached camera viewport half-extents (in world units) for frustum culling.
+  // Recomputed when zoom/size changes.
+  private viewHalfW = 1000;
+  private viewHalfH = 1000;
 
   // Mobile controls
   private isMobile = false;
@@ -192,6 +207,21 @@ export class GameScene extends Phaser.Scene {
     // Detect mobile
     this.isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
+    // Auto-detect quality tier based on device capability — runs ONCE on scene create
+    this.detectQualityTier();
+
+    // Cap renderer DPR on low/mid tiers to avoid GPU overdraw on hi-DPI mobiles
+    if (this.qualityTier !== 'high') {
+      this.scale.setZoom(1); // no extra scale stacking
+      // Phaser auto-uses devicePixelRatio; clamp it on low-end
+      const renderer = this.game.renderer as Phaser.Renderer.WebGL.WebGLRenderer;
+      if (renderer && 'resolution' in renderer) {
+        // Best effort — reduce internal canvas resolution
+        const targetDPR = this.qualityTier === 'low' ? 1 : Math.min(window.devicePixelRatio || 1, 1.5);
+        try { (renderer as unknown as { resolution: number }).resolution = targetDPR; } catch { /* noop */ }
+      }
+    }
+
     // Arena background — random map theme each match
     const themes: ('grass' | 'lava' | 'rock' | 'tile')[] = ['grass', 'lava', 'rock', 'tile'];
     this.mapTheme = themes[Math.floor(Math.random() * themes.length)];
@@ -266,6 +296,34 @@ export class GameScene extends Phaser.Scene {
       align: 'center',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(102).setAlpha(0);
 
+    // Sound mute toggle button (top right, under leaderboard)
+    const savedMute = typeof localStorage !== 'undefined' && localStorage.getItem('snake_muted') === '1';
+    if (savedMute) {
+      this.isMuted = true;
+      this.sfx.setMuted(true);
+    }
+    this.muteBtn = this.add.text(this.scale.width - 16, this.scale.height - 16, this.isMuted ? '🔇' : '🔊', {
+      fontFamily: 'monospace',
+      fontSize: this.isMobile ? '18px' : '22px',
+      color: '#a1a1aa',
+    }).setOrigin(1, 1).setScrollFactor(0).setDepth(102).setInteractive({ useHandCursor: true });
+
+    this.muteBtn.on('pointerdown', () => {
+      this.isMuted = !this.isMuted;
+      this.sfx.setMuted(this.isMuted);
+      this.muteBtn.setText(this.isMuted ? '🔇' : '🔊');
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('snake_muted', this.isMuted ? '1' : '0');
+      }
+      // Small visual feedback
+      this.tweens.add({
+        targets: this.muteBtn,
+        scale: { from: 1.2, to: 1 },
+        duration: 150,
+        ease: 'Sine.out',
+      });
+    });
+
     // Input — keyboard for boost/trap, mouse/touch for steering
     this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.trapKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
@@ -281,19 +339,95 @@ export class GameScene extends Phaser.Scene {
       this.sfx.trap();
     });
 
-    // Camera — zoom in so snake is larger on screen
+    // Camera — zoom in so snake is larger on screen.
+    // Lower zoom on low-tier so fewer pixels need to be re-rendered each frame.
     this.cameras.main.setBackgroundColor('#0a0a0a');
-    this.cameras.main.setZoom(this.isMobile ? 1.2 : 1.6);
+    const baseZoom = this.isMobile ? 1.2 : 1.6;
+    const zoomScale = this.qualityTier === 'low' ? 0.85 : this.qualityTier === 'mid' ? 0.95 : 1;
+    this.cameras.main.setZoom(baseZoom * zoomScale);
     // Pixel-perfect rendering kills sub-pixel shimmer when camera moves
     this.cameras.main.setRoundPixels(true);
     // Pre-position camera at arena center so the first frame doesn't snap from (0,0)
     this.cameras.main.centerOn(this.arenaCenterX, this.arenaCenterY);
     this.cameraSmooth = { x: this.arenaCenterX, y: this.arenaCenterY };
+    this.recomputeViewExtents();
+
+    // Recompute viewport extents whenever the canvas resizes (orientation change etc.)
+    this.scale.on('resize', () => this.recomputeViewExtents());
 
     // Mobile touch controls
     if (this.isMobile) {
       this.setupMobileControls();
     }
+  }
+
+  /** Detect device capability tier exactly once. Stored in this.qualityTier. */
+  private detectQualityTier() {
+    // Browser-reported capabilities
+    const cores = (navigator.hardwareConcurrency as number | undefined) || 4;
+    const mem = (navigator as unknown as { deviceMemory?: number }).deviceMemory || 4;
+    const dpr = window.devicePixelRatio || 1;
+    const isMobile = this.isMobile;
+
+    // Heuristic: low-end mobile = ≤4 cores OR ≤2GB RAM
+    // mid: any mobile, or low-spec desktop (≤4 cores)
+    // high: desktop ≥6 cores
+    if (isMobile && (cores <= 4 || mem <= 2)) {
+      this.qualityTier = 'low';
+    } else if (isMobile || cores <= 4) {
+      this.qualityTier = 'mid';
+    } else {
+      this.qualityTier = 'high';
+    }
+
+    // Allow URL override for testing: ?quality=low|mid|high
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const q = params.get('quality');
+      if (q === 'low' || q === 'mid' || q === 'high') {
+        this.qualityTier = q;
+      }
+    } catch { /* noop */ }
+
+    // eslint-disable-next-line no-console
+    console.info(`[GameScene] Quality tier: ${this.qualityTier} (cores=${cores}, mem=${mem}GB, dpr=${dpr.toFixed(1)}, mobile=${isMobile})`);
+  }
+
+  /** Cache half-extents of the visible camera viewport in WORLD coordinates.
+   *  Used by isOnScreen() for fast frustum culling without per-frame math. */
+  private recomputeViewExtents() {
+    const cam = this.cameras.main;
+    if (!cam) return;
+    const zoom = cam.zoom || 1;
+    this.viewHalfW = (cam.width / zoom) / 2;
+    this.viewHalfH = (cam.height / zoom) / 2;
+  }
+
+  /** Fast AABB test: is (x,y) within the camera view (plus padding)? */
+  private isOnScreen(x: number, y: number, padding = 60): boolean {
+    if (!this.cameraSmooth) return true;
+    const dx = Math.abs(x - this.cameraSmooth.x);
+    const dy = Math.abs(y - this.cameraSmooth.y);
+    return dx < this.viewHalfW + padding && dy < this.viewHalfH + padding;
+  }
+
+  /** Hide all visuals belonging to a player (used for off-screen culling). */
+  private hidePlayerVisuals(id: string) {
+    const g = this.playerGraphics.get(id);
+    if (g && g.visible) g.setVisible(false);
+    const lbl = this.playerLabels.get(id);
+    if (lbl && lbl.visible) lbl.setVisible(false);
+    const sl = this.playerScoreLabels.get(id);
+    if (sl && sl.visible) sl.setVisible(false);
+  }
+
+  private showPlayerVisuals(id: string) {
+    const g = this.playerGraphics.get(id);
+    if (g && !g.visible) g.setVisible(true);
+    const lbl = this.playerLabels.get(id);
+    if (lbl && !lbl.visible) lbl.setVisible(true);
+    const sl = this.playerScoreLabels.get(id);
+    if (sl && !sl.visible) sl.setVisible(true);
   }
 
   private setupMobileControls() {
@@ -403,8 +537,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   update() {
-    // Animated arena overlay (theme-specific pulse / sweep)
-    this.drawArenaAnim(performance.now());
+    this.frameCount++;
+
+    // Animated arena overlay — expensive on low-end. Skip entirely on low tier;
+    // throttle to every 2nd frame on mid tier; full 60fps on high.
+    if (this.qualityTier === 'high') {
+      this.drawArenaAnim(performance.now());
+    } else if (this.qualityTier === 'mid' && (this.frameCount & 1) === 0) {
+      this.drawArenaAnim(performance.now());
+    }
+    // low: no arena animation
 
     // Mouse steering (desktop only — mobile uses joystick)
     if (!this.isMobile && this.cameraTarget && this.input.activePointer) {
@@ -485,7 +627,30 @@ export class GameScene extends Phaser.Scene {
         inZone: data.inZone,
       };
 
-      this.renderSnake(interpPlayer);
+      // Frustum culling: skip drawing snakes that are fully off-screen.
+      // We always render our own snake (id === myPlayerId).
+      // For others, sample head + tail + middle segment; if all are off-screen
+      // with generous padding, hide and skip the expensive renderSnake() call.
+      let onScreen = id === this.myPlayerId;
+      if (!onScreen && interpSegments.length > 0) {
+        const head = interpSegments[0];
+        const tail = interpSegments[interpSegments.length - 1];
+        const mid = interpSegments[(interpSegments.length / 2) | 0];
+        const pad = 80;
+        onScreen =
+          this.isOnScreen(head.x, head.y, pad) ||
+          this.isOnScreen(tail.x, tail.y, pad) ||
+          this.isOnScreen(mid.x, mid.y, pad);
+      }
+
+      if (onScreen) {
+        this.showPlayerVisuals(id);
+        this.renderSnake(interpPlayer);
+      } else {
+        this.hidePlayerVisuals(id);
+        // Also clear any boost trails for hidden snakes
+        this.clearBoostTrails(id);
+      }
 
       if (id === this.myPlayerId) {
         myAlive = data.alive;
@@ -771,6 +936,9 @@ export class GameScene extends Phaser.Scene {
     this.leaderboardText.setText(lbLines.join('\n'));
     this.leaderboardText.setX(this.scale.width - 16);
 
+    // Reposition mute button in case of resize
+    this.muteBtn.setPosition(this.scale.width - 16, this.scale.height - 16);
+
     const aliveCount = state.players.filter(p => p.alive).length;
     this.aliveText.setText(`Alive: ${aliveCount}/${state.players.length}`);
 
@@ -932,38 +1100,45 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // ── Build a smooth Catmull-Rom interpolated path through segments ──
-    const dense = this.buildSmoothPath(p.segments, 4);
+    // ── Build path through segments. On low/mid tier we use fewer subdivisions
+    //    to massively cut the number of fillCircle calls per frame.
+    //    high: 4 steps (smoothest), mid: 2 steps, low: 0 steps (raw segments).
+    const subdivSteps = this.qualityTier === 'high' ? 4 : this.qualityTier === 'mid' ? 2 : 0;
+    const dense = subdivSteps > 0
+      ? this.buildSmoothPath(p.segments, subdivSteps)
+      : p.segments;
     const len = dense.length;
 
     // Body radius tapers from head (large) to tail (small) — snake.io style
     const HEAD_RADIUS = 11;
     const TAIL_RADIUS = 5;
 
-    // Pass 0: drop shadow under body for depth (offset slightly down-right)
-    g.fillStyle(0x000000, 0.35);
-    for (let i = len - 1; i >= 0; i--) {
-      const t = i / Math.max(1, len - 1);
-      const r = HEAD_RADIUS - (HEAD_RADIUS - TAIL_RADIUS) * t;
-      const seg = dense[i];
-      g.fillCircle(seg.x + 3, seg.y + 4, r + 1);
+    // Pass 0: drop shadow under body for depth — SKIP on low tier (saves 1 fillCircle per segment)
+    if (this.qualityTier !== 'low') {
+      g.fillStyle(0x000000, 0.35);
+      for (let i = len - 1; i >= 0; i--) {
+        const t = i / Math.max(1, len - 1);
+        const r = HEAD_RADIUS - (HEAD_RADIUS - TAIL_RADIUS) * t;
+        const seg = dense[i];
+        g.fillCircle(seg.x + 3, seg.y + 4, r + 1);
+      }
     }
 
     // Pass 1: outline circles (darker, slightly larger) — gives body a clean edge
+    g.fillStyle(outlineColor, 1);
     for (let i = len - 1; i >= 0; i--) {
       const t = i / Math.max(1, len - 1); // 0 = head, 1 = tail
       const r = HEAD_RADIUS - (HEAD_RADIUS - TAIL_RADIUS) * t;
       const seg = dense[i];
-      g.fillStyle(outlineColor, 1);
       g.fillCircle(seg.x, seg.y, r + 1.5);
     }
 
     // Pass 2: filled body circles (the snake itself)
+    g.fillStyle(bodyColor, 1);
     for (let i = len - 1; i >= 0; i--) {
       const t = i / Math.max(1, len - 1);
       const r = HEAD_RADIUS - (HEAD_RADIUS - TAIL_RADIUS) * t;
       const seg = dense[i];
-      g.fillStyle(bodyColor, 1);
       g.fillCircle(seg.x, seg.y, r);
     }
 
@@ -998,28 +1173,33 @@ export class GameScene extends Phaser.Scene {
     // Tongue flicker — small red forked tongue that pulses on a cycle.
     // Cycle every ~1.6s, visible for 250ms. Uses player id for phase offset
     // so different snakes don't all flick simultaneously.
-    const phase = (p.id.charCodeAt(0) * 137) % 1600;
-    const cyclePos = (performance.now() + phase) % 1600;
-    if (cyclePos < 250) {
-      const tongueLen = 9 + (cyclePos / 250) * 4; // extends as it flicks
-      const tipX = head.x + fwdX * (HEAD_RADIUS + tongueLen);
-      const tipY = head.y + fwdY * (HEAD_RADIUS + tongueLen);
-      const baseX = head.x + fwdX * (HEAD_RADIUS + 2);
-      const baseY = head.y + fwdY * (HEAD_RADIUS + 2);
-      g.lineStyle(2, 0xd83a3a, 1);
-      g.beginPath();
-      g.moveTo(baseX, baseY);
-      g.lineTo(tipX, tipY);
-      // Forked tip
-      g.moveTo(tipX, tipY);
-      g.lineTo(tipX + perpX * 2.5 - fwdX * 2, tipY + perpY * 2.5 - fwdY * 2);
-      g.moveTo(tipX, tipY);
-      g.lineTo(tipX - perpX * 2.5 - fwdX * 2, tipY - perpY * 2.5 - fwdY * 2);
-      g.strokePath();
+    // SKIPPED on low tier to save the strokePath() call per snake per frame.
+    if (this.qualityTier !== 'low') {
+      const phase = (p.id.charCodeAt(0) * 137) % 1600;
+      const cyclePos = (performance.now() + phase) % 1600;
+      if (cyclePos < 250) {
+        const tongueLen = 9 + (cyclePos / 250) * 4; // extends as it flicks
+        const tipX = head.x + fwdX * (HEAD_RADIUS + tongueLen);
+        const tipY = head.y + fwdY * (HEAD_RADIUS + tongueLen);
+        const baseX = head.x + fwdX * (HEAD_RADIUS + 2);
+        const baseY = head.y + fwdY * (HEAD_RADIUS + 2);
+        g.lineStyle(2, 0xd83a3a, 1);
+        g.beginPath();
+        g.moveTo(baseX, baseY);
+        g.lineTo(tipX, tipY);
+        // Forked tip
+        g.moveTo(tipX, tipY);
+        g.lineTo(tipX + perpX * 2.5 - fwdX * 2, tipY + perpY * 2.5 - fwdY * 2);
+        g.moveTo(tipX, tipY);
+        g.lineTo(tipX - perpX * 2.5 - fwdX * 2, tipY - perpY * 2.5 - fwdY * 2);
+        g.strokePath();
+      }
     }
 
-    // Skin skill effects (boost trails, etc.)
-    this.handleSkinEffects(p, skin);
+    // Skin skill effects (boost trails, etc.) — disabled on low tier
+    if (this.qualityTier !== 'low') {
+      this.handleSkinEffects(p, skin);
+    }
 
     // Labels: score above username above head
     scoreLabel.setText(`$${p.score.toFixed(2)}`);
