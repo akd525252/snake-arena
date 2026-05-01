@@ -61,9 +61,16 @@ export function createGameRoom(matchId: string, betAmount: number, totalSpawnSlo
 export function addPlayerToRoom(room: GameRoom, player: Player): void {
   room.spawnIndex++;
 
-  // Random spawn angle and radius (~20%-70% of arena radius for spread)
-  const spawnAngle = Math.random() * Math.PI * 2;
-  const spawnR = room.arenaRadius * (0.20 + Math.random() * 0.50);
+  // Deterministic angular placement using spawnIndex so lobby previews don't
+  // show players randomly overlapping. Small jitter keeps it from feeling robotic.
+  const idx = room.spawnIndex - 1;
+  const slots = room.totalSpawnSlots;
+  const baseAngle = (idx / slots) * Math.PI * 2;
+  const jitter = (Math.random() - 0.5) * 0.25; // ±~7°
+  const spawnAngle = baseAngle + jitter;
+  // Stagger radius into 3 concentric rings so spawns aren't all on one circle
+  const ringMultipliers = [0.35, 0.50, 0.65];
+  const spawnR = room.arenaRadius * ringMultipliers[idx % ringMultipliers.length];
 
   const x = room.arenaCenterX + Math.cos(spawnAngle) * spawnR;
   const y = room.arenaCenterY + Math.sin(spawnAngle) * spawnR;
@@ -120,35 +127,38 @@ export function startGame(room: GameRoom): void {
   room.startTime = Date.now();
 
   // ─── Dynamic arena scaling ─────────────────────────────────────────────
-  // Smaller match (3 players) = tighter arena for instant action; bigger
-  // match (10 players) = roomier arena so it doesn't feel cramped at start.
-  // Linear interp between MIN/MAX scale based on starting player count.
+  // Arena grows significantly with player count so everyone has breathing
+  // room at spawn. Formula: base radius * (0.75 + 0.1 per player), capped at 2x.
+  //   2 players → 475 px  |  5 players → 625 px  |  10 players → 875 px
   const playerCount = room.players.size;
-  const minPC = CONFIG.MIN_PLAYERS;
-  const maxPC = CONFIG.MAX_PLAYERS;
-  const t = Math.max(0, Math.min(1, (playerCount - minPC) / Math.max(1, maxPC - minPC)));
-  // Scale arena radius from ~70% (small match) to 100% (full match)
-  const scale = 0.70 + 0.30 * t;
+  const scale = Math.min(2.0, 0.75 + playerCount * 0.1);
   const dynamicRadius = Math.round(CONFIG.ARENA_RADIUS * scale);
   room.arenaRadius = dynamicRadius;
-  // Keep center consistent with the new larger bounds (so spawns stay inside)
   room.arenaCenterX = dynamicRadius + 50;
   room.arenaCenterY = dynamicRadius + 50;
   console.log(`[startGame] room=${room.id.slice(0, 8)} players=${playerCount} arenaRadius=${dynamicRadius}px (scale=${scale.toFixed(2)})`);
 
-  // Re-spawn each player so their initial position is inside the new bounds.
-  // (addPlayerToRoom was called before the dynamic radius was applied.)
-  for (const [, player] of room.players) {
-    const spawnAngle = Math.random() * Math.PI * 2;
-    const spawnR = room.arenaRadius * (0.20 + Math.random() * 0.50);
+  // ─── Deterministic spawn distribution ──────────────────────────────────
+  // Instead of random positions (which can cluster players together and cause
+  // instant collisions), distribute everyone evenly around a circle at ~55%
+  // of the arena radius. Each player faces inward toward the center.
+  // A small random jitter (±12°) prevents perfect predictability.
+  const spawnList = Array.from(room.players.values());
+  const totalPlayers = spawnList.length;
+  for (let i = 0; i < totalPlayers; i++) {
+    const player = spawnList[i];
+    const baseAngle = (i / totalPlayers) * Math.PI * 2;
+    const jitter = (Math.random() - 0.5) * 0.4; // ±~11.5°
+    const spawnAngle = baseAngle + jitter;
+    const spawnR = room.arenaRadius * 0.55;
     const x = room.arenaCenterX + Math.cos(spawnAngle) * spawnR;
     const y = room.arenaCenterY + Math.sin(spawnAngle) * spawnR;
-    const facingAngle = spawnAngle + Math.PI;
+    const facingAngle = spawnAngle + Math.PI; // face center
     const segments: Position[] = [];
-    for (let i = 0; i < CONFIG.SNAKE_INITIAL_LENGTH; i++) {
+    for (let j = 0; j < CONFIG.SNAKE_INITIAL_LENGTH; j++) {
       segments.push({
-        x: x - Math.cos(facingAngle) * i * CONFIG.SNAKE_SEGMENT_SIZE,
-        y: y - Math.sin(facingAngle) * i * CONFIG.SNAKE_SEGMENT_SIZE,
+        x: x - Math.cos(facingAngle) * j * CONFIG.SNAKE_SEGMENT_SIZE,
+        y: y - Math.sin(facingAngle) * j * CONFIG.SNAKE_SEGMENT_SIZE,
       });
     }
     player.snake.segments = segments;

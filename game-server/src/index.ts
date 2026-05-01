@@ -445,24 +445,13 @@ function tryMatchPlayers(): void {
     createMatch([demo]);
   }
 
-  // Pro queue: instant match if MIN_PLAYERS humans are already in same bucket.
-  // Otherwise we wait for the fallback timeout (15s) to fill with bots.
-  const proQueue = matchmakingQueue.filter(e => !e.isDemo);
-  if (proQueue.length < CONFIG.MIN_PLAYERS) return;
-
-  const groups = new Map<number, QueueEntry[]>();
-  for (const entry of proQueue) {
-    const bucket = Math.round(entry.betAmount / 5) * 5;
-    if (!groups.has(bucket)) groups.set(bucket, []);
-    groups.get(bucket)!.push(entry);
-  }
-
+  // Pro queue: instant match if enough humans are queued, regardless of bet amount.
+  // (Bet-matching was removed per request — all active players play together.)
   const humanSlots = CONFIG.MAX_PLAYERS - PRO_BOT_COUNT;
-  for (const [, group] of groups) {
-    if (group.length >= CONFIG.MIN_PLAYERS) {
-      const players = group.slice(0, humanSlots);
-      createMatch(players);
-    }
+  while (true) {
+    const proQueue = matchmakingQueue.filter(e => !e.isDemo);
+    if (proQueue.length < CONFIG.MIN_PLAYERS) break;
+    createMatch(proQueue.slice(0, humanSlots));
   }
 }
 
@@ -667,20 +656,16 @@ setInterval(() => {
   }
 
   // Pro: any player waiting > PRO_BOT_FALLBACK_MS triggers a bot-filled match.
-  // We group same-bucket players together so multiple humans waiting in the
-  // same bracket end up in the same room.
+  // All waiting pro players are matched together regardless of bet amount.
   const oldestPro = matchmakingQueue.find(
     e => !e.isDemo && now - e.joinedAt > PRO_BOT_FALLBACK_MS
   );
   if (!oldestPro) return;
 
-  const bucket = Math.round(oldestPro.betAmount / 5) * 5;
-  const sameBucket = matchmakingQueue.filter(
-    e => !e.isDemo && Math.round(e.betAmount / 5) * 5 === bucket
-  );
+  const allPros = matchmakingQueue.filter(e => !e.isDemo);
   const humanSlots = CONFIG.MAX_PLAYERS - PRO_BOT_COUNT;
-  console.log(`[matchmaker] starting pro match with ${sameBucket.length} human(s) + ${PRO_BOT_COUNT} bots (bucket=$${bucket})`);
-  createMatch(sameBucket.slice(0, humanSlots));
+  console.log(`[matchmaker] fallback timeout: starting pro match with ${allPros.length} human(s) + ${PRO_BOT_COUNT} bots`);
+  createMatch(allPros.slice(0, humanSlots));
 }, 1000);
 
 // ============================================
