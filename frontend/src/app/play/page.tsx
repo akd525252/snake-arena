@@ -77,8 +77,13 @@ function PlayPageInner() {
       // Note: do NOT pass `scene` in config — it would auto-start with empty
       // data, calling init() with `undefined` props and leaking a bad WS
       // connection. Instead, add the scene manually with init data.
+      // Low-end devices: CANVAS renderer is often faster than WebGL for
+      // primitive-heavy 2D (thousands of fillCircle calls). WebGL overhead
+      // (shader compilation, state changes) hurts weak GPUs / old Mali.
+      const rendererType = isLowEnd ? Phaser.CANVAS : Phaser.AUTO;
+
       const config: Phaser.Types.Core.GameConfig = {
-        type: Phaser.AUTO,
+        type: rendererType,
         parent: containerRef.current!,
         width: window.innerWidth,
         height: window.innerHeight - 60,
@@ -90,7 +95,9 @@ function PlayPageInner() {
         // Cap framerate on low-end so we don't drop frames erratically (smoother feel)
         fps: {
           target: isLowEnd ? 30 : 60,
-          forceSetTimeOut: false,
+          // setTimeout-based loop on low-end gives more predictable frame
+          // pacing on busy JS threads (React re-renders, WS messages).
+          forceSetTimeOut: isLowEnd,
           smoothStep: false,
         },
         // Renderer tuning — powerPreference hint, antialias only on high-end
@@ -98,9 +105,9 @@ function PlayPageInner() {
           antialias: !isLowEnd,
           pixelArt: false,
           roundPixels: true,
-          powerPreference: 'high-performance',
+          powerPreference: isLowEnd ? 'low-power' : 'high-performance',
           clearBeforeRender: true,
-          batchSize: 4096,
+          batchSize: isLowEnd ? 2048 : 4096,
         },
         // Disable browser context-menu on right-click / long-press (matters on mobile)
         disableContextMenu: true,

@@ -48,6 +48,9 @@ export class GameScene extends Phaser.Scene {
   private playerScoreLabels = new Map<string, Phaser.GameObjects.Text>();
   private coinSprites = new Map<string, Phaser.GameObjects.Arc>();
   private foodSprites = new Map<string, Phaser.GameObjects.Arc>();
+  // Object pools — reusing Arc sprites avoids GC churn from create/destroy
+  private coinPool: Phaser.GameObjects.Arc[] = [];
+  private foodPool: Phaser.GameObjects.Arc[] = [];
 
   // Arena (circular)
   private arenaGfx!: Phaser.GameObjects.Graphics;
@@ -143,6 +146,10 @@ export class GameScene extends Phaser.Scene {
   private playerCloneSprites = new Map<string, Phaser.GameObjects.Graphics[]>();
   private lastBoostStates = new Map<string, boolean>();
 
+  // Cached canvas dimensions so we only reposition HUD on actual resize
+  private lastCanvasW = 0;
+  private lastCanvasH = 0;
+
   // Skin definitions — keep in sync with database/schema.sql skins table.
   // primary = body color, secondary = scale highlight, glow = boost trail tint.
   private readonly SKIN_COLORS: Record<string, { primary: number; secondary: number; glow: number }> = {
@@ -219,12 +226,27 @@ export class GameScene extends Phaser.Scene {
     // Cap renderer DPR on low/mid tiers to avoid GPU overdraw on hi-DPI mobiles
     if (this.qualityTier !== 'high') {
       this.scale.setZoom(1); // no extra scale stacking
-      // Phaser auto-uses devicePixelRatio; clamp it on low-end
-      const renderer = this.game.renderer as Phaser.Renderer.WebGL.WebGLRenderer;
-      if (renderer && 'resolution' in renderer) {
-        // Best effort — reduce internal canvas resolution
-        const targetDPR = this.qualityTier === 'low' ? 1 : Math.min(window.devicePixelRatio || 1, 1.5);
-        try { (renderer as unknown as { resolution: number }).resolution = targetDPR; } catch { /* noop */ }
+      const targetDPR = this.qualityTier === 'low' ? 1 : Math.min(window.devicePixelRatio || 1, 1.5);
+      const renderer = this.game.renderer;
+      if (renderer) {
+        // WebGL: lower internal resolution to reduce fragment shader workload
+        if ('resolution' in renderer) {
+          try { (renderer as unknown as { resolution: number }).resolution = targetDPR; } catch { /* noop */ }
+        }
+        // Canvas: the canvas backing store is scaled by CSS size. We can't
+        // change backing-store ratio directly, but Phaser's parent container
+        // will respect the game config resolution. As a fallback we shrink
+        // the game canvas CSS size by the inverse factor so fewer physical
+        // pixels are rendered (browser upscales, saving GPU fill).
+        if ((renderer as unknown as { type?: number }).type === Phaser.CANVAS) {
+          try {
+            const canvas = (renderer as unknown as { canvas: HTMLCanvasElement }).canvas;
+            if (canvas && canvas.style) {
+              canvas.style.width = `${canvas.width / targetDPR}px`;
+              canvas.style.height = `${canvas.height / targetDPR}px`;
+            }
+          } catch { /* noop */ }
+        }
       }
     }
 
@@ -466,6 +488,28 @@ export class GameScene extends Phaser.Scene {
     return dx < this.viewHalfW + padding && dy < this.viewHalfH + padding;
   }
 
+  /** Remove segments that are closer than `minDist` px to the previous kept
+   *  segment. Overlapping circles waste GPU fill-rate with zero visual gain.
+   *  Always keeps head and tail so the snake doesn't appear truncated. */
+  private cullDenseSegments(segments: Position[], minDist: number): Position[] {
+    if (segments.length <= 2) return segments;
+    const out: Position[] = [segments[0]];
+    const minSq = minDist * minDist;
+    for (let i = 1; i < segments.length; i++) {
+      const prev = out[out.length - 1];
+      const dx = segments[i].x - prev.x;
+      const dy = segments[i].y - prev.y;
+      if (dx * dx + dy * dy >= minSq) {
+        out.push(segments[i]);
+      }
+    }
+    // Ensure tail is present so the snake doesn't look cut off
+    if (out[out.length - 1] !== segments[segments.length - 1]) {
+      out.push(segments[segments.length - 1]);
+    }
+    return out;
+  }
+
   /** Hide all visuals belonging to a player (used for off-screen culling). */
   private hidePlayerVisuals(id: string) {
     const g = this.playerGraphics.get(id);
@@ -596,16 +640,15 @@ export class GameScene extends Phaser.Scene {
   update(_time: number, delta: number) {
     this.frameCount++;
 
-    // Animated arena overlay — vivid theme animations (fireflies, embers,
-    // dust motes, circuit pulses). Throttled on lower tiers to keep perf
-    // smooth: high=every frame, mid=every 2nd, low=every 4th.
+    // Animated arena overlay — vivid theme particles. Throttled aggressively
+    // so low-end devices never waste cycles on decorative effects.
+    // high=every frame, mid=every 3rd frame, low=never (static arena only).
     if (this.qualityTier === 'high') {
       this.drawArenaAnim(performance.now());
-    } else if (this.qualityTier === 'mid' && (this.frameCount & 1) === 0) {
-      this.drawArenaAnim(performance.now());
-    } else if (this.qualityTier === 'low' && (this.frameCount & 3) === 0) {
+    } else if (this.qualityTier === 'mid' && (this.frameCount % 3) === 0) {
       this.drawArenaAnim(performance.now());
     }
+    // low tier: intentionally skipped — decorative particles are a luxury
 
     // Mouse steering (desktop only — mobile uses joystick)
     if (!this.isMobile && this.cameraTarget && this.input.activePointer) {
@@ -939,15 +982,15 @@ export class GameScene extends Phaser.Scene {
     }
     this.lastServerStateTime = now;
 
-    // Update timer
+    // Update timer — only rebuild texture when displayed value changes
     const seconds = Math.ceil(state.timeRemaining / 1000);
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    this.timeText.setText(`${m}:${s.toString().padStart(2, '0')}`);
-    if (seconds <= 10 && seconds > 0) {
-      this.timeText.setColor('#ef4444');
-    } else {
-      this.timeText.setColor('#ffffff');
+    const timeStr = `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}`;
+    if (this.timeText.text !== timeStr) {
+      this.timeText.setText(timeStr);
+    }
+    const timerColor = seconds <= 10 && seconds > 0 ? '#ef4444' : '#ffffff';
+    if (this.timeText.style.color !== timerColor) {
+      this.timeText.setColor(timerColor);
     }
 
     // Update interp buffer for each player (rotate curr → prev, set new curr)
@@ -1015,41 +1058,45 @@ export class GameScene extends Phaser.Scene {
     this.leaderboardText.setText(lbLines.join('\n'));
     this.leaderboardText.setX(this.scale.width - 16);
 
-    // Reposition bottom-right HUD (mute + quality) in case of resize/orientation change
-    // On mobile these are hidden; keep for desktop resize
-    const hudYOffset = this.isMobile ? 130 : 16;
-    this.muteBtn.setPosition(this.scale.width - 16, this.scale.height - hudYOffset);
-    this.qualityBtn.setPosition(this.scale.width - 54, this.scale.height - hudYOffset);
+    // Reposition HUD only when canvas dimensions actually changed (resize/orientation)
+    const cw = this.scale.width;
+    const ch = this.scale.height;
+    if (cw !== this.lastCanvasW || ch !== this.lastCanvasH) {
+      this.lastCanvasW = cw;
+      this.lastCanvasH = ch;
+      const hudYOffset = this.isMobile ? 130 : 16;
+      this.muteBtn.setPosition(cw - 16, ch - hudYOffset);
+      this.qualityBtn.setPosition(cw - 54, ch - hudYOffset);
 
-    // Reposition score text and timer capsule on resize (especially orientation changes)
-    const mobileHudTop = this.isMobile ? 44 : 16;
-    this.scoreText.setPosition(10, mobileHudTop);
-    const mobileTimerY = this.isMobile ? 50 : 12;
-    const scx = this.scale.width / 2;
-    this.timerCapsule.clear();
-    this.timerCapsule.fillStyle(0x27272a, 0.95);
-    this.timerCapsule.fillRoundedRect(scx - 60, mobileTimerY, 120, 36, 18);
-    this.timerCapsule.lineStyle(2, 0x3f3f46, 1);
-    this.timerCapsule.strokeRoundedRect(scx - 60, mobileTimerY, 120, 36, 18);
-    this.timeText.setPosition(scx, mobileTimerY + 18);
-    this.killNotificationText.setPosition(this.scale.width / 2, this.scale.height * 0.28);
+      const mobileHudTop = this.isMobile ? 44 : 16;
+      this.scoreText.setPosition(10, mobileHudTop);
+      const mobileTimerY = this.isMobile ? 50 : 12;
+      const scx = cw / 2;
+      this.timerCapsule.clear();
+      this.timerCapsule.fillStyle(0x27272a, 0.95);
+      this.timerCapsule.fillRoundedRect(scx - 60, mobileTimerY, 120, 36, 18);
+      this.timerCapsule.lineStyle(2, 0x3f3f46, 1);
+      this.timerCapsule.strokeRoundedRect(scx - 60, mobileTimerY, 120, 36, 18);
+      this.timeText.setPosition(scx, mobileTimerY + 18);
+      this.killNotificationText.setPosition(cw / 2, ch * 0.28);
 
-    // Reposition mobile controls on resize/orientation change
-    if (this.isMobile) {
-      const w = this.scale.width;
-      const h = this.scale.height;
-      const btnRadius = Math.min(36, Math.max(24, w * 0.065));
-      const edgePad = 12;
-      if (this.mobileBoostBtn) {
-        this.mobileBoostBtn.setPosition(w - btnRadius * 2.5 - edgePad, h - btnRadius * 2 - edgePad);
-      }
-      if (this.mobileTrapBtn) {
-        this.mobileTrapBtn.setPosition(w - btnRadius * 2.5 - edgePad, h - btnRadius * 5 - edgePad);
+      if (this.isMobile) {
+        const btnRadius = Math.min(36, Math.max(24, cw * 0.065));
+        const edgePad = 12;
+        if (this.mobileBoostBtn) {
+          this.mobileBoostBtn.setPosition(cw - btnRadius * 2.5 - edgePad, ch - btnRadius * 2 - edgePad);
+        }
+        if (this.mobileTrapBtn) {
+          this.mobileTrapBtn.setPosition(cw - btnRadius * 2.5 - edgePad, ch - btnRadius * 5 - edgePad);
+        }
       }
     }
 
     const aliveCount = state.players.filter(p => p.alive).length;
-    this.aliveText.setText(`Alive: ${aliveCount}/${state.players.length}`);
+    const aliveStr = `Alive: ${aliveCount}/${state.players.length}`;
+    if (this.aliveText.text !== aliveStr) {
+      this.aliveText.setText(aliveStr);
+    }
 
     // Update score for me (uses authoritative score, not interpolated)
     const me = state.players.find(p => p.id === this.myPlayerId);
@@ -1067,7 +1114,10 @@ export class GameScene extends Phaser.Scene {
       }
       this.prevMyScore = me.score;
       this.prevMyLength = me.segments.length;
-      this.scoreText.setText(`Score: $${me.score.toFixed(2)}`);
+      const scoreStr = `Score: $${me.score.toFixed(2)}`;
+      if (this.scoreText.text !== scoreStr) {
+        this.scoreText.setText(scoreStr);
+      }
       this.onScoreChange?.(me.score);
     }
 
@@ -1091,47 +1141,73 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Update coins
+    // Update coins — object pooled to avoid Phaser create/destroy churn
     const seenCoins = new Set<string>();
     for (const c of state.coins) {
       seenCoins.add(c.id);
-      if (!this.coinSprites.has(c.id)) {
-        const coin = this.add.circle(c.position.x, c.position.y, 8, 0xfbbf24)
-          .setStrokeStyle(2, 0xf59e0b)
-          .setDepth(5);
+      let coin = this.coinSprites.get(c.id);
+      if (!coin) {
+        const pooled = this.coinPool.pop();
+        if (pooled) {
+          pooled.setPosition(c.position.x, c.position.y);
+          pooled.setVisible(true);
+          pooled.setRadius(8);
+          pooled.fillColor = 0xfbbf24;
+          pooled.strokeColor = 0xf59e0b;
+          pooled.lineWidth = 2;
+          coin = pooled;
+        } else {
+          coin = this.add.circle(c.position.x, c.position.y, 8, 0xfbbf24)
+            .setStrokeStyle(2, 0xf59e0b)
+            .setDepth(5);
+        }
         this.coinSprites.set(c.id, coin);
       } else {
-        this.coinSprites.get(c.id)!.setPosition(c.position.x, c.position.y);
+        coin.setPosition(c.position.x, c.position.y);
       }
     }
     for (const id of this.coinSprites.keys()) {
       if (!seenCoins.has(id)) {
-        this.coinSprites.get(id)?.destroy();
+        const sp = this.coinSprites.get(id)!;
+        sp.setVisible(false);
+        this.coinPool.push(sp);
         this.coinSprites.delete(id);
       }
     }
 
-    // Update food pellets
+    // Update food pellets — object pooled to avoid Phaser create/destroy churn
     const seenFood = new Set<string>();
     const foodColors = [0x22c55e, 0xef4444, 0x3b82f6, 0xeab308, 0xa855f7, 0xf97316]; // green, red, blue, yellow, purple, orange
     for (const f of state.food) {
       seenFood.add(f.id);
       const radius = f.size === 'large' ? 5 : 3;
       const color = foodColors[f.colorIndex % foodColors.length];
-      if (!this.foodSprites.has(f.id)) {
-        const pellet = this.add.circle(f.position.x, f.position.y, radius, color)
-          .setDepth(4);
+      let pellet = this.foodSprites.get(f.id);
+      if (!pellet) {
+        const pooled = this.foodPool.pop();
+        if (pooled) {
+          pooled.setPosition(f.position.x, f.position.y);
+          pooled.setVisible(true);
+          pooled.setRadius(radius);
+          pooled.fillColor = color;
+          pooled.setStrokeStyle(0);
+          pellet = pooled;
+        } else {
+          pellet = this.add.circle(f.position.x, f.position.y, radius, color)
+            .setDepth(4);
+        }
         this.foodSprites.set(f.id, pellet);
       } else {
-        const sp = this.foodSprites.get(f.id)!;
-        sp.setPosition(f.position.x, f.position.y);
-        sp.setRadius(radius);
-        sp.fillColor = color;
+        pellet.setPosition(f.position.x, f.position.y);
+        pellet.setRadius(radius);
+        pellet.fillColor = color;
       }
     }
     for (const id of this.foodSprites.keys()) {
       if (!seenFood.has(id)) {
-        this.foodSprites.get(id)?.destroy();
+        const sp = this.foodSprites.get(id)!;
+        sp.setVisible(false);
+        this.foodPool.push(sp);
         this.foodSprites.delete(id);
       }
     }
@@ -1209,21 +1285,39 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // ── Build path through segments. On low/mid tier we use fewer subdivisions
-    //    to massively cut the number of fillCircle calls per frame.
-    //    high: 4 steps (smoothest), mid: 2 steps, low: 0 steps (raw segments).
-    const subdivSteps = this.qualityTier === 'high' ? 4 : this.qualityTier === 'mid' ? 2 : 0;
-    const dense = subdivSteps > 0
+    // ── Build path through segments. Fewer subdivisions = fewer fillCircle
+    //    calls per frame. high: 2 steps, mid: 1 step, low: 0 (raw).
+    const subdivSteps = this.qualityTier === 'high' ? 2 : this.qualityTier === 'mid' ? 1 : 0;
+    const dense0 = subdivSteps > 0
       ? this.buildSmoothPath(p.segments, subdivSteps)
       : p.segments;
+
+    // Cull segments that are extremely close together — overlapping circles
+    // waste GPU fill-rate with zero visual benefit.
+    const minSegDist = this.qualityTier === 'low' ? 4.5 : this.qualityTier === 'mid' ? 3.5 : 2.5;
+    let dense = this.cullDenseSegments(dense0, minSegDist);
+
+    // Cap max rendered segments per tier to prevent fillCircle explosion
+    // when snakes get very long. Head is always kept exact for eyes/label.
+    const MAX_SEGMENTS = this.qualityTier === 'low' ? 28 : this.qualityTier === 'mid' ? 40 : 70;
+    if (dense.length > MAX_SEGMENTS) {
+      const decimate = Math.ceil(dense.length / MAX_SEGMENTS);
+      const sampled: Position[] = [dense[0]]; // head always exact
+      for (let i = 1; i < dense.length - 1; i += decimate) {
+        sampled.push(dense[i]);
+      }
+      sampled.push(dense[dense.length - 1]); // tail always visible
+      dense = sampled;
+    }
     const len = dense.length;
 
     // Body radius tapers from head (large) to tail (small) — snake.io style
     const HEAD_RADIUS = 11;
     const TAIL_RADIUS = 5;
 
-    // Pass 0: drop shadow under body for depth — SKIP on low tier (saves 1 fillCircle per segment)
-    if (this.qualityTier !== 'low') {
+    // Pass 0: drop shadow under body for depth — only on high tier
+    // (saves 1 fillCircle per segment for mid/low).
+    if (this.qualityTier === 'high') {
       g.fillStyle(0x000000, 0.35);
       for (let i = len - 1; i >= 0; i--) {
         const t = i / Math.max(1, len - 1);
@@ -1311,7 +1405,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Labels: score above username above head
-    scoreLabel.setText(`$${p.score.toFixed(2)}`);
+    const scoreStr = `$${p.score.toFixed(2)}`;
+    if (scoreLabel.text !== scoreStr) {
+      scoreLabel.setText(scoreStr);
+    }
     scoreLabel.setPosition(head.x, head.y - 38);
     label.setPosition(head.x, head.y - 26);
     // On mobile hide other players' name labels — too much text clutter on small screens.
@@ -1742,6 +1839,10 @@ export class GameScene extends Phaser.Scene {
     const tSec = now / 1000;
     const g = this.arenaAnimGfx;
 
+    // Particle counts scale with quality tier: high=full, mid=50%.
+    // Low tier never calls this function (skipped in update()).
+    const tierFactor = this.qualityTier === 'high' ? 1 : 0.5;
+
     if (this.mapTheme === 'lava') {
       // ── LAVA: flowing molten cells + rising embers + pulsing glow ──────
       // Two pulsing inner rings — outer slow, inner fast
@@ -1753,7 +1854,7 @@ export class GameScene extends Phaser.Scene {
       g.strokeCircle(cx, cy, r - 14);
 
       // Rising ember particles — deterministic so they're stable across frames
-      const emberCount = 28;
+      const emberCount = Math.floor(28 * tierFactor);
       for (let i = 0; i < emberCount; i++) {
         // Each ember has its own seed: angle, radius, vertical offset, speed
         const seed = i * 137.508; // golden-angle distribution
@@ -1798,7 +1899,7 @@ export class GameScene extends Phaser.Scene {
       g.strokeCircle(cx, cy, rippleR);
 
       // Fireflies — drifting glowing dots
-      const flyCount = 22;
+      const flyCount = Math.floor(22 * tierFactor);
       for (let i = 0; i < flyCount; i++) {
         const seed = i * 73.91;
         const baseAng = (seed % (Math.PI * 2));
@@ -1824,7 +1925,7 @@ export class GameScene extends Phaser.Scene {
       g.strokeCircle(cx, cy, r - 2);
 
       // Drifting dust motes
-      const dustCount = 30;
+      const dustCount = Math.floor(30 * tierFactor);
       for (let i = 0; i < dustCount; i++) {
         const seed = i * 91.7;
         const baseAng = (seed % (Math.PI * 2));
@@ -1840,7 +1941,8 @@ export class GameScene extends Phaser.Scene {
       }
 
       // Occasional sparkle stars (twinkle in/out)
-      for (let i = 0; i < 8; i++) {
+      const sparkleCount = Math.floor(8 * tierFactor);
+      for (let i = 0; i < sparkleCount; i++) {
         const seed = i * 211.4;
         const ang = seed % (Math.PI * 2);
         const rad = ((i * 53) % 100) / 100 * (r - 40);
@@ -1869,7 +1971,7 @@ export class GameScene extends Phaser.Scene {
       g.strokeCircle(cx, cy, ring2R);
 
       // Pulsing accent dots at orbital positions
-      const dotCount = 12;
+      const dotCount = Math.floor(12 * tierFactor);
       for (let i = 0; i < dotCount; i++) {
         const ang = (i / dotCount) * Math.PI * 2 + tSec * 0.2;
         const rad = r * 0.85;

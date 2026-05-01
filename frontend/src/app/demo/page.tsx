@@ -65,8 +65,13 @@ function DemoPageInner() {
       const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
       const isLowEnd = isMobile && (cores <= 4 || mem <= 2);
 
+      // Low-end devices: CANVAS renderer is often faster than WebGL for
+      // primitive-heavy 2D (thousands of fillCircle calls). WebGL overhead
+      // (shader compilation, state changes) hurts weak GPUs / old Mali.
+      const rendererType = isLowEnd ? Phaser.CANVAS : Phaser.AUTO;
+
       const config: Phaser.Types.Core.GameConfig = {
-        type: Phaser.AUTO,
+        type: rendererType,
         parent: containerRef.current!,
         width: window.innerWidth,
         height: window.innerHeight - 60,
@@ -77,16 +82,16 @@ function DemoPageInner() {
         },
         fps: {
           target: isLowEnd ? 30 : 60,
-          forceSetTimeOut: false,
+          forceSetTimeOut: isLowEnd,
           smoothStep: false,
         },
         render: {
           antialias: !isLowEnd,
           pixelArt: false,
           roundPixels: true,
-          powerPreference: 'high-performance',
+          powerPreference: isLowEnd ? 'low-power' : 'high-performance',
           clearBeforeRender: true,
-          batchSize: 4096,
+          batchSize: isLowEnd ? 2048 : 4096,
         },
         disableContextMenu: true,
         // No physics — server-authoritative game logic; saves a per-frame call.
