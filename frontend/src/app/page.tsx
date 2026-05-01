@@ -123,7 +123,7 @@ export default function Home() {
           />
           <FeatureCard
             title="USDT Rewards"
-            description="Field coins worth $0.50. Death drops $0.90 each. Cash out instantly."
+            description="Collect coins on the field and earn from eliminations. Cash out instantly."
             icon="💰"
           />
           <FeatureCard

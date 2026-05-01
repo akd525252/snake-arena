@@ -248,24 +248,26 @@ export class GameScene extends Phaser.Scene {
       fontStyle: 'bold',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(100).setVisible(false);
 
-    // HUD
-    this.scoreText = this.add.text(16, 16, 'Score: $0.00', {
+    // HUD — heavily simplified on mobile to avoid clutter/overlap
+    const hudTop = this.isMobile ? 44 : 16;
+    this.scoreText = this.add.text(10, hudTop, 'Score: $0.00', {
       fontFamily: 'monospace',
-      fontSize: this.isMobile ? '16px' : '20px',
+      fontSize: this.isMobile ? '14px' : '20px',
       color: this.isDemo ? '#f59e0b' : '#10b981',
       fontStyle: 'bold',
     }).setScrollFactor(0).setDepth(100);
 
-    // Timer capsule at top center
+    // Timer capsule at top center — lower on mobile to avoid React HUD overlap
     const screenCenterX = this.scale.width / 2;
+    const timerY = this.isMobile ? 50 : 12;
     this.timerCapsule = this.add.graphics();
-    this.timerCapsule.fillStyle(0x27272a, 0.95); // zinc-800
-    this.timerCapsule.fillRoundedRect(screenCenterX - 60, 12, 120, 36, 18);
-    this.timerCapsule.lineStyle(2, 0x3f3f46, 1); // zinc-700 border
-    this.timerCapsule.strokeRoundedRect(screenCenterX - 60, 12, 120, 36, 18);
+    this.timerCapsule.fillStyle(0x27272a, 0.95);
+    this.timerCapsule.fillRoundedRect(screenCenterX - 60, timerY, 120, 36, 18);
+    this.timerCapsule.lineStyle(2, 0x3f3f46, 1);
+    this.timerCapsule.strokeRoundedRect(screenCenterX - 60, timerY, 120, 36, 18);
     this.timerCapsule.setScrollFactor(0).setDepth(100);
 
-    this.timeText = this.add.text(screenCenterX, 30, '3:00', {
+    this.timeText = this.add.text(screenCenterX, timerY + 18, '3:00', {
       fontFamily: 'monospace',
       fontSize: '18px',
       color: '#ffffff',
@@ -274,7 +276,7 @@ export class GameScene extends Phaser.Scene {
 
     this.statusText = this.add.text(this.scale.width / 2, this.scale.height / 2, 'Connecting...', {
       fontFamily: 'monospace',
-      fontSize: '24px',
+      fontSize: this.isMobile ? '18px' : '24px',
       color: '#a1a1aa',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(100);
 
@@ -284,12 +286,14 @@ export class GameScene extends Phaser.Scene {
       color: '#a1a1aa',
       align: 'right',
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+    if (this.isMobile) this.leaderboardText.setVisible(false);
 
     this.aliveText = this.add.text(16, 72, 'Alive: 0', {
       fontFamily: 'monospace',
       fontSize: this.isMobile ? '12px' : '14px',
       color: '#71717a',
     }).setScrollFactor(0).setDepth(100);
+    if (this.isMobile) this.aliveText.setVisible(false);
 
     // Kill notification — floats in the upper third when you eliminate someone
     this.killNotificationText = this.add.text(this.scale.width / 2, this.scale.height * 0.28, '', {
@@ -313,6 +317,7 @@ export class GameScene extends Phaser.Scene {
       fontSize: this.isMobile ? '18px' : '22px',
       color: '#a1a1aa',
     }).setOrigin(1, 1).setScrollFactor(0).setDepth(102).setInteractive({ useHandCursor: true });
+    if (this.isMobile) this.muteBtn.setVisible(false);
 
     this.muteBtn.on('pointerdown', () => {
       this.isMuted = !this.isMuted;
@@ -343,6 +348,7 @@ export class GameScene extends Phaser.Scene {
       backgroundColor: '#1a1410cc',
       padding: { x: 6, y: 3 },
     }).setOrigin(1, 1).setScrollFactor(0).setDepth(102).setInteractive({ useHandCursor: true });
+    if (this.isMobile) this.qualityBtn.setVisible(false);
 
     this.qualityBtn.on('pointerdown', () => {
       // Cycle: high → mid → low → high
@@ -383,7 +389,7 @@ export class GameScene extends Phaser.Scene {
     // Camera — zoom in so snake is larger on screen.
     // Lower zoom on low-tier so fewer pixels need to be re-rendered each frame.
     this.cameras.main.setBackgroundColor('#0a0a0a');
-    const baseZoom = this.isMobile ? 1.2 : 1.6;
+    const baseZoom = this.isMobile ? 0.9 : 1.6;
     const zoomScale = this.qualityTier === 'low' ? 0.85 : this.qualityTier === 'mid' ? 0.95 : 1;
     this.cameras.main.setZoom(baseZoom * zoomScale);
     // Pixel-perfect rendering kills sub-pixel shimmer when camera moves
@@ -516,8 +522,9 @@ export class GameScene extends Phaser.Scene {
 
     // Boost button (right side bottom) — adaptive radius for small screens
     const btnRadius = Math.min(36, Math.max(24, w * 0.065));
-    const boostX = w - btnRadius * 2.5;
-    const boostY = h - btnRadius * 2;
+    const edgePad = this.isMobile ? 12 : 4; // keep buttons away from screen edges on mobile
+    const boostX = w - btnRadius * 2.5 - edgePad;
+    const boostY = h - btnRadius * 2 - edgePad;
     this.mobileBoostBtn = this.createMobileButton(
       boostX, boostY, btnRadius, 'BOOST', 0x00f0ff,
       () => this.send({ type: 'boost_start' }),
@@ -525,8 +532,8 @@ export class GameScene extends Phaser.Scene {
     );
 
     // Trap button (right side above boost)
-    const trapX = w - btnRadius * 2.5;
-    const trapY = h - btnRadius * 5;
+    const trapX = w - btnRadius * 2.5 - edgePad;
+    const trapY = h - btnRadius * 5 - edgePad;
     this.mobileTrapBtn = this.createMobileButton(trapX, trapY, btnRadius, 'TRAP', 0xff2e63, () => {
       this.send({ type: 'skill_use', skill: 'trap' });
     });
@@ -909,7 +916,7 @@ export class GameScene extends Phaser.Scene {
       // see more of the action. Avoid retroactively zooming when the
       // shrink interval steps the arena down mid-match.
       if (wasFirst) {
-        const baseZoom = this.isMobile ? 1.2 : 1.6;
+        const baseZoom = this.isMobile ? 0.9 : 1.6;
         const tierFactor = this.qualityTier === 'low' ? 0.85 : this.qualityTier === 'mid' ? 0.95 : 1;
         // Reference radius = 500 → factor 1.0; smaller → tighter zoom (>1), bigger → wider zoom (<1).
         const sizeFactor = Math.max(0.85, Math.min(1.20, 500 / Math.max(1, this.arenaRadius)));
@@ -1003,21 +1010,35 @@ export class GameScene extends Phaser.Scene {
     this.leaderboardText.setX(this.scale.width - 16);
 
     // Reposition bottom-right HUD (mute + quality) in case of resize/orientation change
-    // On mobile, move mute/quality up so they don't overlap the BOOST/TRAP touch buttons
+    // On mobile these are hidden; keep for desktop resize
     const hudYOffset = this.isMobile ? 130 : 16;
     this.muteBtn.setPosition(this.scale.width - 16, this.scale.height - hudYOffset);
     this.qualityBtn.setPosition(this.scale.width - 54, this.scale.height - hudYOffset);
+
+    // Reposition score text and timer capsule on resize (especially orientation changes)
+    const mobileHudTop = this.isMobile ? 44 : 16;
+    this.scoreText.setPosition(10, mobileHudTop);
+    const mobileTimerY = this.isMobile ? 50 : 12;
+    const scx = this.scale.width / 2;
+    this.timerCapsule.clear();
+    this.timerCapsule.fillStyle(0x27272a, 0.95);
+    this.timerCapsule.fillRoundedRect(scx - 60, mobileTimerY, 120, 36, 18);
+    this.timerCapsule.lineStyle(2, 0x3f3f46, 1);
+    this.timerCapsule.strokeRoundedRect(scx - 60, mobileTimerY, 120, 36, 18);
+    this.timeText.setPosition(scx, mobileTimerY + 18);
+    this.killNotificationText.setPosition(this.scale.width / 2, this.scale.height * 0.28);
 
     // Reposition mobile controls on resize/orientation change
     if (this.isMobile) {
       const w = this.scale.width;
       const h = this.scale.height;
       const btnRadius = Math.min(36, Math.max(24, w * 0.065));
+      const edgePad = 12;
       if (this.mobileBoostBtn) {
-        this.mobileBoostBtn.setPosition(w - btnRadius * 2.5, h - btnRadius * 2);
+        this.mobileBoostBtn.setPosition(w - btnRadius * 2.5 - edgePad, h - btnRadius * 2 - edgePad);
       }
       if (this.mobileTrapBtn) {
-        this.mobileTrapBtn.setPosition(w - btnRadius * 2.5, h - btnRadius * 5);
+        this.mobileTrapBtn.setPosition(w - btnRadius * 2.5 - edgePad, h - btnRadius * 5 - edgePad);
       }
     }
 
@@ -1287,6 +1308,13 @@ export class GameScene extends Phaser.Scene {
     scoreLabel.setText(`$${p.score.toFixed(2)}`);
     scoreLabel.setPosition(head.x, head.y - 38);
     label.setPosition(head.x, head.y - 26);
+    // On mobile hide other players' name labels — too much text clutter on small screens.
+    // Show only our own label so we can identify ourselves; hide names of others.
+    if (this.isMobile && !isMe) {
+      label.setVisible(false);
+    } else {
+      label.setVisible(true);
+    }
   }
 
   private showKillNotification(victimName: string, lostAmount: number) {
