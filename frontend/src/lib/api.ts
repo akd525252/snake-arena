@@ -36,6 +36,19 @@ async function request<T = unknown>(
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({ error: 'Request failed' }));
+
+    // Single-device enforcement: backend says our session was revoked because
+    // the user logged in on another device. Clear the local token and emit a
+    // window event so AuthContext can sign out cleanly and redirect to login.
+    if (res.status === 401 && (errorData as { code?: string }).code === 'SESSION_REVOKED') {
+      clearToken();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('auth:session-revoked', {
+          detail: { message: errorData.error || 'Logged in from another device.' },
+        }));
+      }
+    }
+
     throw new Error(errorData.error || `HTTP ${res.status}`);
   }
 

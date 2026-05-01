@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { authLimiter } from '../middleware/rateLimits';
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'crypto';
 import { supabase } from '../config/supabase';
-import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { authenticateToken, AuthRequest, invalidateSessionCache } from '../middleware/auth';
 
 const router = Router();
 
@@ -78,6 +79,21 @@ router.post('/login', authLimiter, async (req: Request, res: Response): Promise<
     const accountStatus = (userRow as unknown as { account_status?: string }).account_status || 'active';
     const dbAvatar = (userRow as unknown as { avatar?: string | null }).avatar ?? null;
 
+    // Single-device enforcement: rotate session_id on every successful login.
+    // Any tokens previously issued (i.e. on other devices) will fail the
+    // session_id check in authenticateToken and be force-logged-out.
+    const sessionId = randomUUID();
+    const { error: sessionUpdateErr } = await supabase
+      .from('users')
+      .update({ current_session_id: sessionId })
+      .eq('id', user.id);
+    if (sessionUpdateErr) {
+      console.error('[auth/login] Failed to rotate session_id:', sessionUpdateErr);
+      // Non-fatal: token will still work but multi-device protection won't activate
+      // for this login. Surfacing as 500 would brick logins if column missing.
+    }
+    invalidateSessionCache(user.id);
+
     // Issue app JWT
     const token = jwt.sign(
       {
@@ -88,6 +104,7 @@ router.post('/login', authLimiter, async (req: Request, res: Response): Promise<
         demo_balance: demoBalance,
         equipped_skin_id: userRow.equipped_skin_id,
         skin_key: playerSkinId,
+        session_id: sessionId,
       },
       process.env.JWT_SECRET!,
       { expiresIn: '7d' }

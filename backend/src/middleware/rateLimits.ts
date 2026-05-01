@@ -32,11 +32,14 @@ const userKey = (req: Request): string => {
 };
 
 // Login / signup — protect against credential stuffing.
-// 8 attempts per 15 min per IP.
+// 30 attempts per 15 min per IP. The frontend now uses /api/auth/me on page
+// refresh (not /login), so legitimate refresh traffic doesn't count here.
+// /login is only hit on actual credential submission or first-time session
+// exchange, so 30 is plenty for shared IPs (mobile carriers, offices).
 export const authLimiter = rateLimit({
   ...baseHeaders,
   windowMs: 15 * 60 * 1000,
-  max: 8,
+  max: 30,
   keyGenerator: ipKey,
   message: { error: 'Too many login attempts. Try again in 15 minutes.' },
 });

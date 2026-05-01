@@ -1,18 +1,27 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
 
-export default function LoginPage() {
+function LoginPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, loading, authError, signInWithGoogle, signInWithEmail, signUpWithEmail } = useAuth();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Surface a friendly notice when the user was redirected here because their
+  // session was revoked by a login on another device.
+  const reason = searchParams?.get('reason');
+  const sessionRevokedNotice =
+    reason === 'session_revoked'
+      ? 'You were signed out because your account logged in from another device. Please log in again.'
+      : null;
 
   useEffect(() => {
     if (user && !loading) {
@@ -108,6 +117,11 @@ export default function LoginPage() {
               placeholder="••••••••"
             />
           </div>
+          {sessionRevokedNotice && !error && !authError && (
+            <div className="p-3 rounded-md bg-[#2a1a08] border border-[#a86a3a] text-[#d4a04a] text-sm">
+              {sessionRevokedNotice}
+            </div>
+          )}
           {(error || authError) && (
             <div className="p-3 rounded-md bg-[#2a0e0e] border border-[#962323] text-[#d83a3a] text-sm">
               {error || authError}
@@ -132,5 +146,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="flex flex-col flex-1 min-h-screen items-center justify-center px-6" />}>
+      <LoginPageInner />
+    </Suspense>
   );
 }

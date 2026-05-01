@@ -69,6 +69,11 @@ const wss = new WebSocketServer({ server });
 // ============================================
 const rooms = new Map<string, GameRoom>();
 const playerRooms = new Map<string, string>(); // playerId -> roomId
+// Active WebSocket per player. Used to enforce one-connection-per-account so
+// page reloads or duplicate tabs don't leave the user stuck with stale state.
+// When a new connection authenticates for an existing playerId, we close the
+// old socket and clean up its room/queue references before proceeding.
+const playerWs = new Map<string, WebSocket>();
 
 interface QueueEntry {
   userId: string;
@@ -118,7 +123,7 @@ wss.on('connection', (ws: WebSocket, req) => {
 
   ws.on('close', () => {
     console.log(`[WS] Player disconnected: ${playerId}`);
-    if (playerId) handleDisconnect(playerId);
+    if (playerId) handleDisconnect(playerId, ws);
   });
 
   ws.on('error', (err) => {
@@ -179,6 +184,28 @@ wss.on('connection', (ws: WebSocket, req) => {
     }
 
     console.log(`[WS] Player connected: ${playerId} (${playerUsername}) mode=${userRow.game_mode} skin=${playerSkinId}`);
+
+    // Single-connection enforcement: if the same user reconnects (e.g. page
+    // reload, duplicate tab, network blip), force-close the old socket and
+    // tear down any stale queue/room state so the new connection starts fresh.
+    // Without this, the new join_queue is silently ignored because playerRooms
+    // still references the previous (now-dead) room.
+    const previousWs = playerWs.get(playerId);
+    if (previousWs && previousWs !== ws) {
+      console.log(`[WS] Closing stale socket for ${playerId.slice(0, 8)} — new connection took over`);
+      try {
+        previousWs.send(JSON.stringify({
+          type: 'error',
+          message: 'Logged in from another tab/device.',
+          code: 'CONNECTION_REPLACED',
+        }));
+      } catch { /* socket may already be dead */ }
+      try { previousWs.close(); } catch { /* already closing */ }
+      // Synchronously clean up state attributed to the old socket so the new
+      // join_queue request from the same playerId isn't blocked by stale refs.
+      handleDisconnect(playerId);
+    }
+    playerWs.set(playerId, ws);
 
     ws.send(JSON.stringify({ type: 'welcome', playerId }));
 
@@ -292,17 +319,44 @@ function handleMessage(
 function joinQueue(ws: WebSocket, playerId: string, username: string, avatar: string | null, betAmount: number, isDemo: boolean, skinId: string | null = null): void {
   console.log(`[joinQueue] player=${playerId.slice(0, 8)} bet=${betAmount} demo=${isDemo}`);
 
-  // If player is already in a room, check if that room is completed (game over)
-  // If completed, clear them so they can rejoin. Otherwise ignore.
+  // Stale-room defense: a join_queue request must NEVER be silently ignored,
+  // because the user just clicked Play and is staring at "Searching..." with
+  // no feedback. Cases handled here:
+  //   1. Room reference exists but the room itself was already deleted →
+  //      drop the dangling reference.
+  //   2. Room is completed → clean up and continue to queue.
+  //   3. Room is in_progress but the player's snake is dead → they're a
+  //      ghost spectator. Treat as completed for them and clean up.
+  //   4. Room is in_progress and player is alive → they're already in a real
+  //      match. Tell them so the UI can redirect/show the active game.
   const existingRoomId = playerRooms.get(playerId);
   if (existingRoomId) {
     const existingRoom = rooms.get(existingRoomId);
-    if (existingRoom && existingRoom.status === 'completed') {
-      console.log(`[joinQueue] clearing player ${playerId.slice(0, 8)} from completed room ${existingRoomId.slice(0, 8)}`);
+    if (!existingRoom) {
+      console.log(`[joinQueue] dropping stale room ref ${existingRoomId.slice(0, 8)} for ${playerId.slice(0, 8)} — room no longer exists`);
+      playerRooms.delete(playerId);
+    } else if (existingRoom.status === 'completed') {
+      console.log(`[joinQueue] clearing ${playerId.slice(0, 8)} from completed room ${existingRoomId.slice(0, 8)}`);
+      removePlayerFromRoom(existingRoom, playerId);
       playerRooms.delete(playerId);
     } else {
-      console.log(`[joinQueue] player ${playerId.slice(0, 8)} already in active room ${existingRoomId.slice(0, 8)} — ignoring`);
-      return;
+      const player = existingRoom.players.get(playerId);
+      const isAlive = player?.snake.alive === true;
+      if (!isAlive) {
+        // Ghost reference — they died (or reconnected after a network blip)
+        // but the room is still ticking. Hard-cleanup so they can re-queue.
+        console.log(`[joinQueue] cleaning ghost ${playerId.slice(0, 8)} from active room ${existingRoomId.slice(0, 8)}`);
+        removePlayerFromRoom(existingRoom, playerId);
+        playerRooms.delete(playerId);
+      } else {
+        console.log(`[joinQueue] player ${playerId.slice(0, 8)} is alive in room ${existingRoomId.slice(0, 8)} — refusing duplicate queue`);
+        ws.send(JSON.stringify({
+          type: 'error',
+          message: 'You are already in an active match. Finish or leave it before queuing again.',
+          code: 'ALREADY_IN_MATCH',
+        }));
+        return;
+      }
     }
   }
 
@@ -552,7 +606,7 @@ async function createMatch(entries: QueueEntry[]): Promise<void> {
 // ============================================
 // Disconnect Handler
 // ============================================
-function handleDisconnect(playerId: string): void {
+function handleDisconnect(playerId: string, ws?: WebSocket): void {
   // Remove from queue
   const qIdx = matchmakingQueue.findIndex(e => e.userId === playerId);
   if (qIdx !== -1) {
@@ -579,6 +633,17 @@ function handleDisconnect(playerId: string): void {
       }
     }
     playerRooms.delete(playerId);
+  }
+
+  // Only clear the playerWs entry if it still points to the socket that
+  // disconnected. If a new connection has already taken over, leave it.
+  if (ws !== undefined) {
+    const current = playerWs.get(playerId);
+    if (current === ws) {
+      playerWs.delete(playerId);
+    }
+  } else {
+    playerWs.delete(playerId);
   }
 }
 

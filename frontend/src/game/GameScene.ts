@@ -593,7 +593,7 @@ export class GameScene extends Phaser.Scene {
     return container;
   }
 
-  update() {
+  update(_time: number, delta: number) {
     this.frameCount++;
 
     // Animated arena overlay — vivid theme animations (fireflies, embers,
@@ -738,15 +738,21 @@ export class GameScene extends Phaser.Scene {
       if (!this.cameraSmooth) {
         this.cameraSmooth = { x: camTarget.x, y: camTarget.y };
       } else {
-        // Smaller lerp factor + sub-pixel rounding for jitter-free camera
-        this.cameraSmooth.x += (camTarget.x - this.cameraSmooth.x) * 0.18;
-        this.cameraSmooth.y += (camTarget.y - this.cameraSmooth.y) * 0.18;
+        // Frame-rate-independent lerp: at 60fps with delta=16.67ms, factor ≈ 0.18.
+        // Without this, high-Hz monitors (120/144Hz) make the camera "snap" too
+        // fast and feel jittery; low-FPS makes it laggy. Math: 1-(1-k)^(delta/16.67)
+        // where k is the per-frame lerp at 60fps.
+        const baseLerp = 0.18;
+        const dt = Math.max(1, Math.min(50, delta));
+        const factor = 1 - Math.pow(1 - baseLerp, dt / 16.67);
+        this.cameraSmooth.x += (camTarget.x - this.cameraSmooth.x) * factor;
+        this.cameraSmooth.y += (camTarget.y - this.cameraSmooth.y) * factor;
       }
-      // Round to integer pixels to eliminate sub-pixel shimmering
-      this.cameras.main.centerOn(
-        Math.round(this.cameraSmooth.x),
-        Math.round(this.cameraSmooth.y),
-      );
+      // DO NOT Math.round() — setRoundPixels(true) on the camera already snaps
+      // rendering to integer pixels. Manual rounding here causes double-rounding
+      // which makes the camera oscillate between integer values when moving
+      // slowly, producing visible 1-pixel shake. Trust Phaser's renderer.
+      this.cameras.main.centerOn(this.cameraSmooth.x, this.cameraSmooth.y);
     }
   }
 
