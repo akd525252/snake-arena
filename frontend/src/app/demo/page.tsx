@@ -152,8 +152,8 @@ function DemoPageInner() {
       </div>
 
       {/* Timer Overlay - Center Top */}
-      <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-20 pointer-events-none">
-        <div className={`px-6 py-2 rounded-md border-2 font-mono font-bold text-lg shadow-lg transition-colors duration-300 ${
+      <div className="absolute top-16 sm:top-20 left-1/2 transform -translate-x-1/2 z-20 pointer-events-none">
+        <div className={`px-3 py-1 sm:px-6 sm:py-2 rounded-md border-2 font-mono font-bold text-base sm:text-lg shadow-lg transition-colors duration-300 ${
           timeRemaining <= 10000 && timeRemaining > 0
             ? 'bg-[#2a0e0e] border-[#962323] rpg-crimson animate-pulse'
             : 'bg-[#1a1410]/95 border-[#a86a3a] rpg-gold-bright'
@@ -162,19 +162,19 @@ function DemoPageInner() {
         </div>
       </div>
 
-      <div className="px-6 py-3 bg-[#0e0a08]/90 border-b border-[#3a2c1f] flex justify-between items-center text-sm">
-        <button 
+      <div className="px-3 py-2 sm:px-6 sm:py-3 bg-[#0e0a08]/90 border-b border-[#3a2c1f] flex justify-between items-center text-xs sm:text-sm">
+        <button
           onClick={() => setShowQuitConfirm(true)}
-          className="rpg-text-muted hover:rpg-gold-bright font-rpg-heading tracking-wider transition-colors"
+          className="rpg-text-muted hover:rpg-gold-bright font-rpg-heading tracking-wider transition-colors text-xs sm:text-sm"
         >
           ← Leave Demo
         </button>
-        <div className="flex gap-6 rpg-text-muted items-center">
-          <span className="px-3 py-1 rounded-md border border-[#a86a3a] bg-[#3a2c1f] rpg-gold-bright text-xs font-rpg-heading tracking-widest">
+        <div className="flex gap-2 sm:gap-6 rpg-text-muted items-center">
+          <span className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-md border border-[#a86a3a] bg-[#3a2c1f] rpg-gold-bright text-[10px] sm:text-xs font-rpg-heading tracking-widest">
             DEMO
           </span>
           <span className="hidden md:inline">Mouse = Steer · SPACE = Boost · SHIFT = Trap</span>
-          <span className={`px-2 py-0.5 rounded-md text-xs font-rpg-heading tracking-wider ${
+          <span className={`px-1.5 py-0.5 sm:px-2 rounded-md text-[10px] sm:text-xs font-rpg-heading tracking-wider ${
             status === 'connected' ? 'border border-[#a86a3a] bg-[#3a2c1f] rpg-gold-bright' :
             status === 'error' ? 'border border-[#962323] bg-[#2a0e0e] rpg-crimson' :
             'rpg-stone-panel rpg-text-muted'
@@ -200,30 +200,30 @@ function DemoPageInner() {
 
       {/* Quit Confirmation */}
       {showQuitConfirm && !results && !deathInfo && (
-        <div className="absolute inset-0 bg-black/80 backdrop-blur flex items-center justify-center z-50">
-          <div className="w-full max-w-md mx-6 rpg-panel p-8 text-center">
-            <h2 className="rpg-title text-3xl mb-4">Leave Demo?</h2>
-            <p className="rpg-text-muted mb-2">You will lose your bet and current money!</p>
-            <div className="flex justify-center gap-8 my-6">
+        <div className="absolute inset-0 bg-black/80 backdrop-blur flex items-center justify-center z-50 px-4">
+          <div className="w-full max-w-sm sm:max-w-md rpg-panel p-5 sm:p-8 text-center">
+            <h2 className="rpg-title text-2xl sm:text-3xl mb-4">Leave Demo?</h2>
+            <p className="rpg-text-muted mb-2 text-sm sm:text-base">You will lose your bet and current money!</p>
+            <div className="flex justify-center gap-6 sm:gap-8 my-4 sm:my-6">
               <div className="text-center">
-                <p className="text-sm rpg-text-muted">Bet</p>
-                <p className="text-xl font-bold rpg-gold-bright">${betAmount.toFixed(2)}</p>
+                <p className="text-xs sm:text-sm rpg-text-muted">Bet</p>
+                <p className="text-lg sm:text-xl font-bold rpg-gold-bright">${betAmount.toFixed(2)}</p>
               </div>
               <div className="text-center">
-                <p className="text-sm rpg-text-muted">Current Money</p>
-                <p className="text-xl font-bold rpg-text">${currentScore.toFixed(2)}</p>
+                <p className="text-xs sm:text-sm rpg-text-muted">Current Money</p>
+                <p className="text-lg sm:text-xl font-bold rpg-text">${currentScore.toFixed(2)}</p>
               </div>
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <button
                 onClick={() => setShowQuitConfirm(false)}
-                className="btn-rpg flex-1"
+                className="btn-rpg flex-1 text-sm sm:text-base"
               >
                 Stay in Demo
               </button>
               <button
                 onClick={() => { window.location.href = '/dashboard'; }}
-                className="btn-rpg btn-rpg-danger flex-1 text-center"
+                className="btn-rpg btn-rpg-danger flex-1 text-center text-sm sm:text-base"
               >
                 Leave & Lose
               </button>
@@ -234,31 +234,31 @@ function DemoPageInner() {
 
       {/* Death Overlay */}
       {deathInfo && !results && (
-        <div className="absolute inset-0 bg-black/90 backdrop-blur flex items-center justify-center z-50">
-          <div className="w-full max-w-md mx-6 rpg-panel p-8 text-center">
-            <h2 className="rpg-title text-4xl mb-2 rpg-crimson">You Died!</h2>
-            <p className="text-xl rpg-text mb-2">Lost ${deathInfo.lostAmount.toFixed(2)}</p>
+        <div className="absolute inset-0 bg-black/90 backdrop-blur flex items-center justify-center z-50 px-4">
+          <div className="w-full max-w-sm sm:max-w-md rpg-panel p-5 sm:p-8 text-center">
+            <h2 className="rpg-title text-3xl sm:text-4xl mb-2 rpg-crimson">You Died!</h2>
+            <p className="text-lg sm:text-xl rpg-text mb-2">Lost ${deathInfo.lostAmount.toFixed(2)}</p>
             {deathInfo.killerName && (
-              <p className="text-sm rpg-text-muted mb-6">Killed by <span className="rpg-gold-bright font-bold">{deathInfo.killerName}</span></p>
+              <p className="text-xs sm:text-sm rpg-text-muted mb-4 sm:mb-6">Killed by <span className="rpg-gold-bright font-bold">{deathInfo.killerName}</span></p>
             )}
-            {!deathInfo.killerName && <p className="text-sm rpg-text-muted mb-6">You hit the wall</p>}
-            <div className="flex flex-col gap-3">
+            {!deathInfo.killerName && <p className="text-xs sm:text-sm rpg-text-muted mb-4 sm:mb-6">You hit the wall</p>}
+            <div className="flex flex-col gap-2 sm:gap-3">
               {/* Hard navigation guarantees fresh WS / matchmaker state. */}
               <button
                 onClick={() => { window.location.href = `/demo?bet=${betAmount}`; }}
-                className="btn-rpg btn-rpg-amber btn-rpg-block"
+                className="btn-rpg btn-rpg-amber btn-rpg-block text-sm sm:text-base"
               >
                 Play Again
               </button>
               <button
                 onClick={() => { window.location.href = '/dashboard'; }}
-                className="btn-rpg btn-rpg-block text-center"
+                className="btn-rpg btn-rpg-block text-center text-sm sm:text-base"
               >
                 Back to Dashboard
               </button>
               <button
                 onClick={() => setDeathInfo(null)}
-                className="w-full py-3 rounded-md rpg-text-muted hover:rpg-gold-bright text-sm font-rpg-heading tracking-wider transition-colors"
+                className="w-full py-2 sm:py-3 rounded-md rpg-text-muted hover:rpg-gold-bright text-xs sm:text-sm font-rpg-heading tracking-wider transition-colors"
               >
                 Continue Watching (Spectate)
               </button>
@@ -269,36 +269,36 @@ function DemoPageInner() {
 
       {/* Game Complete Overlay */}
       {results && (
-        <div className="absolute inset-0 bg-black/80 backdrop-blur flex items-center justify-center z-50">
-          <div className="w-full max-w-md mx-6 rpg-panel p-8">
-            <h2 className="rpg-title text-3xl mb-2 text-center">Demo Complete</h2>
-            <p className="text-center text-xs rpg-text-muted mb-6">These are demo earnings — not withdrawable</p>
-            <div className="space-y-2 mb-6">
+        <div className="absolute inset-0 bg-black/80 backdrop-blur flex items-center justify-center z-50 px-4">
+          <div className="w-full max-w-sm sm:max-w-md rpg-panel p-5 sm:p-8">
+            <h2 className="rpg-title text-2xl sm:text-3xl mb-2 text-center">Demo Complete</h2>
+            <p className="text-center text-[10px] sm:text-xs rpg-text-muted mb-4 sm:mb-6">These are demo earnings — not withdrawable</p>
+            <div className="space-y-2 mb-4 sm:mb-6 max-h-[40vh] overflow-y-auto">
               {results.map((r, i) => (
                 <div
                   key={i}
-                  className={`flex justify-between items-center p-3 rounded-md ${
+                  className={`flex justify-between items-center p-2 sm:p-3 rounded-md ${
                     r.placement === 1 ? 'border border-[#a86a3a] bg-[#3a2c1f]' : 'rpg-stone-panel'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 sm:gap-3">
                     <span className="font-bold rpg-text-muted font-rpg-heading">#{r.placement}</span>
-                    <span className="rpg-text font-medium">{r.username}</span>
+                    <span className="text-sm sm:text-base rpg-text font-medium">{r.username}</span>
                   </div>
-                  <span className="rpg-gold-bright font-bold">${r.score.toFixed(2)}</span>
+                  <span className="rpg-gold-bright font-bold text-sm sm:text-base">${r.score.toFixed(2)}</span>
                 </div>
               ))}
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <button
                 onClick={() => { window.location.href = `/demo?bet=${betAmount}`; }}
-                className="btn-rpg btn-rpg-amber flex-1"
+                className="btn-rpg btn-rpg-amber flex-1 text-sm sm:text-base"
               >
                 Play Again
               </button>
               <button
                 onClick={() => { window.location.href = '/dashboard'; }}
-                className="btn-rpg flex-1 text-center"
+                className="btn-rpg flex-1 text-center text-sm sm:text-base"
               >
                 Dashboard
               </button>

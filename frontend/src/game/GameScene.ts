@@ -514,8 +514,8 @@ export class GameScene extends Phaser.Scene {
       this.joystickGraphics.clear();
     });
 
-    // Boost button (right side bottom)
-    const btnRadius = 36;
+    // Boost button (right side bottom) — adaptive radius for small screens
+    const btnRadius = Math.min(36, Math.max(24, w * 0.065));
     const boostX = w - btnRadius * 2.5;
     const boostY = h - btnRadius * 2;
     this.mobileBoostBtn = this.createMobileButton(
@@ -549,13 +549,14 @@ export class GameScene extends Phaser.Scene {
     circle.strokeCircle(0, 0, r);
     const text = this.add.text(0, 0, label, {
       fontFamily: 'monospace',
-      fontSize: '10px',
+      fontSize: r <= 28 ? '9px' : '10px',
       color: '#ffffff',
     }).setOrigin(0.5);
     container.add([circle, text]);
 
-    // Hit area for touch
-    const zone = this.add.zone(x, y, r * 2, r * 2).setScrollFactor(0).setDepth(201);
+    // Hit area for touch — added to container so it moves with resize
+    const zone = this.add.zone(0, 0, r * 2, r * 2).setDepth(201);
+    container.add(zone);
     zone.setInteractive();
     zone.on('pointerdown', () => {
       circle.clear();
@@ -1002,8 +1003,23 @@ export class GameScene extends Phaser.Scene {
     this.leaderboardText.setX(this.scale.width - 16);
 
     // Reposition bottom-right HUD (mute + quality) in case of resize/orientation change
-    this.muteBtn.setPosition(this.scale.width - 16, this.scale.height - 16);
-    this.qualityBtn.setPosition(this.scale.width - 54, this.scale.height - 16);
+    // On mobile, move mute/quality up so they don't overlap the BOOST/TRAP touch buttons
+    const hudYOffset = this.isMobile ? 130 : 16;
+    this.muteBtn.setPosition(this.scale.width - 16, this.scale.height - hudYOffset);
+    this.qualityBtn.setPosition(this.scale.width - 54, this.scale.height - hudYOffset);
+
+    // Reposition mobile controls on resize/orientation change
+    if (this.isMobile) {
+      const w = this.scale.width;
+      const h = this.scale.height;
+      const btnRadius = Math.min(36, Math.max(24, w * 0.065));
+      if (this.mobileBoostBtn) {
+        this.mobileBoostBtn.setPosition(w - btnRadius * 2.5, h - btnRadius * 2);
+      }
+      if (this.mobileTrapBtn) {
+        this.mobileTrapBtn.setPosition(w - btnRadius * 2.5, h - btnRadius * 5);
+      }
+    }
 
     const aliveCount = state.players.filter(p => p.alive).length;
     this.aliveText.setText(`Alive: ${aliveCount}/${state.players.length}`);

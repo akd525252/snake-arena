@@ -121,10 +121,10 @@ export default function MatchmakingLobby({
       };
 
   return (
-    <div className="absolute inset-0 z-40 bg-[#0e0a08]/95 backdrop-blur flex items-center justify-center px-4">
-      <div className="w-full max-w-3xl rpg-panel p-8">
-        <div className="text-center mb-8">
-          <h1 className={`mb-2 rpg-title text-3xl ${
+    <div className="absolute inset-0 z-40 bg-[#0e0a08]/95 backdrop-blur flex items-center justify-center px-2 sm:px-4">
+      <div className="w-full max-w-3xl rpg-panel p-4 sm:p-6 md:p-8">
+        <div className="text-center mb-4 sm:mb-8">
+          <h1 className={`mb-2 rpg-title text-xl sm:text-3xl ${
             !matchStarting && !scanExpired ? 'rpg-torch' : ''
           }`}>
             {matchStarting
@@ -143,7 +143,7 @@ export default function MatchmakingLobby({
                   : `Players ready: ${players.length}`}
           </p>
           {!matchStarting && !scanExpired && !isDemo && (
-            <div className="flex justify-center gap-6 mt-3 text-xs rpg-text-muted">
+            <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 sm:gap-6 mt-2 sm:mt-3 text-xs rpg-text-muted">
               <span>Bet: <span className="rpg-gold-bright font-bold">${betAmount}</span></span>
               <span>
                 Scanning: <span className="rpg-text font-mono font-bold">{remaining}s</span>
@@ -152,7 +152,7 @@ export default function MatchmakingLobby({
             </div>
           )}
           {!matchStarting && !scanExpired && isDemo && (
-            <div className="flex justify-center gap-6 mt-3 text-xs rpg-text-muted">
+            <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 sm:gap-6 mt-2 sm:mt-3 text-xs rpg-text-muted">
               <span>Bet: <span className="rpg-gold-bright font-bold">${betAmount}</span></span>
               <span>Time waiting: <span className="rpg-text font-mono">{localElapsed}s</span></span>
               <span>Mode: <span className="rpg-gold-bright font-bold">Demo</span></span>
@@ -161,7 +161,7 @@ export default function MatchmakingLobby({
         </div>
 
         {/* Player slots grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-6">
+        <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-3 mb-4 sm:mb-6">
           {Array.from({ length: slots }).map((_, i) => {
             const p = i < visibleSlots ? players[i] : undefined;
             if (!p) {
@@ -170,10 +170,10 @@ export default function MatchmakingLobby({
                   key={`empty-${i}`}
                   className="aspect-square rpg-parchment-inset border-dashed flex flex-col items-center justify-center rpg-text-muted animate-pulse"
                 >
-                  <div className="w-12 h-12 rounded-full rpg-stone-panel mb-2 flex items-center justify-center rpg-text-muted">
+                  <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-full rpg-stone-panel mb-1 sm:mb-2 flex items-center justify-center rpg-text-muted text-xs sm:text-base">
                     ?
                   </div>
-                  <span className="text-xs">Waiting...</span>
+                  <span className="text-[10px] sm:text-xs">Waiting...</span>
                 </div>
               );
             }
@@ -190,7 +190,7 @@ export default function MatchmakingLobby({
                 }`}
                 style={{ animationDelay: `${i * 120}ms` }}
               >
-                <div className={`w-14 h-14 rounded-full overflow-hidden border-2 mb-2 relative ${
+                <div className={`w-10 h-10 sm:w-14 sm:h-14 rounded-full overflow-hidden border-2 mb-1 sm:mb-2 relative ${
                   isMe ? accent.avatarBorder : showSkin ? 'border-[2px]' : 'border-[#3a2c1f]'
                 }`}
                   style={showSkin && !isMe ? { borderColor: skinColor! } : {}}
@@ -201,18 +201,18 @@ export default function MatchmakingLobby({
                   ) : (
                     <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${
                       isMe ? accent.avatarGradient : showSkin ? 'from-[#1c1410] to-[#0e0a08]' : 'from-[#3a2c1f] to-[#1a1410]'
-                    } rpg-text font-black text-xl`}
+                    } rpg-text font-black text-lg sm:text-xl`}
                       style={showSkin ? { color: skinColor! } : {}}
                     >
                       {p.username.charAt(0).toUpperCase()}
                     </div>
                   )}
                   {showSkin && (
-                    <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full border border-white/20" style={{ backgroundColor: skinColor! }} />
+                    <div className="absolute -bottom-0.5 -right-0.5 sm:-bottom-1 sm:-right-1 w-3.5 h-3.5 sm:w-5 sm:h-5 rounded-full border border-white/20" style={{ backgroundColor: skinColor! }} />
                   )}
                 </div>
-                <span className="text-xs rpg-text font-bold truncate w-full text-center">
-                  {p.username}{isMe && ' (you)'}
+                <span className="text-[10px] sm:text-xs rpg-text font-bold truncate w-full text-center">
+                  {p.username}{isMe && <span className="hidden sm:inline"> (you)</span>}
                 </span>
                 {p.betAmount !== undefined && (
                   <span className={`text-[10px] mt-0.5 ${isMe ? 'rpg-gold-bright' : 'rpg-text-muted'}`}>
@@ -243,18 +243,18 @@ export default function MatchmakingLobby({
 
         {/* Action buttons */}
         {!matchStarting && (
-          <div className="flex justify-center gap-3">
+          <div className="flex flex-col sm:flex-row justify-center gap-2 sm:gap-3">
             {scanExpired ? (
               <>
-                <button onClick={handleRetry} className={`btn-rpg ${isDemo ? 'btn-rpg-amber' : 'btn-rpg-primary'}`}>
+                <button onClick={handleRetry} className={`btn-rpg text-sm sm:text-base ${isDemo ? 'btn-rpg-amber' : 'btn-rpg-primary'}`}>
                   ↻ Keep Searching
                 </button>
-                <button onClick={onCancel} className="btn-rpg">
+                <button onClick={onCancel} className="btn-rpg text-sm sm:text-base">
                   Back to Dashboard
                 </button>
               </>
             ) : (
-              <button onClick={onCancel} className="btn-rpg">
+              <button onClick={onCancel} className="btn-rpg text-sm sm:text-base">
                 Cancel
               </button>
             )}
