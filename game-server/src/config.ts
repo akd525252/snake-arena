@@ -46,7 +46,7 @@ export const CONFIG = {
   MIN_PLAYERS: 2,
   MAX_PLAYERS: 10,
   GAME_DURATION: 60000, // 1 minute match
-  SPAWN_GRACE_MS: 1500, // collision detection disabled for first 1.5s
+  SPAWN_GRACE_MS: 2500, // collision detection disabled for first 2.5s — extra breathing room at spawn
 
   // Wallets
   DEMO_STARTING_WALLET: 50, // dollars given to a demo player when the match starts

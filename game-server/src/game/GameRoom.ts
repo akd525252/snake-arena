@@ -75,15 +75,19 @@ export function addPlayerToRoom(room: GameRoom, player: Player): void {
   const x = room.arenaCenterX + Math.cos(spawnAngle) * spawnR;
   const y = room.arenaCenterY + Math.sin(spawnAngle) * spawnR;
 
-  // Face toward center
-  const facingAngle = spawnAngle + Math.PI;
+  // Face tangentially along the arena (perpendicular to radius), randomly CW or CCW.
+  // This prevents everyone from rushing the center at start.
+  const tangentDir = Math.random() < 0.5 ? -1 : 1;
+  const facingAngle = spawnAngle + (Math.PI / 2) * tangentDir;
 
-  // Build initial body trailing behind the head
+  // Stack initial segments TIGHT against the head (1px spacing) so the snake
+  // "grows" out naturally as it moves, rather than appearing as a rigid line.
+  // The chain-follow in moveSnake() will pull them into proper spacing.
   const segments: Position[] = [];
   for (let i = 0; i < CONFIG.SNAKE_INITIAL_LENGTH; i++) {
     segments.push({
-      x: x - Math.cos(facingAngle) * i * CONFIG.SNAKE_SEGMENT_SIZE,
-      y: y - Math.sin(facingAngle) * i * CONFIG.SNAKE_SEGMENT_SIZE,
+      x: x - Math.cos(facingAngle) * i,
+      y: y - Math.sin(facingAngle) * i,
     });
   }
 
@@ -145,6 +149,8 @@ export function startGame(room: GameRoom): void {
   // A small random jitter (±12°) prevents perfect predictability.
   const spawnList = Array.from(room.players.values());
   const totalPlayers = spawnList.length;
+  // Half the players go clockwise, the other half counter-clockwise so they
+  // naturally fan out instead of heading the same direction.
   for (let i = 0; i < totalPlayers; i++) {
     const player = spawnList[i];
     const baseAngle = (i / totalPlayers) * Math.PI * 2;
@@ -153,12 +159,16 @@ export function startGame(room: GameRoom): void {
     const spawnR = room.arenaRadius * 0.55;
     const x = room.arenaCenterX + Math.cos(spawnAngle) * spawnR;
     const y = room.arenaCenterY + Math.sin(spawnAngle) * spawnR;
-    const facingAngle = spawnAngle + Math.PI; // face center
+    // Face tangentially (perpendicular to radius) so players don't all rush
+    // the center on spawn. Alternate CW/CCW based on index.
+    const tangentDir = i % 2 === 0 ? 1 : -1;
+    const facingAngle = spawnAngle + (Math.PI / 2) * tangentDir;
+    // Stack segments tight at spawn — they grow out naturally as the head moves.
     const segments: Position[] = [];
     for (let j = 0; j < CONFIG.SNAKE_INITIAL_LENGTH; j++) {
       segments.push({
-        x: x - Math.cos(facingAngle) * j * CONFIG.SNAKE_SEGMENT_SIZE,
-        y: y - Math.sin(facingAngle) * j * CONFIG.SNAKE_SEGMENT_SIZE,
+        x: x - Math.cos(facingAngle) * j,
+        y: y - Math.sin(facingAngle) * j,
       });
     }
     player.snake.segments = segments;

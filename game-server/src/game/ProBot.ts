@@ -282,6 +282,7 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
     // Cancel boost if we accidentally boosted toward the wall
     if (bot.snake.boosted) {
       bot.snake.boosted = false;
+      bot.snake.speed = CONFIG.SNAKE_SPEED;
       state.boostActiveSince = 0;
     }
     return;
@@ -344,12 +345,20 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
       if (wantsBoost) {
         if (!bot.snake.boosted) {
           bot.snake.boosted = true;
+          bot.snake.speed = CONFIG.SNAKE_BOOST_SPEED;
+          // Bots use timed boost (gameLoop cancels when boostEndTime expires).
+          // Refresh on every tick we still want to boost so it feels continuous.
+          bot.snake.boostEndTime = now + 2000;
           state.boostActiveSince = now;
           state.lastBoostTime = now;
+        } else {
+          // Already boosting — keep refreshing the expiry while we still want to.
+          bot.snake.boostEndTime = now + 2000;
         }
       } else {
         if (bot.snake.boosted) {
           bot.snake.boosted = false;
+          bot.snake.speed = CONFIG.SNAKE_SPEED;
           state.boostActiveSince = 0;
         }
       }
@@ -368,6 +377,7 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
     // Make sure boost is off when evading
     if (bot.snake.boosted) {
       bot.snake.boosted = false;
+      bot.snake.speed = CONFIG.SNAKE_SPEED;
       state.boostActiveSince = 0;
     }
     return;
@@ -376,6 +386,7 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
   // Stop boost if we were hunting and lost the target
   if (bot.snake.boosted) {
     bot.snake.boosted = false;
+    bot.snake.speed = CONFIG.SNAKE_SPEED;
     state.boostActiveSince = 0;
   }
 

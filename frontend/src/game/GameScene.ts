@@ -409,8 +409,8 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Camera — zoom in so snake is larger on screen.
-    // Lower zoom on low-tier so fewer pixels need to be re-rendered each frame.
-    this.cameras.main.setBackgroundColor('#0a0a0a');
+    // (Camera background is set by applyThemeCameraBg() above — DO NOT override
+    // here, otherwise the themed ground gets painted over with dark gray.)
     const baseZoom = this.isMobile ? 0.9 : 1.6;
     const zoomScale = this.qualityTier === 'low' ? 0.85 : this.qualityTier === 'mid' ? 0.95 : 1;
     this.cameras.main.setZoom(baseZoom * zoomScale);
@@ -799,13 +799,15 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** Set Phaser camera background to a darker variant of the current theme. */
+  /** Set Phaser camera background to a darker variant of the current theme.
+   *  Tuned so the area outside the arena is clearly the same biome (just
+   *  dimmer) rather than looking like a black void. */
   private applyThemeCameraBg() {
     const themeBgs = {
-      grass: '#0a1f10',
-      lava: '#150300',
-      rock: '#0f1012',
-      tile: '#02080d',
+      grass: '#143a1c',  // dark forest green (was nearly black)
+      lava: '#3a0a02',   // dark ember red
+      rock: '#1d1e22',   // dim slate gray
+      tile: '#0a1828',   // dark navy with hint of cyan
     };
     this.cameras.main.setBackgroundColor(themeBgs[this.mapTheme]);
   }
@@ -1345,6 +1347,34 @@ export class GameScene extends Phaser.Scene {
       g.fillCircle(seg.x, seg.y, r);
     }
 
+    // Pass 2b: SCALE BANDS — every 4th segment gets a darker overlay so the
+    // snake reads as a banded/scaled creature, not a flat tube. Skipped on
+    // low tier to keep render cost minimal.
+    if (this.qualityTier !== 'low') {
+      const scaleColor = this.darkenColor(bodyColor, 0.65);
+      g.fillStyle(scaleColor, 0.55);
+      for (let i = 2; i < len; i += 4) {
+        const t = i / Math.max(1, len - 1);
+        const r = HEAD_RADIUS - (HEAD_RADIUS - TAIL_RADIUS) * t;
+        const seg = dense[i];
+        g.fillCircle(seg.x, seg.y, r * 0.78);
+      }
+    }
+
+    // Pass 2c: TOP-SIDE SHEEN — smaller lighter circles offset toward the
+    // upper-left for a 3D reptile-like glossy highlight. Skipped on low tier.
+    if (this.qualityTier !== 'low') {
+      const sheenColor = this.lightenColor(bodyColor, 0.45);
+      g.fillStyle(sheenColor, 0.55);
+      for (let i = len - 1; i >= 0; i--) {
+        const t = i / Math.max(1, len - 1);
+        const r = HEAD_RADIUS - (HEAD_RADIUS - TAIL_RADIUS) * t;
+        const seg = dense[i];
+        // Offset the highlight toward upper-left so the body looks rounded.
+        g.fillCircle(seg.x - r * 0.30, seg.y - r * 0.40, r * 0.45);
+      }
+    }
+
     // Boost / glow ring on head
     const head = dense[0];
     if (p.boosted) {
@@ -1366,12 +1396,32 @@ export class GameScene extends Phaser.Scene {
 
     // Eye whites
     g.fillStyle(0xffffff, 1);
-    g.fillCircle(head.x + fwdX * 3.5 + perpX * 4, head.y + fwdY * 3.5 + perpY * 4, 3);
-    g.fillCircle(head.x + fwdX * 3.5 - perpX * 4, head.y + fwdY * 3.5 - perpY * 4, 3);
-    // Pupils — black, look slightly forward
+    const eyeLX = head.x + fwdX * 3.5 + perpX * 4;
+    const eyeLY = head.y + fwdY * 3.5 + perpY * 4;
+    const eyeRX = head.x + fwdX * 3.5 - perpX * 4;
+    const eyeRY = head.y + fwdY * 3.5 - perpY * 4;
+    g.fillCircle(eyeLX, eyeLY, 3);
+    g.fillCircle(eyeRX, eyeRY, 3);
+    // Pupils — black, look slightly forward (slit-style for snake feel)
     g.fillStyle(0x000000, 1);
-    g.fillCircle(head.x + fwdX * 4.5 + perpX * 4, head.y + fwdY * 4.5 + perpY * 4, 1.4);
-    g.fillCircle(head.x + fwdX * 4.5 - perpX * 4, head.y + fwdY * 4.5 - perpY * 4, 1.4);
+    const pupLX = head.x + fwdX * 4.5 + perpX * 4;
+    const pupLY = head.y + fwdY * 4.5 + perpY * 4;
+    const pupRX = head.x + fwdX * 4.5 - perpX * 4;
+    const pupRY = head.y + fwdY * 4.5 - perpY * 4;
+    g.fillCircle(pupLX, pupLY, 1.6);
+    g.fillCircle(pupRX, pupRY, 1.6);
+    // Catchlight — tiny white dot in upper-left of pupil for 'alive' feel.
+    // Skipped on low tier to keep low-end perf snappy.
+    if (this.qualityTier !== 'low') {
+      g.fillStyle(0xffffff, 0.9);
+      g.fillCircle(pupLX - 0.6, pupLY - 0.6, 0.55);
+      g.fillCircle(pupRX - 0.6, pupRY - 0.6, 0.55);
+      // Nostrils — two tiny dark dots near the front of the snout.
+      g.fillStyle(this.darkenColor(bodyColor, 0.45), 0.85);
+      const nostrilFwd = HEAD_RADIUS - 1.5;
+      g.fillCircle(head.x + fwdX * nostrilFwd + perpX * 2, head.y + fwdY * nostrilFwd + perpY * 2, 0.9);
+      g.fillCircle(head.x + fwdX * nostrilFwd - perpX * 2, head.y + fwdY * nostrilFwd - perpY * 2, 0.9);
+    }
 
     // Tongue flicker — small red forked tongue that pulses on a cycle.
     // Cycle every ~1.6s, visible for 250ms. Uses player id for phase offset
@@ -1486,6 +1536,17 @@ export class GameScene extends Phaser.Scene {
     const gC = Math.max(0, Math.min(255, Math.floor(((color >> 8) & 0xff) * factor)));
     const b = Math.max(0, Math.min(255, Math.floor((color & 0xff) * factor)));
     return (r << 16) | (gC << 8) | b;
+  }
+
+  /** Blend color toward white by `amount` in [0..1]. Used for sheen highlights. */
+  private lightenColor(color: number, amount: number): number {
+    const r = (color >> 16) & 0xff;
+    const gC = (color >> 8) & 0xff;
+    const b = color & 0xff;
+    const lr = Math.min(255, Math.floor(r + (255 - r) * amount));
+    const lg = Math.min(255, Math.floor(gC + (255 - gC) * amount));
+    const lb = Math.min(255, Math.floor(b + (255 - b) * amount));
+    return (lr << 16) | (lg << 8) | lb;
   }
 
   private handleSkinEffects(p: RemotePlayer, skin: { primary: number; secondary: number; glow: number } | null): void {
@@ -1690,34 +1751,35 @@ export class GameScene extends Phaser.Scene {
     const cy = this.arenaCenterY;
     const r = this.arenaRadius;
 
-    // Theme palettes — brightened for clear visibility against dark camera bg
+    // Theme palettes — bright, biome-readable colors so the floor reads as
+    // grass/lava/rock/tile rather than nearly-black.
     const palettes = {
       grass: {
-        bg: 0x1f5a2c,        // brighter forest green
-        gridA: 0x2f8040,     // grass clump highlight
-        gridB: 0x4cb364,     // lighter grass
-        border: 0x88ee88,    // vivid green border
+        bg: 0x2d7a3a,        // saturated meadow green
+        gridA: 0x4ea85a,     // grass clump highlight
+        gridB: 0x7ecf86,     // lighter grass tuft
+        border: 0xa8f5b0,    // vivid green border
         danger: 0xef4444,
       },
       lava: {
-        bg: 0x4a0a00,        // deep red lava base
-        gridA: 0x822000,     // crack lines
-        gridB: 0xff6010,     // hot ember color
-        border: 0xff8030,    // glowing border
-        danger: 0xffd000,
+        bg: 0x7a1a05,        // glowing molten rock
+        gridA: 0xb83a08,     // crack lines (orange)
+        gridB: 0xff8a30,     // hot ember
+        border: 0xffb050,    // glowing border
+        danger: 0xffe040,
       },
       rock: {
-        bg: 0x2c2d31,        // medium gray stone
-        gridA: 0x4a4d52,     // tile grout
-        gridB: 0x6a6d72,     // highlight
-        border: 0xa8aab0,    // bright stone edge
+        bg: 0x4a4d52,        // mid-tone stone
+        gridA: 0x666a70,     // tile grout
+        gridB: 0x8a8d92,     // highlight
+        border: 0xc8cad0,    // bright stone edge
         danger: 0xef4444,
       },
       tile: {
-        bg: 0x0a2030,        // deeper navy
-        gridA: 0x144a6a,     // visible grid
-        gridB: 0x2cc8ff,     // bright cyan dots
-        border: 0x33eaff,    // luminous border
+        bg: 0x18465c,        // bright tech navy
+        gridA: 0x2a7090,     // visible grid lines
+        gridB: 0x4ce0ff,     // bright cyan dots
+        border: 0x66f0ff,    // luminous border
         danger: 0xff2e63,
       },
     } as const;
