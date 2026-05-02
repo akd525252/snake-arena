@@ -21,7 +21,11 @@ function LoginPageInner() {
   const sessionRevokedNotice =
     reason === 'session_revoked'
       ? 'You were signed out because your account logged in from another device. Please log in again.'
-      : null;
+      : reason === 'oauth_error'
+        ? 'Google sign-in failed. Please try again or use email login.'
+        : reason === 'oauth_cancelled'
+          ? 'Sign-in was cancelled. Please try again.'
+          : null;
 
   useEffect(() => {
     if (user && !loading) {
