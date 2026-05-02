@@ -5,7 +5,6 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
 import MatchmakingLobby, { LobbyPlayer } from '../../components/MatchmakingLobby';
 import Loader from '../../components/Loader';
-import { api } from '../../lib/api';
 
 interface GameResult {
   username: string;
@@ -37,9 +36,10 @@ function PlayPageInner() {
   const [inMatch, setInMatch] = useState(false);
   const gameStartedRef = useRef(false);
 
-  // Balance-gate before retrying
+  // Shown when the server reports CHARGE_FAILED (insufficient balance) while
+  // entering the queue. Since Play Again is gone, this path now just prompts
+  // the user to top up or return to dashboard.
   const [noBalanceInfo, setNoBalanceInfo] = useState<{ balance: number; needed: number } | null>(null);
-  const [checkingBalance, setCheckingBalance] = useState(false);
 
   // Matchmaking lobby state
   const [lobbyPlayers, setLobbyPlayers] = useState<LobbyPlayer[]>([]);
@@ -82,15 +82,27 @@ function PlayPageInner() {
       // (shader compilation, state changes) hurts weak GPUs / old Mali.
       const rendererType = isLowEnd ? Phaser.CANVAS : Phaser.AUTO;
 
+      // Size the game to match the PARENT CONTAINER, not the raw viewport.
+      // Using window.innerHeight - 60 was wrong on mobile: the header is
+      // smaller than 60px on mobile AND the mobile URL bar shows/hides
+      // dynamically, so the canvas ended up with black bars or overflowed.
+      const parentRect = containerRef.current!.getBoundingClientRect();
+      const initW = Math.max(320, Math.floor(parentRect.width));
+      const initH = Math.max(240, Math.floor(parentRect.height));
+
       const config: Phaser.Types.Core.GameConfig = {
         type: rendererType,
         parent: containerRef.current!,
-        width: window.innerWidth,
-        height: window.innerHeight - 60,
+        width: initW,
+        height: initH,
         backgroundColor: '#0a0a0a',
         scale: {
           mode: Phaser.Scale.RESIZE,
           autoCenter: Phaser.Scale.CENTER_BOTH,
+          // RESIZE mode already tracks window resize, but we'll also wire a
+          // ResizeObserver below for smooth tracking of parent size changes
+          // (e.g. mobile URL bar show/hide doesn't always fire window resize).
+          expandParent: false,
         },
         // Cap framerate on low-end so we don't drop frames erratically (smoother feel)
         fps: {
@@ -117,6 +129,32 @@ function PlayPageInner() {
 
       const game = new Phaser.Game(config);
       gameRef.current = game;
+
+      // Keep the Phaser canvas in perfect sync with the parent div size.
+      // Phaser's Scale.RESIZE mode already reacts to window resize, but on
+      // mobile the URL bar shows/hides without firing a window resize — so
+      // we also observe the container directly. orientationchange is a
+      // safety net for devices that don't deliver resize events reliably.
+      const container = containerRef.current;
+      const resize = () => {
+        if (!game || !container) return;
+        const r = container.getBoundingClientRect();
+        const w = Math.max(320, Math.floor(r.width));
+        const h = Math.max(240, Math.floor(r.height));
+        try {
+          game.scale.resize(w, h);
+        } catch { /* game may be destroyed */ }
+      };
+      const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
+      if (ro && container) ro.observe(container);
+      window.addEventListener('orientationchange', resize);
+      window.addEventListener('resize', resize);
+      // Remember these so cleanup can detach them
+      (gameRef as unknown as { current: unknown }).current = Object.assign(game, { __cleanupResize: () => {
+        if (ro) ro.disconnect();
+        window.removeEventListener('orientationchange', resize);
+        window.removeEventListener('resize', resize);
+      } });
 
       game.scene.add('GameScene', GameScene, true, {
         wsUrl,
@@ -179,33 +217,21 @@ function PlayPageInner() {
 
     return () => {
       mounted = false;
-      const game = gameRef.current as { destroy?: (b: boolean) => void } | null;
+      const game = gameRef.current as {
+        destroy?: (b: boolean) => void;
+        __cleanupResize?: () => void;
+      } | null;
+      if (game?.__cleanupResize) game.__cleanupResize();
       if (game?.destroy) game.destroy(true);
     };
   }, [user, loading, router, betAmount]);
-
-  const handlePlayAgain = async () => {
-    setCheckingBalance(true);
-    try {
-      const { balance } = await api.getBalance();
-      if (balance < betAmount) {
-        setNoBalanceInfo({ balance, needed: betAmount });
-        setCheckingBalance(false);
-        return;
-      }
-      window.location.href = `/play?bet=${betAmount}`;
-    } catch {
-      // If balance fetch fails, let user proceed rather than trap them
-      window.location.href = `/play?bet=${betAmount}`;
-    }
-  };
 
   if (loading) {
     return <Loader message="Entering the arena…" />;
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-[100dvh] w-screen flex flex-col overflow-hidden">
       {/* Top HUD */}
       {/* Timer Overlay - Center Top */}
       <div className="absolute top-16 sm:top-20 left-1/2 transform -translate-x-1/2 z-20 pointer-events-none">
@@ -301,21 +327,12 @@ function PlayPageInner() {
             )}
             {!deathInfo.killerName && <p className="text-xs sm:text-sm rpg-text-muted mb-4 sm:mb-6">You hit the wall</p>}
             <div className="flex flex-col gap-2 sm:gap-3">
-              {/* Hard navigation (window.location) — guarantees a fresh WS session,
-                  cleared matchmaker state, and refreshed wallet balance. Soft
-                  navigation (router.push / Link) caused the dreaded
-                  "match not found / still searching" loop because the prior
-                  game's session lingered in memory until a real refresh. */}
-              <button
-                onClick={handlePlayAgain}
-                disabled={checkingBalance}
-                className="btn-rpg btn-rpg-amber btn-rpg-block text-sm sm:text-base"
-              >
-                {checkingBalance ? 'Checking balance…' : 'Play Again'}
-              </button>
+              {/* Only 'Back to Dashboard' here. Re-playing in-place caused the
+                  camera/scene to get stuck on a blank background; starting a
+                  new match from the dashboard guarantees a clean slate. */}
               <button
                 onClick={() => { window.location.href = '/dashboard'; }}
-                className="btn-rpg btn-rpg-block text-center text-sm sm:text-base"
+                className="btn-rpg btn-rpg-amber btn-rpg-block text-center text-sm sm:text-base"
               >
                 Back to Dashboard
               </button>
@@ -351,20 +368,12 @@ function PlayPageInner() {
                 </div>
               ))}
             </div>
-            {/* Hard navigation: full page reload guarantees fresh balance,
-                cleared WS state, and no stale matchmaker entries. */}
+            {/* Only 'Back to Dashboard' — start a new match cleanly from there. */}
             <button
               onClick={() => { window.location.href = '/dashboard'; }}
               className="btn-rpg btn-rpg-amber btn-rpg-block text-center text-sm sm:text-base"
             >
               Back to Dashboard
-            </button>
-            <button
-              onClick={handlePlayAgain}
-              disabled={checkingBalance}
-              className="btn-rpg btn-rpg-block mt-2 sm:mt-3 text-center text-sm sm:text-base"
-            >
-              {checkingBalance ? 'Checking balance…' : 'Play Again'}
             </button>
           </div>
         </div>

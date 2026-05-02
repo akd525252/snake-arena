@@ -70,15 +70,22 @@ function DemoPageInner() {
       // (shader compilation, state changes) hurts weak GPUs / old Mali.
       const rendererType = isLowEnd ? Phaser.CANVAS : Phaser.AUTO;
 
+      // Size the game to match the PARENT CONTAINER, not the raw viewport.
+      // window.innerHeight - 60 was wrong on mobile (dynamic URL bar, smaller header).
+      const parentRect = containerRef.current!.getBoundingClientRect();
+      const initW = Math.max(320, Math.floor(parentRect.width));
+      const initH = Math.max(240, Math.floor(parentRect.height));
+
       const config: Phaser.Types.Core.GameConfig = {
         type: rendererType,
         parent: containerRef.current!,
-        width: window.innerWidth,
-        height: window.innerHeight - 60,
+        width: initW,
+        height: initH,
         backgroundColor: '#0a0a0a',
         scale: {
           mode: Phaser.Scale.RESIZE,
           autoCenter: Phaser.Scale.CENTER_BOTH,
+          expandParent: false,
         },
         fps: {
           target: isLowEnd ? 30 : 60,
@@ -99,6 +106,27 @@ function DemoPageInner() {
 
       const game = new Phaser.Game(config);
       gameRef.current = game;
+
+      // ResizeObserver + orientationchange to keep canvas in sync with the
+      // parent div (crucial on mobile where URL bar show/hide doesn't always
+      // fire a window resize event).
+      const container = containerRef.current;
+      const resize = () => {
+        if (!game || !container) return;
+        const r = container.getBoundingClientRect();
+        const w = Math.max(320, Math.floor(r.width));
+        const h = Math.max(240, Math.floor(r.height));
+        try { game.scale.resize(w, h); } catch { /* game may be destroyed */ }
+      };
+      const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
+      if (ro && container) ro.observe(container);
+      window.addEventListener('orientationchange', resize);
+      window.addEventListener('resize', resize);
+      (gameRef as unknown as { current: unknown }).current = Object.assign(game, { __cleanupResize: () => {
+        if (ro) ro.disconnect();
+        window.removeEventListener('orientationchange', resize);
+        window.removeEventListener('resize', resize);
+      } });
 
       game.scene.add('GameScene', GameScene, true, {
         wsUrl,
@@ -139,7 +167,11 @@ function DemoPageInner() {
 
     return () => {
       mounted = false;
-      const game = gameRef.current as { destroy?: (b: boolean) => void } | null;
+      const game = gameRef.current as {
+        destroy?: (b: boolean) => void;
+        __cleanupResize?: () => void;
+      } | null;
+      if (game?.__cleanupResize) game.__cleanupResize();
       if (game?.destroy) game.destroy(true);
     };
   }, [user, loading, router, betAmount]);
@@ -149,7 +181,7 @@ function DemoPageInner() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-[100dvh] w-screen flex flex-col overflow-hidden">
       {/* Demo banner */}
       <div className="bg-[#3a2c1f]/60 border-b border-[#a86a3a]/30 px-4 py-1.5 text-center text-xs">
         <span className="rpg-gold-bright font-rpg-heading tracking-widest">DEMO MODE</span>
@@ -248,16 +280,11 @@ function DemoPageInner() {
             )}
             {!deathInfo.killerName && <p className="text-xs sm:text-sm rpg-text-muted mb-4 sm:mb-6">You hit the wall</p>}
             <div className="flex flex-col gap-2 sm:gap-3">
-              {/* Hard navigation guarantees fresh WS / matchmaker state. */}
-              <button
-                onClick={() => { window.location.href = `/demo?bet=${betAmount}`; }}
-                className="btn-rpg btn-rpg-amber btn-rpg-block text-sm sm:text-base"
-              >
-                Play Again
-              </button>
+              {/* Only 'Back to Dashboard' — start a new demo cleanly from there.
+                  In-page restart caused the camera to get stuck on a blank screen. */}
               <button
                 onClick={() => { window.location.href = '/dashboard'; }}
-                className="btn-rpg btn-rpg-block text-center text-sm sm:text-base"
+                className="btn-rpg btn-rpg-amber btn-rpg-block text-center text-sm sm:text-base"
               >
                 Back to Dashboard
               </button>
@@ -294,20 +321,12 @@ function DemoPageInner() {
                 </div>
               ))}
             </div>
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-              <button
-                onClick={() => { window.location.href = `/demo?bet=${betAmount}`; }}
-                className="btn-rpg btn-rpg-amber flex-1 text-sm sm:text-base"
-              >
-                Play Again
-              </button>
-              <button
-                onClick={() => { window.location.href = '/dashboard'; }}
-                className="btn-rpg flex-1 text-center text-sm sm:text-base"
-              >
-                Dashboard
-              </button>
-            </div>
+            <button
+              onClick={() => { window.location.href = '/dashboard'; }}
+              className="btn-rpg btn-rpg-amber btn-rpg-block text-center text-sm sm:text-base"
+            >
+              Back to Dashboard
+            </button>
           </div>
         </div>
       )}

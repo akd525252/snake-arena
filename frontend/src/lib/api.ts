@@ -204,6 +204,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ skinId }),
     }),
+
+  getLeaderboard: (limit = 10) =>
+    request<{ entries: LeaderboardEntry[] }>(`/api/leaderboard?limit=${limit}`),
 };
 
 // ============================================
@@ -333,4 +336,14 @@ export interface WithdrawalBreakdown {
   serviceFee: number;
   networkFee: number;
   netAmount: number;
+}
+
+export interface LeaderboardEntry {
+  rank: number;
+  userId: string;
+  username: string;
+  avatar: string | null;
+  equippedSkinId: string | null;
+  totalEarnings: number;
+  winsCount: number;
 }

@@ -11,6 +11,7 @@ import withdrawalRoutes from './routes/withdrawals';
 import matchmakingRoutes from './routes/matchmaking';
 import adminRoutes from './routes/admin';
 import skinsRoutes from './routes/skins';
+import leaderboardRoutes from './routes/leaderboard';
 
 dotenv.config();
 
@@ -56,6 +57,7 @@ app.use('/api/withdrawals', withdrawalRoutes);
 app.use('/api/matchmaking', matchmakingRoutes);
 app.use('/api/skins', skinsRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/leaderboard', leaderboardRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -8,6 +8,7 @@ import { api, Transaction, Skin } from '../../lib/api';
 import ModeSelectionModal from '../../components/ModeSelectionModal';
 import Loader from '../../components/Loader';
 import Logo from '../../components/Logo';
+import Leaderboard from '../../components/Leaderboard';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -443,6 +444,9 @@ export default function Dashboard() {
           )}
 
         </div>
+
+        {/* Leaderboard (all modes) */}
+        <Leaderboard myUserId={user.id} limit={10} />
 
         {/* Recent Transactions (Pro mode only) */}
         {!isDemo && (
