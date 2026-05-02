@@ -200,21 +200,6 @@ function PlayPageInner() {
     }
   };
 
-  const handleKeepSearching = async () => {
-    setCheckingBalance(true);
-    try {
-      const { balance } = await api.getBalance();
-      if (balance < betAmount) {
-        setNoBalanceInfo({ balance, needed: betAmount });
-        setCheckingBalance(false);
-        return;
-      }
-      window.location.reload();
-    } catch {
-      window.location.reload();
-    }
-  };
-
   if (loading) {
     return <Loader message="Entering the arena…" />;
   }
@@ -266,8 +251,8 @@ function PlayPageInner() {
           matchStarting={matchStarting}
           scanSeconds={8}
           serverElapsed={serverElapsed}
+          connectionStatus={status}
           onCancel={() => router.push('/dashboard')}
-          onRetry={handleKeepSearching}
         />
       )}
 

@@ -467,6 +467,10 @@ async function createMatch(entries: QueueEntry[]): Promise<void> {
     const idx = matchmakingQueue.findIndex(e => e.userId === entry.userId);
     if (idx !== -1) matchmakingQueue.splice(idx, 1);
   }
+  // Refresh queue state for any remaining players AND reset proScanStartTime
+  // if the pro queue is now empty (broadcastQueueState handles that). Without
+  // this, the next pro player to join would see a stale elapsed-time counter.
+  broadcastQueueState();
 
   const matchId = uuidv4();
   const avgBet = entries.reduce((sum, e) => sum + e.betAmount, 0) / entries.length;
@@ -607,8 +611,16 @@ async function createMatch(entries: QueueEntry[]): Promise<void> {
 // Disconnect Handler
 // ============================================
 function handleDisconnect(playerId: string, ws?: WebSocket): void {
-  // Remove from queue
-  const qIdx = matchmakingQueue.findIndex(e => e.userId === playerId);
+  // Remove from queue ONLY if the disconnecting socket actually owns the
+  // queue entry. Otherwise — during a reconnect, where the OLD socket's
+  // close event fires AFTER the NEW socket has already re-joined the queue —
+  // we'd wrongly evict the fresh entry and the user would be silently
+  // dropped back to "Finding Players..." forever.
+  // When called without `ws` (e.g. force-cleanup from single-connection
+  // enforcement) we still want to remove any matching entry.
+  const qIdx = matchmakingQueue.findIndex(
+    e => e.userId === playerId && (ws === undefined || e.ws === ws),
+  );
   if (qIdx !== -1) {
     matchmakingQueue.splice(qIdx, 1);
     broadcastQueueState();
@@ -676,7 +688,21 @@ setInterval(() => {
 
   const allPros = matchmakingQueue.filter(e => !e.isDemo);
   const humanSlots = CONFIG.MAX_PLAYERS - PRO_BOT_COUNT;
-  console.log(`[matchmaker] fallback timeout: starting pro match with ${allPros.length} human(s) + ${PRO_BOT_COUNT} bots`);
+  const oldestWaitMs = now - oldestPro.joinedAt;
+  console.log(
+    `[matchmaker] fallback fired: ${allPros.length} pro(s) waiting (oldest=${oldestWaitMs}ms), filling with ${PRO_BOT_COUNT} bots`,
+  );
+
+  // EMERGENCY watchdog: if a pro player has been waiting > 20s, something is
+  // seriously broken upstream (createMatch failed silently, chargeBet hung,
+  // etc). Log loud so we notice in Railway logs, but still proceed with the
+  // match attempt below — at least surface the issue.
+  if (oldestWaitMs > 20000) {
+    console.error(
+      `[matchmaker] CRITICAL: pro player ${oldestPro.userId.slice(0, 8)} stuck in queue for ${oldestWaitMs}ms — possible chargeBet/RPC hang or duplicate-match race. Force-matching now.`,
+    );
+  }
+
   createMatch(allPros.slice(0, humanSlots));
 }, 1000);
 

@@ -41,6 +41,17 @@ interface GameStateMessage {
 export class GameScene extends Phaser.Scene {
   private ws: WebSocket | null = null;
   private myPlayerId: string = '';
+  // ── WebSocket auto-reconnect state ─────────────────────────────────────
+  // Without this, a single network blip during matchmaking would silently
+  // kill the queue and the user would stare at "Finding Players..." forever.
+  private wsUrl: string = '';
+  private wsToken: string | undefined = undefined;
+  private wsBetAmount: number = 0;
+  private wsReconnectAttempts: number = 0;
+  private wsMaxReconnects: number = 6;
+  private wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private wsManuallyClosed: boolean = false;
+  private wsHasJoinedMatch: boolean = false;
 
   // Visual containers
   private playerGraphics = new Map<string, Phaser.GameObjects.Graphics>();
@@ -827,18 +838,33 @@ export class GameScene extends Phaser.Scene {
   // WebSocket
   // ============================================
   private connectWebSocket(wsUrl: string, token: string | undefined, _isDemo: boolean, betAmount: number) {
+    // Save params so we can transparently reconnect on a dropped socket.
+    this.wsUrl = wsUrl;
+    this.wsToken = token;
+    this.wsBetAmount = betAmount;
+    this.wsReconnectAttempts = 0;
+    this.wsManuallyClosed = false;
+    this.wsHasJoinedMatch = false;
+    this.openWebSocket();
+  }
+
+  /** Internal: actually open the socket, separate so we can call it again on reconnect. */
+  private openWebSocket() {
     // Server is authoritative for demo vs pro (reads user.game_mode from DB).
     // We only need to authenticate via token.
     const params = new URLSearchParams();
-    if (token) params.set('token', token);
+    if (this.wsToken) params.set('token', this.wsToken);
 
-    const fullUrl = `${wsUrl}?${params.toString()}`;
+    const fullUrl = `${this.wsUrl}?${params.toString()}`;
     this.ws = new WebSocket(fullUrl);
 
     this.ws.onopen = () => {
+      // Successful connection — reset backoff counter.
+      this.wsReconnectAttempts = 0;
       this.onConnectionStatus?.('connected');
       this.statusText.setText('Joining queue...');
-      this.send({ type: 'join_queue', betAmount });
+      // Re-join queue (works for first connect AND reconnect mid-queue)
+      this.send({ type: 'join_queue', betAmount: this.wsBetAmount });
     };
 
     this.ws.onmessage = (event) => {
@@ -851,13 +877,62 @@ export class GameScene extends Phaser.Scene {
     };
 
     this.ws.onerror = () => {
-      this.onConnectionStatus?.('error');
-      this.statusText.setText('Connection error');
+      // Don't surface 'error' to UI yet — onclose will fire next and trigger
+      // the reconnect dance. Only after retries exhaust do we report failure.
+      console.warn('[WS] socket error — will attempt reconnect');
     };
 
     this.ws.onclose = () => {
-      this.onConnectionStatus?.('disconnected');
+      // Decide whether to reconnect:
+      //   - User manually closed → don't reconnect.
+      //   - Game ended → don't reconnect (the server closes our socket after
+      //     game_end is delivered).
+      //   - Otherwise: try to reconnect transparently up to wsMaxReconnects.
+      if (this.wsManuallyClosed) return;
+      if (this.wsHasJoinedMatch) {
+        // Mid-match disconnect — server treats us as dead. Surface as
+        // disconnected so the UI can show appropriate state. Don't reconnect
+        // because a re-join would trigger ALREADY_IN_MATCH or ghost cleanup.
+        this.onConnectionStatus?.('disconnected');
+        return;
+      }
+
+      this.wsReconnectAttempts++;
+      if (this.wsReconnectAttempts > this.wsMaxReconnects) {
+        console.error(`[WS] giving up after ${this.wsMaxReconnects} reconnect attempts`);
+        this.onConnectionStatus?.('disconnected');
+        this.onError?.({
+          message: 'Lost connection to game server. Please check your internet and try again.',
+          code: 'WS_RECONNECT_FAILED',
+        });
+        return;
+      }
+
+      // Exponential backoff: 200ms, 400ms, 800ms, 1.6s, 3.2s, 6.4s
+      const delay = Math.min(6400, 200 * Math.pow(2, this.wsReconnectAttempts - 1));
+      console.log(`[WS] reconnect attempt ${this.wsReconnectAttempts}/${this.wsMaxReconnects} in ${delay}ms`);
+      this.statusText.setText(`Reconnecting... (${this.wsReconnectAttempts}/${this.wsMaxReconnects})`);
+      // Hint to the lobby UI that we're reconnecting (not a hard failure).
+      this.onConnectionStatus?.('reconnecting');
+
+      if (this.wsReconnectTimer) clearTimeout(this.wsReconnectTimer);
+      this.wsReconnectTimer = setTimeout(() => {
+        this.wsReconnectTimer = null;
+        this.openWebSocket();
+      }, delay);
     };
+  }
+
+  /** Cleanly close the socket without triggering auto-reconnect. */
+  private closeWebSocketCleanly() {
+    this.wsManuallyClosed = true;
+    if (this.wsReconnectTimer) {
+      clearTimeout(this.wsReconnectTimer);
+      this.wsReconnectTimer = null;
+    }
+    if (this.ws) {
+      try { this.ws.close(); } catch { /* already closed */ }
+    }
   }
 
   private send(payload: object) {
@@ -904,6 +979,9 @@ export class GameScene extends Phaser.Scene {
 
       case 'game_start':
         this.statusText.setText('');
+        // From this moment forward, any WS disconnect is mid-match and
+        // should NOT trigger auto-reconnect/re-queue.
+        this.wsHasJoinedMatch = true;
         this.onGameBegin?.();
         break;
 
@@ -933,7 +1011,8 @@ export class GameScene extends Phaser.Scene {
         const results = (msg as unknown as { results: { username: string; score: number; placement: number }[] }).results;
         this.statusText.setText('Game Over');
         this.onGameEnd?.(results);
-        if (this.ws) this.ws.close();
+        // Close cleanly — disable auto-reconnect since the match is legitimately over.
+        this.closeWebSocketCleanly();
         break;
       }
 

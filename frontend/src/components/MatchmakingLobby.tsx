@@ -19,12 +19,12 @@ interface Props {
   isDemo: boolean;
   matchStarting: boolean;
   onCancel: () => void;
-  /** Triggered when user clicks Retry after scan timeout. Should re-enter the queue. */
-  onRetry?: () => void;
   /** Total scan duration in seconds. Defaults to 60 for pro, instant for demo. */
   scanSeconds?: number;
   /** Server-synced elapsed seconds so all clients see same countdown */
   serverElapsed?: number;
+  /** WebSocket status. When 'reconnecting' we show a subtle indicator. */
+  connectionStatus?: 'connected' | 'reconnecting' | 'disconnected' | 'error' | string;
 }
 
 const SKIN_COLORS: Record<string, string> = {
@@ -42,13 +42,12 @@ export default function MatchmakingLobby({
   isDemo,
   matchStarting,
   onCancel,
-  onRetry,
   scanSeconds = 60,
   serverElapsed = 0,
+  connectionStatus = 'connected',
 }: Props) {
   const [localElapsed, setLocalElapsed] = useState(serverElapsed);
   const [dots, setDots] = useState('');
-  const [scanExpired, setScanExpired] = useState(false);
   const [visibleSlots, setVisibleSlots] = useState(0);
 
   // Sync with server elapsed time when provided
@@ -71,19 +70,12 @@ export default function MatchmakingLobby({
     return () => clearInterval(id);
   }, []);
 
-  // Detect scan timeout: if we've been waiting WAY past the scan window AND
-  // the match hasn't started, the matchmaker probably failed. Use a generous
-  // 20s grace on top of scanSeconds so cold-start / slow-RPC scenarios don't
-  // prematurely flip into the "Still Searching..." panel.
-  useEffect(() => {
-    if (matchStarting || isDemo) {
-      setScanExpired(false);
-      return;
-    }
-    if (localElapsed >= scanSeconds + 20 && !scanExpired) {
-      setScanExpired(true);
-    }
-  }, [localElapsed, matchStarting, isDemo, scanSeconds, scanExpired]);
+  // "Taking longer than usual" hint kicks in once we've waited past the scan
+  // window plus a generous grace. We DO NOT bail to a retry panel — the WS
+  // auto-reconnects and the server has an 8s bot-fallback, so the right
+  // behaviour is to just keep waiting patiently.
+  const takingLonger = !matchStarting && !isDemo && localElapsed >= scanSeconds + 12;
+  const isReconnecting = connectionStatus === 'reconnecting';
 
   // Staggered reveal of bot slots when match starts
   useEffect(() => {
@@ -101,11 +93,6 @@ export default function MatchmakingLobby({
     }, 180);
     return () => clearInterval(interval);
   }, [matchStarting, players.length]);
-
-  const handleRetry = () => {
-    setScanExpired(false);
-    onRetry?.();
-  };
 
   const remaining = Math.max(0, scanSeconds - localElapsed);
 
@@ -127,33 +114,33 @@ export default function MatchmakingLobby({
       <div className="w-full max-w-3xl rpg-panel p-4 sm:p-6 md:p-8">
         <div className="text-center mb-4 sm:mb-8">
           <h1 className={`mb-2 rpg-title text-xl sm:text-3xl ${
-            !matchStarting && !scanExpired ? 'rpg-torch' : ''
+            !matchStarting ? 'rpg-torch' : ''
           }`}>
-            {matchStarting
-              ? 'Match Found!'
-              : scanExpired
-                ? 'Still Searching...'
-                : `Finding Players${dots}`}
+            {matchStarting ? 'Match Found!' : `Finding Players${dots}`}
           </h1>
           <p className="rpg-text-muted text-sm">
             {matchStarting
               ? 'Preparing arena...'
-              : scanExpired
-                ? 'Taking longer than usual. You can keep waiting or try again.'
-                : isDemo
-                  ? 'Finding opponents for your match...'
-                  : `Players ready: ${players.length}`}
+              : isReconnecting
+                ? 'Reconnecting to server…'
+                : takingLonger
+                  ? 'Taking longer than usual — hang tight, the match will start as soon as opponents are ready.'
+                  : isDemo
+                    ? 'Finding opponents for your match...'
+                    : `Players ready: ${players.length}`}
           </p>
-          {!matchStarting && !scanExpired && !isDemo && (
+          {!matchStarting && !isDemo && (
             <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 sm:gap-6 mt-2 sm:mt-3 text-xs rpg-text-muted">
               <span>Bet: <span className="rpg-gold-bright font-bold">${betAmount}</span></span>
               <span>
-                Scanning: <span className="rpg-text font-mono font-bold">{remaining}s</span>
+                {takingLonger
+                  ? <>Waited: <span className="rpg-text font-mono font-bold">{localElapsed}s</span></>
+                  : <>Scanning: <span className="rpg-text font-mono font-bold">{remaining}s</span></>}
               </span>
               <span>Mode: <span className="rpg-crimson font-bold">Pro</span></span>
             </div>
           )}
-          {!matchStarting && !scanExpired && isDemo && (
+          {!matchStarting && isDemo && (
             <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 sm:gap-6 mt-2 sm:mt-3 text-xs rpg-text-muted">
               <span>Bet: <span className="rpg-gold-bright font-bold">${betAmount}</span></span>
               <span>Time waiting: <span className="rpg-text font-mono">{localElapsed}s</span></span>
@@ -226,40 +213,39 @@ export default function MatchmakingLobby({
           })}
         </div>
 
-        {/* Scan countdown progress bar (pro mode, while scanning) */}
-        {!matchStarting && !scanExpired && !isDemo && (
+        {/* Scan countdown progress bar (pro mode, while scanning).
+            Once the scan window has elapsed we switch to an indeterminate
+            shimmer so the user knows we're still trying. */}
+        {!matchStarting && !isDemo && (
           <div className="mb-6">
             <div className="h-2 rpg-parchment-inset rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-[#a86a3a] via-[#d4a04a] to-[#f5c265] transition-all duration-1000 ease-linear"
-                style={{ width: `${Math.max(0, ((scanSeconds - localElapsed) / scanSeconds) * 100)}%` }}
-              />
+              {takingLonger ? (
+                <div className="h-full w-1/3 bg-gradient-to-r from-[#a86a3a] via-[#d4a04a] to-[#f5c265] rpg-glow-pulse" />
+              ) : (
+                <div
+                  className="h-full bg-gradient-to-r from-[#a86a3a] via-[#d4a04a] to-[#f5c265] transition-all duration-1000 ease-linear"
+                  style={{ width: `${Math.max(0, ((scanSeconds - localElapsed) / scanSeconds) * 100)}%` }}
+                />
+              )}
             </div>
             <div className="text-center text-xs rpg-text-muted mt-2">
-              {remaining > 0
-                ? `Match starts in ${remaining}s`
-                : 'Starting match now...'}
+              {takingLonger
+                ? 'Filling slots with bots…'
+                : remaining > 0
+                  ? `Match starts in ${remaining}s`
+                  : 'Starting match now...'}
             </div>
           </div>
         )}
 
-        {/* Action buttons */}
+        {/* Action buttons — always show Cancel, never demand a retry. The WS
+            auto-reconnects and the server's 8s bot-fallback guarantee a match
+            will eventually start. */}
         {!matchStarting && (
           <div className="flex flex-col sm:flex-row justify-center gap-2 sm:gap-3">
-            {scanExpired ? (
-              <>
-                <button onClick={handleRetry} className={`btn-rpg text-sm sm:text-base ${isDemo ? 'btn-rpg-amber' : 'btn-rpg-primary'}`}>
-                  ↻ Keep Searching
-                </button>
-                <button onClick={onCancel} className="btn-rpg text-sm sm:text-base">
-                  Back to Dashboard
-                </button>
-              </>
-            ) : (
-              <button onClick={onCancel} className="btn-rpg text-sm sm:text-base">
-                Cancel
-              </button>
-            )}
+            <button onClick={onCancel} className="btn-rpg text-sm sm:text-base">
+              Cancel
+            </button>
           </div>
         )}
       </div>
