@@ -71,14 +71,16 @@ export default function MatchmakingLobby({
     return () => clearInterval(id);
   }, []);
 
-  // Detect scan timeout: if we've been waiting > scanSeconds + 5s grace AND
-  // the match hasn't started, the matchmaker probably failed.
+  // Detect scan timeout: if we've been waiting WAY past the scan window AND
+  // the match hasn't started, the matchmaker probably failed. Use a generous
+  // 20s grace on top of scanSeconds so cold-start / slow-RPC scenarios don't
+  // prematurely flip into the "Still Searching..." panel.
   useEffect(() => {
     if (matchStarting || isDemo) {
       setScanExpired(false);
       return;
     }
-    if (localElapsed >= scanSeconds + 5 && !scanExpired) {
+    if (localElapsed >= scanSeconds + 20 && !scanExpired) {
       setScanExpired(true);
     }
   }, [localElapsed, matchStarting, isDemo, scanSeconds, scanExpired]);

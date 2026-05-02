@@ -157,6 +157,23 @@ function PlayPageInner() {
           gameStartedRef.current = true;
           setShowLobby(false);
         },
+        onError: (data: { message: string; code?: string }) => {
+          // If the server tells us something went wrong DURING matchmaking
+          // (insufficient balance, already-in-match, etc.), bail out of the
+          // lobby and bounce back to the dashboard with a visible message.
+          // Without this the lobby UI would stay on "Finding players..." /
+          // "Still Searching..." forever even though the server already gave up.
+          if (gameStartedRef.current) return; // mid-game errors are handled elsewhere
+          if (data.code === 'CHARGE_FAILED') {
+            setNoBalanceInfo({ balance: 0, needed: betAmount });
+            return;
+          }
+          // Generic queue-time error: alert + back to dashboard
+          if (typeof window !== 'undefined') {
+            window.alert(data.message || 'Matchmaking failed. Please try again.');
+            router.push('/dashboard');
+          }
+        },
       });
     })();
 
@@ -247,7 +264,7 @@ function PlayPageInner() {
           betAmount={betAmount}
           isDemo={false}
           matchStarting={matchStarting}
-          scanSeconds={15}
+          scanSeconds={8}
           serverElapsed={serverElapsed}
           onCancel={() => router.push('/dashboard')}
           onRetry={handleKeepSearching}

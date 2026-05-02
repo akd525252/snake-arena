@@ -456,6 +456,18 @@ function tryMatchPlayers(): void {
 }
 
 async function createMatch(entries: QueueEntry[]): Promise<void> {
+  // ATOMIC queue removal — must happen BEFORE any `await` below. Otherwise
+  // the setInterval fallback (firing every 1s) will see the same entries
+  // still in the queue while we're awaiting chargeBet, and call createMatch
+  // again for the same user. That would double-charge the wallet and create
+  // an orphan room. Removing entries up-front guarantees each user is only
+  // ever processed by one createMatch invocation.
+  if (entries.length === 0) return;
+  for (const entry of entries) {
+    const idx = matchmakingQueue.findIndex(e => e.userId === entry.userId);
+    if (idx !== -1) matchmakingQueue.splice(idx, 1);
+  }
+
   const matchId = uuidv4();
   const avgBet = entries.reduce((sum, e) => sum + e.betAmount, 0) / entries.length;
   console.log(`[createMatch] matchId=${matchId.slice(0, 8)} entries=${entries.length} avgBet=${avgBet}`);
@@ -469,13 +481,15 @@ async function createMatch(entries: QueueEntry[]): Promise<void> {
     const charged = await chargeBet(entry.userId, entry.isDemo, entry.betAmount, matchId);
     console.log(`[createMatch] charge result: ${charged}`);
     if (!charged) {
-      entry.ws.send(JSON.stringify({
-        type: 'error',
-        message: 'Insufficient balance for this bet',
-      }));
-      // Remove from queue but don't add to room
-      const idx = matchmakingQueue.findIndex(e => e.userId === entry.userId);
-      if (idx !== -1) matchmakingQueue.splice(idx, 1);
+      // Surface the failure clearly so the client UI can react instead of
+      // staring at "Still Searching..." while the server silently dropped them.
+      try {
+        entry.ws.send(JSON.stringify({
+          type: 'error',
+          message: 'Insufficient balance for this bet — please top up and retry.',
+          code: 'CHARGE_FAILED',
+        }));
+      } catch { /* socket may be closed */ }
       continue;
     }
 
@@ -507,10 +521,7 @@ async function createMatch(entries: QueueEntry[]): Promise<void> {
 
     addPlayerToRoom(room, player);
     playerRooms.set(entry.userId, matchId);
-
-    // Remove from queue
-    const idx = matchmakingQueue.findIndex(e => e.userId === entry.userId);
-    if (idx !== -1) matchmakingQueue.splice(idx, 1);
+    // (Queue removal already happened atomically at the top of createMatch.)
   }
 
   // If no players were charged successfully, abandon the match
@@ -642,7 +653,8 @@ function handleDisconnect(playerId: string, ws?: WebSocket): void {
 // Pro mode: how long to scan for real players before filling with bots.
 // During this window we keep matching humans to humans; if no instant match
 // happens within this time we start with whatever humans are queued + bots.
-const PRO_BOT_FALLBACK_MS = 15000;
+// 8s keeps solo players from staring at "Still Searching..." for too long.
+const PRO_BOT_FALLBACK_MS = 8000;
 
 setInterval(() => {
   const now = Date.now();

@@ -171,6 +171,7 @@ export class GameScene extends Phaser.Scene {
   private onQueueState: ((data: { players: { id: string; username: string; avatar: string | null; skinId: string | null; betAmount: number }[]; minPlayers: number; maxPlayers: number; elapsedSeconds?: number }) => void) | null = null;
   private onMatchStart: ((data: { matchId: string; players: { id: string; username: string; avatar: string | null; skinId: string | null }[] }) => void) | null = null;
   private onGameBegin: (() => void) | null = null;
+  private onError: ((data: { message: string; code?: string }) => void) | null = null;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -189,6 +190,7 @@ export class GameScene extends Phaser.Scene {
     onQueueState?: (data: { players: { id: string; username: string; avatar: string | null; skinId: string | null; betAmount: number }[]; minPlayers: number; maxPlayers: number; elapsedSeconds?: number }) => void;
     onMatchStart?: (data: { matchId: string; players: { id: string; username: string; avatar: string | null; skinId: string | null }[] }) => void;
     onGameBegin?: () => void;
+    onError?: (data: { message: string; code?: string }) => void;
   }) {
     if (!data || !data.wsUrl) return;
 
@@ -200,6 +202,7 @@ export class GameScene extends Phaser.Scene {
     this.onQueueState = data.onQueueState || null;
     this.onMatchStart = data.onMatchStart || null;
     this.onGameBegin = data.onGameBegin || null;
+    this.onError = data.onError || null;
 
     if (data.token) {
       try {
@@ -934,9 +937,16 @@ export class GameScene extends Phaser.Scene {
         break;
       }
 
-      case 'error':
-        this.statusText.setText(`Error: ${msg.message}`);
+      case 'error': {
+        const errMsg = (msg as { message?: string }).message || 'Server error';
+        const errCode = (msg as { code?: string }).code;
+        this.statusText.setText(`Error: ${errMsg}`);
+        // Propagate to React so the matchmaking UI can react (e.g. exit lobby,
+        // show toast, redirect to dashboard) instead of staying stuck on
+        // "Still Searching...".
+        this.onError?.({ message: errMsg, code: errCode });
         break;
+      }
     }
   }
 
