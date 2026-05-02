@@ -110,7 +110,7 @@ export default function MatchmakingLobby({
       };
 
   return (
-    <div className="absolute inset-0 z-40 bg-[#0e0a08]/95 backdrop-blur flex items-center justify-center px-2 sm:px-4">
+    <div className="fixed inset-0 z-50 bg-[#0e0a08]/95 backdrop-blur flex items-center justify-center px-2 sm:px-4">
       <div className="w-full max-w-3xl rpg-panel p-4 sm:p-6 md:p-8">
         <div className="text-center mb-4 sm:mb-8">
           <h1 className={`mb-2 rpg-title text-xl sm:text-3xl ${

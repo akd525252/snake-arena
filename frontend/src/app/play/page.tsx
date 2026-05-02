@@ -231,7 +231,7 @@ function PlayPageInner() {
   }
 
   return (
-    <div className="h-[100dvh] w-screen flex flex-col overflow-hidden">
+    <div className="relative h-[100dvh] w-screen flex flex-col overflow-hidden">
       {/* Top HUD */}
       {/* Timer Overlay - Center Top */}
       <div className="absolute top-16 sm:top-20 left-1/2 transform -translate-x-1/2 z-20 pointer-events-none">
@@ -284,7 +284,7 @@ function PlayPageInner() {
 
       {/* Quit Confirmation */}
       {showQuitConfirm && !results && !deathInfo && (
-        <div className="absolute inset-0 bg-black/80 backdrop-blur flex items-center justify-center z-50 px-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur flex items-center justify-center z-50 px-4">
           <div className="w-full max-w-sm sm:max-w-md rpg-panel p-5 sm:p-8 text-center">
             <h2 className="rpg-title text-2xl sm:text-3xl mb-4">Leave Match?</h2>
             <p className="rpg-text-muted mb-2 text-sm sm:text-base">You will lose your bet and current money!</p>
@@ -318,7 +318,7 @@ function PlayPageInner() {
 
       {/* Death Overlay */}
       {deathInfo && !results && (
-        <div className="absolute inset-0 bg-black/90 backdrop-blur flex items-center justify-center z-50 px-4">
+        <div className="fixed inset-0 bg-black/90 backdrop-blur flex items-center justify-center z-50 px-4">
           <div className="w-full max-w-sm sm:max-w-md rpg-panel p-5 sm:p-8 text-center">
             <h2 className="rpg-title text-3xl sm:text-4xl mb-2 rpg-crimson">You Died!</h2>
             <p className="text-lg sm:text-xl rpg-text mb-2">Lost ${deathInfo.lostAmount.toFixed(2)}</p>
@@ -349,7 +349,7 @@ function PlayPageInner() {
 
       {/* Game over modal */}
       {results && (
-        <div className="absolute inset-0 bg-black/80 backdrop-blur flex items-center justify-center z-50 px-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur flex items-center justify-center z-50 px-4">
           <div className="w-full max-w-sm sm:max-w-md rpg-panel p-5 sm:p-8">
             <h2 className="rpg-title text-2xl sm:text-3xl mb-4 sm:mb-6 text-center">Game Over</h2>
             <div className="space-y-2 mb-4 sm:mb-6 max-h-[40vh] overflow-y-auto">
@@ -381,7 +381,7 @@ function PlayPageInner() {
 
       {/* No Balance Overlay */}
       {noBalanceInfo && (
-        <div className="absolute inset-0 bg-black/90 backdrop-blur flex items-center justify-center z-[60] px-4">
+        <div className="fixed inset-0 bg-black/90 backdrop-blur flex items-center justify-center z-[60] px-4">
           <div className="w-full max-w-sm sm:max-w-md rpg-panel p-5 sm:p-8 text-center">
             <h2 className="rpg-title text-2xl sm:text-3xl mb-2 rpg-crimson">Insufficient Balance</h2>
             <p className="text-sm sm:text-base rpg-text-muted mb-4 sm:mb-6">

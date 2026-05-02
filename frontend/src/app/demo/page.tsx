@@ -181,7 +181,7 @@ function DemoPageInner() {
   }
 
   return (
-    <div className="h-[100dvh] w-screen flex flex-col overflow-hidden">
+    <div className="relative h-[100dvh] w-screen flex flex-col overflow-hidden">
       {/* Demo banner */}
       <div className="bg-[#3a2c1f]/60 border-b border-[#a86a3a]/30 px-4 py-1.5 text-center text-xs">
         <span className="rpg-gold-bright font-rpg-heading tracking-widest">DEMO MODE</span>
@@ -237,7 +237,7 @@ function DemoPageInner() {
 
       {/* Quit Confirmation */}
       {showQuitConfirm && !results && !deathInfo && (
-        <div className="absolute inset-0 bg-black/80 backdrop-blur flex items-center justify-center z-50 px-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur flex items-center justify-center z-50 px-4">
           <div className="w-full max-w-sm sm:max-w-md rpg-panel p-5 sm:p-8 text-center">
             <h2 className="rpg-title text-2xl sm:text-3xl mb-4">Leave Demo?</h2>
             <p className="rpg-text-muted mb-2 text-sm sm:text-base">You will lose your bet and current money!</p>
@@ -271,7 +271,7 @@ function DemoPageInner() {
 
       {/* Death Overlay */}
       {deathInfo && !results && (
-        <div className="absolute inset-0 bg-black/90 backdrop-blur flex items-center justify-center z-50 px-4">
+        <div className="fixed inset-0 bg-black/90 backdrop-blur flex items-center justify-center z-50 px-4">
           <div className="w-full max-w-sm sm:max-w-md rpg-panel p-5 sm:p-8 text-center">
             <h2 className="rpg-title text-3xl sm:text-4xl mb-2 rpg-crimson">You Died!</h2>
             <p className="text-lg sm:text-xl rpg-text mb-2">Lost ${deathInfo.lostAmount.toFixed(2)}</p>
@@ -301,7 +301,7 @@ function DemoPageInner() {
 
       {/* Game Complete Overlay */}
       {results && (
-        <div className="absolute inset-0 bg-black/80 backdrop-blur flex items-center justify-center z-50 px-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur flex items-center justify-center z-50 px-4">
           <div className="w-full max-w-sm sm:max-w-md rpg-panel p-5 sm:p-8">
             <h2 className="rpg-title text-2xl sm:text-3xl mb-2 text-center">Demo Complete</h2>
             <p className="text-center text-[10px] sm:text-xs rpg-text-muted mb-4 sm:mb-6">These are demo earnings — not withdrawable</p>

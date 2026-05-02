@@ -612,18 +612,22 @@ export class GameScene extends Phaser.Scene {
     circle.fillCircle(0, 0, r);
     circle.lineStyle(2, color, 0.8);
     circle.strokeCircle(0, 0, r);
+
+    // Larger font to avoid pixelation, then scale down to fit the button
+    const fontSize = Math.max(14, Math.round(r * 0.55));
     const text = this.add.text(0, 0, label, {
       fontFamily: 'monospace',
-      fontSize: r <= 28 ? '9px' : '10px',
+      fontSize: `${fontSize}px`,
       color: '#ffffff',
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setScale(Math.min(1, r / 36));
     container.add([circle, text]);
 
-    // Hit area for touch — added to container so it moves with resize
-    const zone = this.add.zone(0, 0, r * 2, r * 2).setDepth(201);
-    container.add(zone);
-    zone.setInteractive();
-    zone.on('pointerdown', () => {
+    // Container-level hit area — more reliable than zones inside containers on mobile
+    container.setSize(r * 2, r * 2);
+    const hitArea = new Phaser.Geom.Circle(0, 0, r);
+    container.setInteractive(hitArea, Phaser.Geom.Circle.Contains);
+
+    container.on('pointerdown', () => {
       circle.clear();
       circle.fillStyle(color, 0.5);
       circle.fillCircle(0, 0, r);
@@ -631,7 +635,7 @@ export class GameScene extends Phaser.Scene {
       circle.strokeCircle(0, 0, r);
       onDown();
     });
-    zone.on('pointerup', () => {
+    container.on('pointerup', () => {
       circle.clear();
       circle.fillStyle(color, 0.25);
       circle.fillCircle(0, 0, r);
@@ -639,7 +643,7 @@ export class GameScene extends Phaser.Scene {
       circle.strokeCircle(0, 0, r);
       if (onUp) onUp();
     });
-    zone.on('pointerout', () => {
+    container.on('pointerout', () => {
       circle.clear();
       circle.fillStyle(color, 0.25);
       circle.fillCircle(0, 0, r);
