@@ -524,6 +524,55 @@ export class GameScene extends Phaser.Scene {
     return out;
   }
 
+  /** Resample a polyline to uniform arc-length spacing. This guarantees that
+   *  consecutive render circles always overlap (no "broken balls" on long
+   *  snakes) regardless of server-side segment spacing or snake length.
+   *
+   *  - `desiredSpacing`: target distance between output points. We pick the
+   *    LARGER of this and (total / (maxPoints - 1)) so we never exceed the
+   *    point cap on very long snakes. As long as the result is < 2 * tail
+   *    radius, circles still overlap and the body reads as a solid tube.
+   *  - `maxPoints`: hard cap on output length to bound render cost. */
+  private resamplePath(segments: Position[], desiredSpacing: number, maxPoints: number): Position[] {
+    if (segments.length < 2) return segments.slice();
+
+    // Cumulative arc length for each control point
+    const cumLen: number[] = [0];
+    for (let i = 1; i < segments.length; i++) {
+      const dx = segments[i].x - segments[i - 1].x;
+      const dy = segments[i].y - segments[i - 1].y;
+      cumLen.push(cumLen[i - 1] + Math.sqrt(dx * dx + dy * dy));
+    }
+    const total = cumLen[cumLen.length - 1];
+    if (total === 0) return [{ x: segments[0].x, y: segments[0].y }];
+
+    // Enforce the point cap by increasing spacing when the snake is very long
+    const spacing = Math.max(desiredSpacing, total / Math.max(1, maxPoints - 1));
+
+    const out: Position[] = [{ x: segments[0].x, y: segments[0].y }];
+    let d = spacing;
+    let idx = 0;
+    while (d < total) {
+      // Advance idx to the segment containing the running distance d
+      while (idx + 1 < cumLen.length && cumLen[idx + 1] < d) idx++;
+      const segStart = cumLen[idx];
+      const segLen = cumLen[idx + 1] - segStart;
+      const t = segLen > 0 ? (d - segStart) / segLen : 0;
+      out.push({
+        x: segments[idx].x + (segments[idx + 1].x - segments[idx].x) * t,
+        y: segments[idx].y + (segments[idx + 1].y - segments[idx].y) * t,
+      });
+      d += spacing;
+    }
+    // Always terminate at the exact tail so the body doesn't look cut short
+    const tail = segments[segments.length - 1];
+    const lastOut = out[out.length - 1];
+    if (lastOut.x !== tail.x || lastOut.y !== tail.y) {
+      out.push({ x: tail.x, y: tail.y });
+    }
+    return out;
+  }
+
   /** Hide all visuals belonging to a player (used for off-screen culling). */
   private hidePlayerVisuals(id: string) {
     const g = this.playerGraphics.get(id);
@@ -1380,35 +1429,25 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // ── Build path through segments. Fewer subdivisions = fewer fillCircle
-    //    calls per frame. high: 2 steps, mid: 1 step, low: 0 (raw).
-    const subdivSteps = this.qualityTier === 'high' ? 2 : this.qualityTier === 'mid' ? 1 : 0;
-    const dense0 = subdivSteps > 0
-      ? this.buildSmoothPath(p.segments, subdivSteps)
-      : p.segments;
-
-    // Cull segments that are extremely close together — overlapping circles
-    // waste GPU fill-rate with zero visual benefit.
-    const minSegDist = this.qualityTier === 'low' ? 4.5 : this.qualityTier === 'mid' ? 3.5 : 2.5;
-    let dense = this.cullDenseSegments(dense0, minSegDist);
-
-    // Cap max rendered segments per tier to prevent fillCircle explosion
-    // when snakes get very long. Head is always kept exact for eyes/label.
-    const MAX_SEGMENTS = this.qualityTier === 'low' ? 28 : this.qualityTier === 'mid' ? 40 : 70;
-    if (dense.length > MAX_SEGMENTS) {
-      const decimate = Math.ceil(dense.length / MAX_SEGMENTS);
-      const sampled: Position[] = [dense[0]]; // head always exact
-      for (let i = 1; i < dense.length - 1; i += decimate) {
-        sampled.push(dense[i]);
-      }
-      sampled.push(dense[dense.length - 1]); // tail always visible
-      dense = sampled;
-    }
-    const len = dense.length;
-
     // Body radius tapers from head (large) to tail (small) — snake.io style
     const HEAD_RADIUS = 11;
     const TAIL_RADIUS = 5;
+
+    // ── Build a uniformly-spaced render path through the snake's body.
+    //
+    // The server places control segments exactly SNAKE_SEGMENT_SIZE (15px)
+    // apart. Since our tail circles are only 5px radius (10px diameter), two
+    // raw segments at the tail leave a 5px gap between circles — the snake
+    // looks like a string of disconnected balls. We fix this by resampling
+    // the polyline at a small uniform spacing so adjacent circles always
+    // overlap, regardless of snake length.
+    //
+    // `spacing` must be < 2 * TAIL_RADIUS for the body to read as solid.
+    // `maxPoints` caps total fillCircle calls per snake for performance.
+    const spacing = this.qualityTier === 'low' ? 6 : this.qualityTier === 'mid' ? 5 : 4;
+    const maxPoints = this.qualityTier === 'low' ? 70 : this.qualityTier === 'mid' ? 110 : 160;
+    const dense = this.resamplePath(p.segments, spacing, maxPoints);
+    const len = dense.length;
 
     // Pass 0: drop shadow under body for depth — only on high tier
     // (saves 1 fillCircle per segment for mid/low).
@@ -1440,13 +1479,15 @@ export class GameScene extends Phaser.Scene {
       g.fillCircle(seg.x, seg.y, r);
     }
 
-    // Pass 2b: SCALE BANDS — every 4th segment gets a darker overlay so the
-    // snake reads as a banded/scaled creature, not a flat tube. Skipped on
-    // low tier to keep render cost minimal.
+    // Pass 2b: SCALE BANDS — a darker overlay every ~30px of arc-length so
+    // the snake reads as a banded/scaled creature, not a flat tube. Stride
+    // scales with render spacing so band density stays visually consistent
+    // across quality tiers. Skipped on low tier to keep render cost minimal.
     if (this.qualityTier !== 'low') {
+      const bandStride = Math.max(2, Math.round(30 / spacing));
       const scaleColor = this.darkenColor(bodyColor, 0.65);
       g.fillStyle(scaleColor, 0.55);
-      for (let i = 2; i < len; i += 4) {
+      for (let i = 2; i < len; i += bandStride) {
         const t = i / Math.max(1, len - 1);
         const r = HEAD_RADIUS - (HEAD_RADIUS - TAIL_RADIUS) * t;
         const seg = dense[i];
