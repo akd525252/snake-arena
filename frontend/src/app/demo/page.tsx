@@ -103,6 +103,9 @@ function DemoPageInner() {
           batchSize: isLowEnd ? 2048 : 4096,
         },
         disableContextMenu: true,
+        input: {
+          activePointers: 3,
+        },
         // No physics — server-authoritative game logic; saves a per-frame call.
       };
 

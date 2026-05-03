@@ -29,6 +29,7 @@ export default function AdminDashboard() {
   const [revenue, setRevenue] = useState<RevenueEvent[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [errors, setErrors] = useState<string[]>([]);
 
   // Approval modal state
   const [approveTarget, setApproveTarget] = useState<AdminWithdrawal | null>(null);
@@ -44,6 +45,7 @@ export default function AdminDashboard() {
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
+    const errs: string[] = [];
 
     // Each call is independent — one failing query (e.g. missing migration column)
     // should NOT blank out unrelated tabs. Use allSettled and log per-endpoint.
@@ -57,23 +59,24 @@ export default function AdminDashboard() {
     ]);
 
     if (m.status === 'fulfilled') setMetrics(m.value);
-    else console.error('[admin] getMetrics failed:', m.reason);
+    else { console.error('[admin] getMetrics failed:', m.reason); errs.push('Metrics: ' + (m.reason instanceof Error ? m.reason.message : String(m.reason))); }
 
     if (p.status === 'fulfilled') setPending(p.value.withdrawals);
-    else console.error('[admin] getPendingWithdrawals failed:', p.reason);
+    else { console.error('[admin] getPendingWithdrawals failed:', p.reason); errs.push('Pending withdrawals: ' + (p.reason instanceof Error ? p.reason.message : String(p.reason))); }
 
     if (h.status === 'fulfilled') setHistory(h.value.withdrawals);
-    else console.error('[admin] getAllWithdrawals failed:', h.reason);
+    else { console.error('[admin] getAllWithdrawals failed:', h.reason); errs.push('Withdrawal history: ' + (h.reason instanceof Error ? h.reason.message : String(h.reason))); }
 
     if (d.status === 'fulfilled') setDeposits(d.value.deposits);
-    else console.error('[admin] getAdminDeposits failed:', d.reason);
+    else { console.error('[admin] getAdminDeposits failed:', d.reason); errs.push('Deposits: ' + (d.reason instanceof Error ? d.reason.message : String(d.reason))); }
 
     if (r.status === 'fulfilled') setRevenue(r.value.events);
-    else console.error('[admin] getRevenueHistory failed:', r.reason);
+    else { console.error('[admin] getRevenueHistory failed:', r.reason); errs.push('Revenue: ' + (r.reason instanceof Error ? r.reason.message : String(r.reason))); }
 
     if (u.status === 'fulfilled') setUsers(u.value.users);
-    else console.error('[admin] getUsers failed:', u.reason);
+    else { console.error('[admin] getUsers failed:', u.reason); errs.push('Users: ' + (u.reason instanceof Error ? u.reason.message : String(u.reason))); }
 
+    setErrors(errs);
     setRefreshing(false);
   }, []);
 
@@ -152,6 +155,13 @@ export default function AdminDashboard() {
           <h1 className="rpg-title text-4xl">{t.admin.adminPanel}</h1>
           <p className="rpg-text-muted text-sm mt-1">{t.admin.subtitle}</p>
         </div>
+
+        {errors.length > 0 && (
+          <div className="rpg-panel border border-[#962323] bg-[#2a0e0e] p-4 text-sm">
+            <div className="rpg-crimson font-rpg-heading tracking-wider text-xs mb-2">API ERRORS</div>
+            {errors.map((e, i) => <div key={i} className="rpg-text-muted text-xs">{e}</div>)}
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex gap-2 border-b border-[#3a2c1f] overflow-x-auto">

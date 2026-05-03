@@ -21,9 +21,9 @@ export const CONFIG = {
   // death is the high-stakes reward for kills.
   COIN_VALUE: 0.50,        // field coin worth $0.50 (was $0.10)
   DEATH_COIN_VALUE: 0.90,  // each death-drop coin is worth $0.90
-  COIN_SPAWN_INTERVAL: 7000, // ms — slower spawn (was 3s) so coins stay rare
-  MAX_COINS: 8,            // tighter cap (was 20) so coins remain a treasure
-  INITIAL_COINS: 3,        // fewer starting coins (was 5)
+  COIN_SPAWN_INTERVAL: 15000, // ms — very slow spawn so coins are a rare treasure
+  MAX_COINS: 5,             // low cap — coins should feel scarce
+  INITIAL_COINS: 2,         // minimal starting coins
 
   // Food (cosmetic, dense, grows snake, no money)
   FOOD_SPAWN_INTERVAL: 800, // ms — food respawns quickly for dense coverage

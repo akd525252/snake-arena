@@ -125,6 +125,11 @@ function PlayPageInner() {
         },
         // Disable browser context-menu on right-click / long-press (matters on mobile)
         disableContextMenu: true,
+        // Enable multi-touch: Phaser defaults to 1 pointer (mouse). Mobile needs
+        // at least 3 (joystick + boost + trap simultaneously).
+        input: {
+          activePointers: 3,
+        },
         // No physics needed — game logic is server-authoritative; client just renders.
         // Removing arcade physics saves a per-frame world.update() call.
       };

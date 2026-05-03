@@ -63,6 +63,9 @@ export class GameScene extends Phaser.Scene {
   private coinPool: Phaser.GameObjects.Arc[] = [];
   private foodPool: Phaser.GameObjects.Arc[] = [];
 
+  // Glow overlay for coins and food (drawn every frame, single Graphics object)
+  private glowGfx!: Phaser.GameObjects.Graphics;
+
   // Arena (circular)
   private arenaGfx!: Phaser.GameObjects.Graphics;
   private arenaAnimGfx!: Phaser.GameObjects.Graphics;
@@ -274,6 +277,8 @@ export class GameScene extends Phaser.Scene {
     this.arenaGfx.setDepth(-10);
     this.arenaAnimGfx = this.add.graphics();
     this.arenaAnimGfx.setDepth(-9);
+    this.glowGfx = this.add.graphics();
+    this.glowGfx.setDepth(3); // below coins (5) and food (4) for underglow
     this.drawArena();
     this.applyThemeCameraBg();
 
@@ -604,7 +609,7 @@ export class GameScene extends Phaser.Scene {
 
     // Touch steering via joystick
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (pointer.x > w * 0.5) return; // right half reserved for buttons
+      if (pointer.x > w * 0.55) return; // right side reserved for buttons
       this.joystickActive = true;
       this.touchId = pointer.id;
       this.joystickOrigin = { x: pointer.x, y: pointer.y };
@@ -630,11 +635,11 @@ export class GameScene extends Phaser.Scene {
       this.joystickGraphics.clear();
     });
 
-    // Boost button (right side bottom) — adaptive radius for small screens
-    const btnRadius = Math.min(36, Math.max(24, w * 0.065));
-    const edgePad = this.isMobile ? 12 : 4; // keep buttons away from screen edges on mobile
-    const boostX = w - btnRadius * 2.5 - edgePad;
-    const boostY = h - btnRadius * 2 - edgePad;
+    // Boost button (right side bottom) — minimum 44px radius for reliable touch
+    const btnRadius = Math.max(44, Math.min(56, w * 0.11));
+    const edgePad = 16;
+    const boostX = w - btnRadius - edgePad;
+    const boostY = h - btnRadius - edgePad - 20;
     this.mobileBoostBtn = this.createMobileButton(
       boostX, boostY, btnRadius, this.translations.boost || 'BOOST', 0x00f0ff,
       () => this.send({ type: 'boost_start' }),
@@ -642,8 +647,8 @@ export class GameScene extends Phaser.Scene {
     );
 
     // Trap button (right side above boost)
-    const trapX = w - btnRadius * 2.5 - edgePad;
-    const trapY = h - btnRadius * 5 - edgePad;
+    const trapX = w - btnRadius - edgePad;
+    const trapY = boostY - btnRadius * 2.4;
     this.mobileTrapBtn = this.createMobileButton(trapX, trapY, btnRadius, this.translations.trap || 'TRAP', 0xff2e63, () => {
       this.send({ type: 'skill_use', skill: 'trap' });
     });
@@ -665,13 +670,13 @@ export class GameScene extends Phaser.Scene {
     circle.lineStyle(2, color, 0.8);
     circle.strokeCircle(0, 0, r);
 
-    // Larger font to avoid pixelation, then scale down to fit the button
-    const fontSize = Math.max(14, Math.round(r * 0.55));
+    const fontSize = Math.max(14, Math.round(r * 0.38));
     const text = this.add.text(0, 0, label, {
       fontFamily: 'monospace',
       fontSize: `${fontSize}px`,
       color: '#ffffff',
-    }).setOrigin(0.5).setScale(Math.min(1, r / 36));
+      fontStyle: 'bold',
+    }).setOrigin(0.5);
     container.add([circle, text]);
 
     // Container-level hit area — more reliable than zones inside containers on mobile
@@ -1228,13 +1233,14 @@ export class GameScene extends Phaser.Scene {
       this.killNotificationText.setPosition(cw / 2, ch * 0.28);
 
       if (this.isMobile) {
-        const btnRadius = Math.min(36, Math.max(24, cw * 0.065));
-        const edgePad = 12;
+        const btnR = Math.max(44, Math.min(56, cw * 0.11));
+        const edgeP = 16;
+        const bY = ch - btnR - edgeP - 20;
         if (this.mobileBoostBtn) {
-          this.mobileBoostBtn.setPosition(cw - btnRadius * 2.5 - edgePad, ch - btnRadius * 2 - edgePad);
+          this.mobileBoostBtn.setPosition(cw - btnR - edgeP, bY);
         }
         if (this.mobileTrapBtn) {
-          this.mobileTrapBtn.setPosition(cw - btnRadius * 2.5 - edgePad, ch - btnRadius * 5 - edgePad);
+          this.mobileTrapBtn.setPosition(cw - btnR - edgeP, bY - btnR * 2.4);
         }
       }
     }
@@ -1358,6 +1364,37 @@ export class GameScene extends Phaser.Scene {
         sp.setVisible(false);
         this.foodPool.push(sp);
         this.foodSprites.delete(id);
+      }
+    }
+
+    // ── Glow / attractive effects on coins & food ───────────────────
+    // Single Graphics clear + redraw per tick is cheaper than individual tweens.
+    // Skipped on low tier for performance.
+    if (this.qualityTier !== 'low') {
+      this.glowGfx.clear();
+      const pulse = 0.35 + 0.25 * Math.sin(performance.now() / 400);
+      const pulse2 = 0.3 + 0.2 * Math.sin(performance.now() / 500 + 1);
+
+      // Coin glow — golden halo
+      for (const c of state.coins) {
+        if (!this.isOnScreen(c.position.x, c.position.y, 30)) continue;
+        this.glowGfx.fillStyle(0xfbbf24, pulse * 0.4);
+        this.glowGfx.fillCircle(c.position.x, c.position.y, 16);
+        this.glowGfx.fillStyle(0xfde68a, pulse * 0.2);
+        this.glowGfx.fillCircle(c.position.x, c.position.y, 22);
+      }
+
+      // Food glow — subtle colored halo (only large food to save perf)
+      for (const f of state.food) {
+        if (!this.isOnScreen(f.position.x, f.position.y, 20)) continue;
+        const fColor = foodColors[f.colorIndex % foodColors.length];
+        if (f.size === 'large') {
+          this.glowGfx.fillStyle(fColor, pulse2 * 0.3);
+          this.glowGfx.fillCircle(f.position.x, f.position.y, 10);
+        } else {
+          this.glowGfx.fillStyle(fColor, pulse2 * 0.15);
+          this.glowGfx.fillCircle(f.position.x, f.position.y, 6);
+        }
       }
     }
   }
@@ -1885,144 +1922,239 @@ export class GameScene extends Phaser.Scene {
     this.zoneOverlay.strokeRect(0, 0, w, h);
   }
 
+  /** Simple deterministic pseudo-random number from two integer seeds.
+   *  Returns 0..1. Used for static ground texture placement so the arena
+   *  looks the same every frame without storing random positions. */
+  private seededRand(a: number, b: number): number {
+    let h = (a * 2654435761 ^ b * 2246822519) >>> 0;
+    h = ((h >> 16) ^ h) * 0x45d9f3b;
+    h = ((h >> 16) ^ h) * 0x45d9f3b;
+    h = (h >> 16) ^ h;
+    return (h >>> 0) / 4294967296;
+  }
+
   private drawArena() {
     this.arenaGfx.clear();
 
     const cx = this.arenaCenterX;
     const cy = this.arenaCenterY;
     const r = this.arenaRadius;
+    const rSq = r * r;
+    const g = this.arenaGfx;
 
-    // Theme palettes — bright, biome-readable colors so the floor reads as
-    // grass/lava/rock/tile rather than nearly-black.
+    // Theme palettes — rich colors for each biome
     const palettes = {
       grass: {
         bg: 0x2d7a3a,        // saturated meadow green
-        gridA: 0x4ea85a,     // grass clump highlight
-        gridB: 0x7ecf86,     // lighter grass tuft
+        bgDark: 0x1f5a28,    // dark grass for patches
+        bgLight: 0x4ea85a,   // light grass highlight
+        detail: 0x7ecf86,    // grass tuft highlight
         border: 0xa8f5b0,    // vivid green border
         danger: 0xef4444,
+        rocks: 0x6b705c,     // small stone color
       },
       lava: {
         bg: 0x7a1a05,        // glowing molten rock
-        gridA: 0xb83a08,     // crack lines (orange)
-        gridB: 0xff8a30,     // hot ember
+        bgDark: 0x4a0803,    // cooled rock
+        bgLight: 0xb83a08,   // warm cracks
+        detail: 0xff8a30,    // hot ember
         border: 0xffb050,    // glowing border
         danger: 0xffe040,
+        rocks: 0x2a1205,
       },
       rock: {
         bg: 0x4a4d52,        // mid-tone stone
-        gridA: 0x666a70,     // tile grout
-        gridB: 0x8a8d92,     // highlight
+        bgDark: 0x35383c,    // dark stone
+        bgLight: 0x62666c,   // lighter stone
+        detail: 0x8a8d92,    // highlight
         border: 0xc8cad0,    // bright stone edge
         danger: 0xef4444,
+        rocks: 0x72757a,
       },
       tile: {
         bg: 0x18465c,        // bright tech navy
-        gridA: 0x2a7090,     // visible grid lines
-        gridB: 0x4ce0ff,     // bright cyan dots
+        bgDark: 0x0e2e3e,    // dark panel
+        bgLight: 0x2a7090,   // grid accent
+        detail: 0x4ce0ff,    // bright cyan
         border: 0x66f0ff,    // luminous border
         danger: 0xff2e63,
+        rocks: 0x14384a,
       },
     } as const;
     const pal = palettes[this.mapTheme];
 
-    // Background fill
-    this.arenaGfx.fillStyle(pal.bg, 1);
-    this.arenaGfx.fillCircle(cx, cy, r);
+    // ── Layer 0: Base fill ──────────────────────────────────────────
+    g.fillStyle(pal.bg, 1);
+    g.fillCircle(cx, cy, r);
 
-    // Theme-specific pattern
+    // ── Layer 1: Large terrain patches (darker/lighter zones) ──────
+    // Creates natural-looking variation across the ground
+    const patchCount = 18;
+    for (let i = 0; i < patchCount; i++) {
+      const ang = this.seededRand(i, 7) * Math.PI * 2;
+      const dist = this.seededRand(i, 13) * (r - 40);
+      const px = cx + Math.cos(ang) * dist;
+      const py = cy + Math.sin(ang) * dist;
+      const patchR = 30 + this.seededRand(i, 19) * 50;
+      const isDark = i % 3 === 0;
+      g.fillStyle(isDark ? pal.bgDark : pal.bgLight, isDark ? 0.35 : 0.25);
+      g.fillCircle(px, py, patchR);
+    }
+
+    // ── Layer 2: Theme-specific detail texture ─────────────────────
     if (this.mapTheme === 'grass') {
-      // Soft dotted/cell pattern resembling tall grass clumps
-      this.arenaGfx.fillStyle(pal.gridA, 0.55);
-      const step = 28;
+      // Dense grass tufts — scattered small circles with random sizes
+      const step = 16;
       for (let x = cx - r; x <= cx + r; x += step) {
         for (let y = cy - r; y <= cy + r; y += step) {
           const dx = x - cx, dy = y - cy;
-          if (dx * dx + dy * dy > r * r) continue;
-          // Tiny pseudo-random offset
-          const ox = ((x * 13 + y * 7) % 9) - 4;
-          const oy = ((x * 5 + y * 17) % 9) - 4;
-          this.arenaGfx.fillCircle(x + ox, y + oy, 2.2);
+          if (dx * dx + dy * dy > rSq) continue;
+          const s = this.seededRand(x, y);
+          const ox = (s * 8) - 4;
+          const oy = (this.seededRand(y, x) * 8) - 4;
+          // Grass tuft — slightly lighter circles
+          g.fillStyle(pal.bgLight, 0.3 + s * 0.3);
+          g.fillCircle(x + ox, y + oy, 1.5 + s * 2);
         }
+      }
+      // Scattered rocks/pebbles on the grass
+      for (let i = 0; i < 30; i++) {
+        const a = this.seededRand(i, 41) * Math.PI * 2;
+        const d = this.seededRand(i, 43) * (r - 20);
+        const rx = cx + Math.cos(a) * d;
+        const ry = cy + Math.sin(a) * d;
+        g.fillStyle(pal.rocks, 0.5);
+        g.fillCircle(rx, ry, 2 + this.seededRand(i, 47) * 3);
+      }
+      // Darker grass patches (shadows/thicker grass)
+      for (let i = 0; i < 40; i++) {
+        const a = this.seededRand(i, 53) * Math.PI * 2;
+        const d = this.seededRand(i, 59) * (r - 15);
+        const gx = cx + Math.cos(a) * d;
+        const gy = cy + Math.sin(a) * d;
+        g.fillStyle(pal.bgDark, 0.4);
+        g.fillCircle(gx, gy, 4 + this.seededRand(i, 61) * 8);
       }
     } else if (this.mapTheme === 'lava') {
-      // Cracked floor — irregular polygonal cells
-      this.arenaGfx.lineStyle(1, pal.gridA, 0.5);
-      const step = 60;
+      // Cracked floor grid
+      g.lineStyle(1.5, pal.bgLight, 0.4);
+      const step = 55;
       for (let x = cx - r; x <= cx + r; x += step) {
         const dx = x - cx;
-        const halfH = Math.sqrt(Math.max(0, r * r - dx * dx));
-        if (halfH > 0) this.arenaGfx.lineBetween(x, cy - halfH, x, cy + halfH);
+        const halfH = Math.sqrt(Math.max(0, rSq - dx * dx));
+        if (halfH > 0) g.lineBetween(x, cy - halfH, x, cy + halfH);
       }
       for (let y = cy - r; y <= cy + r; y += step) {
         const dy = y - cy;
-        const halfW = Math.sqrt(Math.max(0, r * r - dy * dy));
-        if (halfW > 0) this.arenaGfx.lineBetween(cx - halfW, y, cx + halfW, y);
+        const halfW = Math.sqrt(Math.max(0, rSq - dy * dy));
+        if (halfW > 0) g.lineBetween(cx - halfW, y, cx + halfW, y);
       }
-      // Hot ember dots
-      this.arenaGfx.fillStyle(pal.gridB, 0.7);
+      // Hot cracks — irregular glowing lines
+      for (let i = 0; i < 24; i++) {
+        const a = this.seededRand(i, 71) * Math.PI * 2;
+        const d = this.seededRand(i, 73) * (r - 20);
+        const x0 = cx + Math.cos(a) * d;
+        const y0 = cy + Math.sin(a) * d;
+        const len = 10 + this.seededRand(i, 77) * 25;
+        const ang2 = a + (this.seededRand(i, 79) - 0.5) * 1.5;
+        g.lineStyle(2, pal.detail, 0.5);
+        g.lineBetween(x0, y0, x0 + Math.cos(ang2) * len, y0 + Math.sin(ang2) * len);
+      }
+      // Ember dots
       for (let i = 0; i < 60; i++) {
-        const a = (i / 60) * Math.PI * 2;
-        const rad = Math.sqrt(Math.random()) * (r - 12);
-        this.arenaGfx.fillCircle(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad, 1.8);
+        const a = this.seededRand(i, 81) * Math.PI * 2;
+        const d = this.seededRand(i, 83) * (r - 10);
+        g.fillStyle(pal.detail, 0.4 + this.seededRand(i, 85) * 0.4);
+        g.fillCircle(cx + Math.cos(a) * d, cy + Math.sin(a) * d, 1 + this.seededRand(i, 87) * 2);
       }
     } else if (this.mapTheme === 'rock') {
-      // Stone tile grid
-      this.arenaGfx.lineStyle(1, pal.gridA, 0.5);
-      const step = 50;
+      // Stone tile grid with offset rows
+      const step = 45;
+      g.lineStyle(1.5, pal.bgDark, 0.6);
       for (let x = cx - r; x <= cx + r; x += step) {
         const dx = x - cx;
-        const halfH = Math.sqrt(Math.max(0, r * r - dx * dx));
-        if (halfH > 0) this.arenaGfx.lineBetween(x, cy - halfH, x, cy + halfH);
+        const halfH = Math.sqrt(Math.max(0, rSq - dx * dx));
+        if (halfH > 0) g.lineBetween(x, cy - halfH, x, cy + halfH);
       }
       for (let y = cy - r; y <= cy + r; y += step) {
         const dy = y - cy;
-        const halfW = Math.sqrt(Math.max(0, r * r - dy * dy));
-        if (halfW > 0) this.arenaGfx.lineBetween(cx - halfW, y, cx + halfW, y);
+        const halfW = Math.sqrt(Math.max(0, rSq - dy * dy));
+        if (halfW > 0) g.lineBetween(cx - halfW, y, cx + halfW, y);
       }
-      // Cracked highlights
-      this.arenaGfx.lineStyle(1, pal.gridB, 0.4);
-      for (let i = 0; i < 14; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const rad = Math.sqrt(Math.random()) * (r - 30);
-        const x0 = cx + Math.cos(a) * rad;
-        const y0 = cy + Math.sin(a) * rad;
-        const len = 8 + Math.random() * 18;
-        const ang2 = a + (Math.random() - 0.5) * 1.2;
-        this.arenaGfx.lineBetween(x0, y0, x0 + Math.cos(ang2) * len, y0 + Math.sin(ang2) * len);
+      // Stone surface variation — lighter patches within tiles
+      for (let i = 0; i < 50; i++) {
+        const a = this.seededRand(i, 91) * Math.PI * 2;
+        const d = this.seededRand(i, 93) * (r - 15);
+        g.fillStyle(pal.bgLight, 0.25);
+        g.fillCircle(cx + Math.cos(a) * d, cy + Math.sin(a) * d, 6 + this.seededRand(i, 95) * 12);
+      }
+      // Crack lines
+      for (let i = 0; i < 20; i++) {
+        const a = this.seededRand(i, 97) * Math.PI * 2;
+        const d = this.seededRand(i, 99) * (r - 25);
+        const x0 = cx + Math.cos(a) * d;
+        const y0 = cy + Math.sin(a) * d;
+        const len = 8 + this.seededRand(i, 101) * 20;
+        const ang2 = a + (this.seededRand(i, 103) - 0.5);
+        g.lineStyle(1, pal.detail, 0.3);
+        g.lineBetween(x0, y0, x0 + Math.cos(ang2) * len, y0 + Math.sin(ang2) * len);
       }
     } else {
-      // tile theme — futuristic hex/grid
-      this.arenaGfx.lineStyle(1, pal.gridA, 0.6);
-      const step = 40;
+      // tile / tech theme — hex grid pattern
+      const step = 36;
+      g.lineStyle(1, pal.bgLight, 0.5);
       for (let x = cx - r; x <= cx + r; x += step) {
         const dx = x - cx;
-        const halfH = Math.sqrt(Math.max(0, r * r - dx * dx));
-        if (halfH > 0) this.arenaGfx.lineBetween(x, cy - halfH, x, cy + halfH);
+        const halfH = Math.sqrt(Math.max(0, rSq - dx * dx));
+        if (halfH > 0) g.lineBetween(x, cy - halfH, x, cy + halfH);
       }
       for (let y = cy - r; y <= cy + r; y += step) {
         const dy = y - cy;
-        const halfW = Math.sqrt(Math.max(0, r * r - dy * dy));
-        if (halfW > 0) this.arenaGfx.lineBetween(cx - halfW, y, cx + halfW, y);
+        const halfW = Math.sqrt(Math.max(0, rSq - dy * dy));
+        if (halfW > 0) g.lineBetween(cx - halfW, y, cx + halfW, y);
       }
-      // Cyan accent dots at intersections
-      this.arenaGfx.fillStyle(pal.gridB, 0.5);
-      for (let x = cx - r; x <= cx + r; x += step * 2) {
-        for (let y = cy - r; y <= cy + r; y += step * 2) {
+      // Glowing accent dots at grid intersections
+      g.fillStyle(pal.detail, 0.4);
+      for (let x = cx - r; x <= cx + r; x += step) {
+        for (let y = cy - r; y <= cy + r; y += step) {
           const dx = x - cx, dy = y - cy;
-          if (dx * dx + dy * dy > r * r) continue;
-          this.arenaGfx.fillCircle(x, y, 1.5);
+          if (dx * dx + dy * dy > rSq) continue;
+          g.fillCircle(x, y, 2);
+          // Larger glow halo at every other intersection
+          if (((x + y) | 0) % (step * 2) < step) {
+            g.fillStyle(pal.detail, 0.15);
+            g.fillCircle(x, y, 5);
+            g.fillStyle(pal.detail, 0.4);
+          }
         }
+      }
+      // Panel highlights
+      for (let i = 0; i < 20; i++) {
+        const a = this.seededRand(i, 111) * Math.PI * 2;
+        const d = this.seededRand(i, 113) * (r - 20);
+        g.fillStyle(pal.bgLight, 0.2);
+        g.fillCircle(cx + Math.cos(a) * d, cy + Math.sin(a) * d, 8 + this.seededRand(i, 115) * 15);
       }
     }
 
-    // Arena border (theme-tinted)
-    this.arenaGfx.lineStyle(4, pal.border, 0.85);
-    this.arenaGfx.strokeCircle(cx, cy, r);
+    // ── Layer 3: Radial vignette — edges of arena appear slightly darker ──
+    // Draw concentric rings with increasing opacity near the border
+    for (let band = 0; band < 5; band++) {
+      const bandR = r - band * 4;
+      const alpha = 0.03 + band * 0.04;
+      g.lineStyle(8, 0x000000, alpha);
+      g.strokeCircle(cx, cy, bandR);
+    }
 
-    // Inner danger ring (always shows, ramps up via animation overlay)
-    this.arenaGfx.lineStyle(1, pal.danger, 0.18);
-    this.arenaGfx.strokeCircle(cx, cy, r - 2);
+    // ── Arena border (theme-tinted, thick double-ring) ─────────────
+    g.lineStyle(5, pal.border, 0.7);
+    g.strokeCircle(cx, cy, r);
+    g.lineStyle(2, pal.border, 0.4);
+    g.strokeCircle(cx, cy, r - 6);
+
+    // Inner danger ring
+    g.lineStyle(1, pal.danger, 0.18);
+    g.strokeCircle(cx, cy, r - 2);
   }
 
   /**
