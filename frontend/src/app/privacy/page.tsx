@@ -1,13 +1,7 @@
-import type { Metadata } from 'next';
-import Link from 'next/link';
+'use client';
 
-export const metadata: Metadata = {
-  title: 'Privacy Policy',
-  description: 'Privacy Policy for Snake Arena, including account data, wallet activity, gameplay data, payments, security, and user rights.',
-  alternates: {
-    canonical: '/privacy',
-  },
-};
+import Link from 'next/link';
+import { useI18n } from '../../contexts/I18nContext';
 
 const sections = [
   {
@@ -72,23 +66,24 @@ const sections = [
   },
 ];
 
-export default function PrivacyPage() {
+function PrivacyPageInner() {
+  const { t } = useI18n();
   return (
     <main className="min-h-screen bg-[#1a1410] px-6 py-10">
       <div className="max-w-4xl mx-auto">
         <Link href="/" className="inline-flex items-center text-sm rpg-text-muted hover:rpg-gold-bright mb-8">
-          ← Back to Snake Arena
+          ← {t.legal.backToGame}
         </Link>
 
         <div className="rpg-panel p-8 md:p-10">
           <div className="inline-flex px-3 py-1 rounded-md border border-[#a86a3a] bg-[#3a2c1f] rpg-gold-bright text-xs font-rpg-heading tracking-widest mb-5">
-            LEGAL
+            {t.legal.legal}
           </div>
-          <h1 className="rpg-title text-4xl md:text-5xl mb-4">Privacy Policy</h1>
+          <h1 className="rpg-title text-4xl md:text-5xl mb-4">{t.legal.privacyPolicy}</h1>
           <p className="rpg-text leading-7 mb-2">
             This Privacy Policy explains how Snake Arena collects, uses, shares, and protects information when you use our multiplayer snake game, demo mode, wallet features, skins, deposits, withdrawals, and related services.
           </p>
-          <p className="text-sm rpg-text-muted">Last updated: April 29, 2026</p>
+          <p className="text-sm rpg-text-muted">{t.legal.lastUpdated}: April 29, 2026</p>
         </div>
 
         <div className="mt-8 space-y-5">
@@ -113,4 +108,8 @@ export default function PrivacyPage() {
       </div>
     </main>
   );
+}
+
+export default function PrivacyPage() {
+  return <PrivacyPageInner />;
 }

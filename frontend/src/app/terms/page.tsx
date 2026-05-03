@@ -1,13 +1,7 @@
-import type { Metadata } from 'next';
-import Link from 'next/link';
+'use client';
 
-export const metadata: Metadata = {
-  title: 'Terms of Service',
-  description: 'Terms of Service for Snake Arena, including demo mode, USDT matches, wallet rules, withdrawals, gameplay conduct, skins, and platform risk disclosures.',
-  alternates: {
-    canonical: '/terms',
-  },
-};
+import Link from 'next/link';
+import { useI18n } from '../../contexts/I18nContext';
 
 const sections = [
   {
@@ -96,23 +90,24 @@ const sections = [
   },
 ];
 
-export default function TermsPage() {
+function TermsPageInner() {
+  const { t } = useI18n();
   return (
     <main className="min-h-screen bg-[#1a1410] px-6 py-10">
       <div className="max-w-4xl mx-auto">
         <Link href="/" className="inline-flex items-center text-sm rpg-text-muted hover:rpg-gold-bright mb-8">
-          ← Back to Snake Arena
+          ← {t.legal.backToGame}
         </Link>
 
         <div className="rpg-panel p-8 md:p-10">
           <div className="inline-flex px-3 py-1 rounded-md border border-[#962323] bg-[#2a0e0e] rpg-crimson text-xs font-rpg-heading tracking-widest mb-5">
-            LEGAL
+            {t.legal.legal}
           </div>
-          <h1 className="rpg-title text-4xl md:text-5xl mb-4">Terms of Service</h1>
+          <h1 className="rpg-title text-4xl md:text-5xl mb-4">{t.legal.termsOfService}</h1>
           <p className="rpg-text leading-7 mb-2">
             These Terms govern your use of Snake Arena, including accounts, demo mode, pro mode, USDT deposits, withdrawals, multiplayer matches, skins, skills, wallets, and related services.
           </p>
-          <p className="text-sm rpg-text-muted">Last updated: April 29, 2026</p>
+          <p className="text-sm rpg-text-muted">{t.legal.lastUpdated}: April 29, 2026</p>
         </div>
 
         <div className="mt-8 space-y-5">
@@ -137,4 +132,8 @@ export default function TermsPage() {
       </div>
     </main>
   );
+}
+
+export default function TermsPage() {
+  return <TermsPageInner />;
 }

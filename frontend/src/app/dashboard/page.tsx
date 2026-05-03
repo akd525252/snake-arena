@@ -4,15 +4,18 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
+import { useI18n } from '../../contexts/I18nContext';
 import { api, Transaction, Skin } from '../../lib/api';
 import ModeSelectionModal from '../../components/ModeSelectionModal';
 import Loader from '../../components/Loader';
 import Logo from '../../components/Logo';
 import Leaderboard from '../../components/Leaderboard';
+import LanguageSwitcher from '../../components/LanguageSwitcher';
 
 export default function Dashboard() {
   const router = useRouter();
   const { user, loading, signOut, refreshUser } = useAuth();
+  const { t } = useI18n();
   const [balance, setBalance] = useState<number>(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [betAmount, setBetAmount] = useState(10);
@@ -83,7 +86,7 @@ export default function Dashboard() {
   }, [user?.id]);
 
   if (loading || !user) {
-    return <Loader message="Loading your arena…" />;
+    return <Loader message={t.common.loading} />;
   }
 
   const showModeModal = !modeModalDismissed && !user.game_mode;
@@ -93,8 +96,8 @@ export default function Dashboard() {
   const activeBalance = isDemo ? demoBalance : balance;
   const canStartMatch = activeBalance >= activeBet;
   const playHref = isDemo ? `/demo?bet=${activeBet}` : `/play?bet=${activeBet}`;
-  const playLabel = isDemo ? 'Launch Demo Arena' : 'Find Ranked Match';
-  const modeLabel = isDemo ? 'Practice Arena' : 'Ranked Arena';
+  const playLabel = isDemo ? t.dashboard.launchDemoArena : t.dashboard.findRankedMatch;
+  const modeLabel = isDemo ? t.dashboard.practiceArena : t.dashboard.rankedArena;
   const equippedSkin = skins.find(s => s.id === equippedSkinId);
   const userInitial = (user.username || user.email || 'S').charAt(0).toUpperCase();
 
@@ -123,8 +126,8 @@ export default function Dashboard() {
       {/* Demo banner */}
       {isDemo && (
         <div className="relative z-10 bg-[#3a2c1f]/60 border-b border-[#a86a3a]/30 px-4 py-2 text-center text-sm">
-          <span className="rpg-gold-bright font-rpg-heading tracking-widest">DEMO MODE</span>
-          <span className="rpg-text-muted ml-2">Practice with simulated funds &middot; </span>
+          <span className="rpg-gold-bright font-rpg-heading tracking-widest">{t.dashboard.demoMode}</span>
+          <span className="rpg-text-muted ml-2">{t.dashboard.practiceWithFunds} &middot; </span>
           <button
             onClick={async () => {
               await api.setGameMode('pro');
@@ -132,7 +135,7 @@ export default function Dashboard() {
             }}
             className="rpg-gold underline hover:rpg-gold-bright font-rpg-heading"
           >
-            Upgrade to Pro
+            {t.dashboard.upgradeToPro}
           </button>
         </div>
       )}
@@ -143,20 +146,21 @@ export default function Dashboard() {
           <Logo size={44} />
           <div className="min-w-0">
             <div className="rpg-title text-lg sm:text-xl truncate">Snake Arena</div>
-            <div className="hidden sm:block text-xs rpg-text-muted">Multiplayer snake arena</div>
+            <div className="hidden sm:block text-xs rpg-text-muted">{t.dashboard.multiplayerArena}</div>
           </div>
           <span className={`hidden sm:inline-flex px-2.5 py-1 rounded-md text-[10px] font-black border tracking-widest font-rpg-heading ${
             isDemo
               ? 'border-[#a86a3a] bg-[#3a2c1f] text-[#f5c265]'
               : 'border-[#962323] bg-[#2a0e0e] text-[#d83a3a]'
           }`}>
-            {isDemo ? 'DEMO' : 'PRO'}
+            {isDemo ? t.dashboard.demo.toUpperCase() : t.dashboard.pro.toUpperCase()}
           </span>
         </Link>
         <div className="flex items-center gap-2 sm:gap-4">
+          <LanguageSwitcher position="inline" />
           {user.is_admin && (
             <Link href="/admin" className="hidden sm:inline text-sm rpg-text-muted hover:rpg-gold-bright font-rpg-heading tracking-wider">
-              Admin
+              {t.dashboard.admin}
             </Link>
           )}
           <Link
@@ -183,7 +187,7 @@ export default function Dashboard() {
             onClick={signOut}
             className="text-sm rpg-text-muted hover:text-[#d83a3a] font-rpg-heading tracking-wider"
           >
-            Sign out
+            {t.dashboard.signOut}
           </button>
         </div>
       </nav>
@@ -205,40 +209,40 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <h1 className="rpg-title text-3xl md:text-5xl">
-                    Welcome, {user.username || user.email.split('@')[0]}
+                    {t.dashboard.welcomeUser}, {user.username || user.email.split('@')[0]}
                   </h1>
                   <p className="mt-2 rpg-text-muted max-w-2xl">
-                    Pick your bet, enter the arena, collect coins, use skills, and survive.
+                    {t.dashboard.welcomeDesc}
                   </p>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="rpg-stone-panel p-4">
-                    <div className="text-[11px] uppercase tracking-[0.15em] rpg-text-muted">Balance</div>
+                    <div className="text-[11px] uppercase tracking-[0.15em] rpg-text-muted">{t.dashboard.balance}</div>
                     <div className="mt-1 text-2xl font-black rpg-gold-bright">${activeBalance.toFixed(2)}</div>
-                    <div className="text-xs font-bold rpg-text-muted">{isDemo ? 'DEMO' : 'USDT'}</div>
+                    <div className="text-xs font-bold rpg-text-muted">{isDemo ? t.dashboard.demo.toUpperCase() : 'USDT'}</div>
                   </div>
                   <div className="rpg-stone-panel p-4">
-                    <div className="text-[11px] uppercase tracking-[0.15em] rpg-text-muted">Bet</div>
+                    <div className="text-[11px] uppercase tracking-[0.15em] rpg-text-muted">{t.play.bet}</div>
                     <div className="mt-1 text-2xl font-black rpg-text">${activeBet}</div>
-                    <div className="text-xs font-bold rpg-text-muted">Current</div>
+                    <div className="text-xs font-bold rpg-text-muted">{t.dashboard.current}</div>
                   </div>
                   <div className="rpg-stone-panel p-4">
-                    <div className="text-[11px] uppercase tracking-[0.15em] rpg-text-muted">Arena</div>
+                    <div className="text-[11px] uppercase tracking-[0.15em] rpg-text-muted">{t.dashboard.arena}</div>
                     <div className="mt-1 text-2xl font-black rpg-text">10</div>
-                    <div className="text-xs font-bold rpg-text-muted">Max players</div>
+                    <div className="text-xs font-bold rpg-text-muted">{t.dashboard.maxPlayers}</div>
                   </div>
                   <div className="rpg-stone-panel p-4">
-                    <div className="text-[11px] uppercase tracking-[0.15em] rpg-text-muted">Coin</div>
+                    <div className="text-[11px] uppercase tracking-[0.15em] rpg-text-muted">{t.dashboard.coin}</div>
                     <div className="mt-1 text-2xl font-black rpg-gold">$0.10</div>
-                    <div className="text-xs font-bold rpg-text-muted">Value</div>
+                    <div className="text-xs font-bold rpg-text-muted">{t.dashboard.value}</div>
                   </div>
                 </div>
               </div>
               <div className="xl:w-72 rpg-stone-panel p-5">
                 <div className="flex items-center justify-between mb-5">
                   <div>
-                    <div className="text-xs rpg-text-muted tracking-widest uppercase">Status</div>
-                    <div className="font-black rpg-gold-bright text-lg">READY</div>
+                    <div className="text-xs rpg-text-muted tracking-widest uppercase">{t.dashboard.status}</div>
+                    <div className="font-black rpg-gold-bright text-lg">{t.dashboard.ready}</div>
                   </div>
                   <div className="h-12 w-12 rounded-md flex items-center justify-center rpg-panel">
                     <span className="rpg-title text-xl">{userInitial}</span>
@@ -246,15 +250,15 @@ export default function Dashboard() {
                 </div>
                 <div className="space-y-3 rpg-parchment-inset p-4">
                   <div className="flex items-center justify-between gap-4">
-                    <span className="text-sm rpg-text-muted">Mode</span>
-                    <span className={`text-sm font-black ${isDemo ? 'rpg-gold-bright' : 'rpg-crimson'}`}>{isDemo ? 'Demo' : 'Pro'}</span>
+                    <span className="text-sm rpg-text-muted">{t.dashboard.mode}</span>
+                    <span className={`text-sm font-black ${isDemo ? 'rpg-gold-bright' : 'rpg-crimson'}`}>{isDemo ? t.dashboard.demo : t.dashboard.pro}</span>
                   </div>
                   <div className="flex items-center justify-between gap-4">
-                    <span className="text-sm rpg-text-muted">Balance</span>
+                    <span className="text-sm rpg-text-muted">{t.dashboard.balance}</span>
                     <span className="text-sm font-black rpg-text">${activeBalance.toFixed(2)}</span>
                   </div>
                   <div className="flex items-center justify-between gap-4">
-                    <span className="text-sm rpg-text-muted">Bet</span>
+                    <span className="text-sm rpg-text-muted">{t.play.bet}</span>
                     <span className="text-sm font-black rpg-text">${activeBet}</span>
                   </div>
                 </div>
@@ -267,23 +271,23 @@ export default function Dashboard() {
             <div className="flex items-start justify-between gap-4 mb-5">
               <div>
                 <div className="rpg-subtitle text-xs">
-                  Match Console
+                  {t.dashboard.matchConsole}
                 </div>
-                <h2 className="rpg-title text-2xl mt-1">{isDemo ? 'Demo Match' : 'Quick Match'}</h2>
+                <h2 className="rpg-title text-2xl mt-1">{isDemo ? t.dashboard.demoMatch : t.dashboard.quickMatch}</h2>
               </div>
               <span className={`px-3 py-1 rounded-md text-xs font-black border font-rpg-heading tracking-widest ${
                 isDemo
                   ? 'border-[#a86a3a] bg-[#3a2c1f] text-[#f5c265]'
                   : 'border-[#962323] bg-[#2a0e0e] text-[#d83a3a]'
               }`}>
-                {isDemo ? 'Safe' : 'Ranked'}
+                {isDemo ? t.dashboard.safe : t.dashboard.ranked}
               </span>
             </div>
 
             <div className="space-y-4">
               <div>
                 <label className="text-xs rpg-text-muted tracking-widest uppercase">
-                  {isDemo ? 'Bet Amount (Demo $, min $1)' : 'Bet Amount (USDT, min $1)'}
+                  {isDemo ? t.dashboard.betLabelDemo : t.dashboard.betLabelPro}
                 </label>
                 <input
                   type="number"
@@ -323,7 +327,7 @@ export default function Dashboard() {
                   canStartMatch ? (isDemo ? 'btn-rpg-amber' : 'btn-rpg-primary') : ''
                 } ${canStartMatch ? '' : 'opacity-50 cursor-not-allowed pointer-events-none'}`}
               >
-                {canStartMatch ? playLabel : isDemo ? 'Insufficient Demo Balance' : 'Insufficient Balance'}
+                {canStartMatch ? playLabel : isDemo ? t.dashboard.insufficientDemoBalance : t.dashboard.insufficientBalance}
               </Link>
 
               {/* Mode switch link */}
@@ -334,7 +338,7 @@ export default function Dashboard() {
                 }}
                 className="block text-center w-full py-3 rounded-md rpg-stone-panel rpg-text-muted hover:rpg-gold-bright text-sm font-rpg-heading tracking-wider transition-colors"
               >
-                Switch to {isDemo ? 'Pro' : 'Demo'} Mode
+                {t.dashboard.switchTo} {isDemo ? t.dashboard.pro : t.dashboard.demo} {t.dashboard.mode}
               </button>
             </div>
           </div>
@@ -344,22 +348,22 @@ export default function Dashboard() {
           <div className="rpg-panel p-6">
             <div className="flex items-center justify-between mb-5">
               <div>
-                <div className="rpg-subtitle text-xs">Command Center</div>
-                <h2 className="rpg-title text-2xl mt-1">Wallet</h2>
+                <div className="rpg-subtitle text-xs">{t.dashboard.commandCenter}</div>
+                <h2 className="rpg-title text-2xl mt-1">{t.dashboard.wallet}</h2>
               </div>
               <button
                 onClick={refresh}
                 disabled={refreshing}
                 className="h-10 w-10 rounded-md rpg-stone-panel rpg-text-muted hover:rpg-gold-bright disabled:opacity-50"
-                aria-label="Refresh balance"
+                aria-label={t.dashboard.refreshBalance}
               >
                 ↻
               </button>
             </div>
             <div className="rpg-parchment-inset p-5 mb-4">
-              <div className="text-xs uppercase tracking-[0.2em] rpg-text-muted">Available</div>
+              <div className="text-xs uppercase tracking-[0.2em] rpg-text-muted">{t.dashboard.available}</div>
               <div className="mt-1 text-3xl font-black rpg-gold-bright">${activeBalance.toFixed(2)}</div>
-              <div className="text-sm font-bold rpg-text-muted">{isDemo ? 'Practice funds' : 'USDT balance'}</div>
+              <div className="text-sm font-bold rpg-text-muted">{isDemo ? t.dashboard.practiceFunds : t.dashboard.usdtBalance}</div>
             </div>
             {isDemo ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
@@ -370,7 +374,7 @@ export default function Dashboard() {
                   }}
                   className="btn-rpg btn-rpg-primary btn-rpg-block"
                 >
-                  Upgrade
+                  {t.dashboard.upgrade}
                 </button>
                 <button
                   onClick={async () => {
@@ -379,16 +383,16 @@ export default function Dashboard() {
                   }}
                   className="btn-rpg btn-rpg-amber btn-rpg-block"
                 >
-                  Reset
+                  {t.dashboard.reset}
                 </button>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
                 <Link href="/wallet/deposit" className="btn-rpg btn-rpg-amber btn-rpg-block text-center">
-                  Deposit
+                  {t.dashboard.deposit}
                 </Link>
                 <Link href="/wallet/withdraw" className="btn-rpg btn-rpg-block text-center">
-                  Withdraw
+                  {t.dashboard.withdraw}
                 </Link>
               </div>
             )}
@@ -399,10 +403,10 @@ export default function Dashboard() {
             <Link href="/skins" className="rpg-panel p-6 transition-all hover:scale-[1.01] group">
               <div className="flex items-center justify-between mb-5">
                 <div>
-                  <div className="rpg-subtitle text-xs">Player Loadout</div>
-                  <h2 className="rpg-title text-2xl mt-1">Snake Skins</h2>
+                  <div className="rpg-subtitle text-xs">{t.dashboard.playerLoadout}</div>
+                  <h2 className="rpg-title text-2xl mt-1">{t.dashboard.snakeSkins}</h2>
                 </div>
-                <span className="rpg-text-muted group-hover:rpg-gold-bright transition-colors">Shop →</span>
+                <span className="rpg-text-muted group-hover:rpg-gold-bright transition-colors">{t.dashboard.shop} →</span>
               </div>
               {/* Mini skin preview circles */}
               <div className="flex -space-x-3 mb-5">
@@ -417,15 +421,15 @@ export default function Dashboard() {
                 ))}
               </div>
               <div className="rpg-parchment-inset p-4">
-                <div className="text-xs rpg-text-muted">Equipped</div>
-                <div className="font-black rpg-gold-bright">{equippedSkin?.name || 'Default Snake'}</div>
-                <div className="text-sm rpg-text-muted">You own {ownedSkinIds.size} of {skins.length} skins</div>
+                <div className="text-xs rpg-text-muted">{t.dashboard.equippedLabel}</div>
+                <div className="font-black rpg-gold-bright">{equippedSkin?.name || t.dashboard.defaultSnake}</div>
+                <div className="text-sm rpg-text-muted">{t.dashboard.youOwn} {ownedSkinIds.size} {t.dashboard.of} {skins.length} {t.dashboard.skinsCount}</div>
               </div>
             </Link>
           ) : (
             <div className="rpg-panel p-6">
-              <div className="rpg-subtitle text-xs">Training Mode</div>
-              <h2 className="rpg-title text-2xl mt-1 mb-4">{isDemo ? 'Demo Rules' : 'Loadout Locked'}</h2>
+              <div className="rpg-subtitle text-xs">{t.dashboard.trainingMode}</div>
+              <h2 className="rpg-title text-2xl mt-1 mb-4">{isDemo ? t.dashboard.demoRules : t.dashboard.loadoutLocked}</h2>
               <div className="space-y-3 text-sm rpg-text">
                 <div className="flex items-center gap-3">
                   <span className={`h-2 w-2 rounded-full ${isDemo ? 'bg-[#f5c265]' : 'bg-[#d83a3a]'}`} />
@@ -453,16 +457,16 @@ export default function Dashboard() {
           <div className="rpg-panel overflow-hidden">
             <div className="px-6 py-5 border-b border-[#3a2c1f] flex justify-between items-center">
               <div>
-                <div className="rpg-subtitle text-xs">Ledger</div>
-                <h2 className="rpg-title text-2xl mt-1">Recent Transactions</h2>
+                <div className="rpg-subtitle text-xs">{t.dashboard.ledger}</div>
+                <h2 className="rpg-title text-2xl mt-1">{t.dashboard.recentTransactions}</h2>
               </div>
               <Link href="/wallet/transactions" className="text-sm rpg-gold hover:rpg-gold-bright font-rpg-heading tracking-wider">
-                View all
+                {t.dashboard.viewAll}
               </Link>
             </div>
             <div className="divide-y divide-[#3a2c1f]">
               {transactions.length === 0 ? (
-                <div className="px-6 py-10 text-center rpg-text-muted">No transactions yet</div>
+                <div className="px-6 py-10 text-center rpg-text-muted">{t.dashboard.noTransactionsYet}</div>
               ) : (
                 transactions.slice(0, 5).map(tx => {
                   const isCredit = ['deposit', 'win'].includes(tx.type);
@@ -489,37 +493,37 @@ export default function Dashboard() {
         {isDemo && (
           <div className="rpg-panel overflow-hidden">
             <div className="px-6 py-5 border-b border-[#3a2c1f]">
-              <div className="rpg-subtitle text-xs">Practice Progress</div>
-              <h2 className="rpg-title text-2xl mt-1">Demo Stats</h2>
+              <div className="rpg-subtitle text-xs">{t.dashboard.practiceProgress}</div>
+              <h2 className="rpg-title text-2xl mt-1">{t.dashboard.demoStats}</h2>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-6">
               <div className="rpg-stone-panel p-5">
-                <div className="text-xs rpg-text-muted">Bots</div>
+                <div className="text-xs rpg-text-muted">{t.dashboard.bots}</div>
                 <div className="text-3xl font-black rpg-text">9</div>
-                <div className="text-sm rpg-text-muted">Auto-filled rivals</div>
+                <div className="text-sm rpg-text-muted">{t.dashboard.autoFilledRivals}</div>
               </div>
               <div className="rpg-stone-panel p-5">
-                <div className="text-xs rpg-text-muted">Risk</div>
+                <div className="text-xs rpg-text-muted">{t.dashboard.risk}</div>
                 <div className="text-3xl font-black rpg-gold-bright">0</div>
-                <div className="text-sm rpg-text-muted">Real USDT used</div>
+                <div className="text-sm rpg-text-muted">{t.dashboard.realUsdtUsed}</div>
               </div>
               <div className="rpg-stone-panel p-5">
-                <div className="text-xs rpg-text-muted">Goal</div>
+                <div className="text-xs rpg-text-muted">{t.dashboard.goal}</div>
                 <div className="text-3xl font-black rpg-text">#1</div>
-                <div className="text-sm rpg-text-muted">Win the arena</div>
+                <div className="text-sm rpg-text-muted">{t.dashboard.winTheArena}</div>
               </div>
             </div>
             <div className="px-6 pb-6 text-sm rpg-text-muted">
-              Demo earnings cannot be withdrawn. Upgrade to Pro for real USDT games.
+              {t.dashboard.demoEarningsCannotWithdraw}
             </div>
           </div>
         )}
 
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs rpg-text-muted pb-2">
-          <span>Play responsibly. Crypto transactions and match entries can carry risk.</span>
+          <span>{t.dashboard.playResponsibly}</span>
           <div className="flex items-center gap-4">
-            <Link href="/privacy" className="hover:rpg-gold-bright">Privacy</Link>
-            <Link href="/terms" className="hover:rpg-gold-bright">Terms</Link>
+            <Link href="/privacy" className="hover:rpg-gold-bright">{t.landing.privacy}</Link>
+            <Link href="/terms" className="hover:rpg-gold-bright">{t.landing.terms}</Link>
           </div>
         </div>
       </main>

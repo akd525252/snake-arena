@@ -183,6 +183,7 @@ export class GameScene extends Phaser.Scene {
   private onMatchStart: ((data: { matchId: string; players: { id: string; username: string; avatar: string | null; skinId: string | null }[] }) => void) | null = null;
   private onGameBegin: (() => void) | null = null;
   private onError: ((data: { message: string; code?: string }) => void) | null = null;
+  private translations: Record<string, string> = {};
 
   constructor() {
     super({ key: 'GameScene' });
@@ -202,9 +203,11 @@ export class GameScene extends Phaser.Scene {
     onMatchStart?: (data: { matchId: string; players: { id: string; username: string; avatar: string | null; skinId: string | null }[] }) => void;
     onGameBegin?: () => void;
     onError?: (data: { message: string; code?: string }) => void;
+    translations?: Record<string, string>;
   }) {
     if (!data || !data.wsUrl) return;
 
+    this.translations = data.translations || {};
     this.onGameEnd = data.onGameEnd || null;
     this.onConnectionStatus = data.onConnectionStatus || null;
     this.onMyDeath = data.onMyDeath || null;
@@ -277,7 +280,7 @@ export class GameScene extends Phaser.Scene {
     // Zone danger overlay (full-screen red tint when outside arena)
     this.zoneOverlay = this.add.graphics();
     this.zoneOverlay.setScrollFactor(0).setDepth(99);
-    this.zoneWarningText = this.add.text(this.scale.width / 2, this.scale.height * 0.15, 'DANGER ZONE — RETURN!', {
+    this.zoneWarningText = this.add.text(this.scale.width / 2, this.scale.height * 0.15, this.translations.dangerZone || 'DANGER ZONE — RETURN!', {
       fontFamily: 'monospace',
       fontSize: this.isMobile ? '14px' : '18px',
       color: '#ef4444',
@@ -286,7 +289,7 @@ export class GameScene extends Phaser.Scene {
 
     // HUD — heavily simplified on mobile to avoid clutter/overlap
     const hudTop = this.isMobile ? 44 : 16;
-    this.scoreText = this.add.text(10, hudTop, 'Score: $0.00', {
+    this.scoreText = this.add.text(10, hudTop, `${this.translations.score || 'Score'}: $0.00`, {
       fontFamily: 'monospace',
       fontSize: this.isMobile ? '14px' : '20px',
       color: this.isDemo ? '#f59e0b' : '#10b981',
@@ -310,7 +313,7 @@ export class GameScene extends Phaser.Scene {
       fontStyle: 'bold',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
 
-    this.statusText = this.add.text(this.scale.width / 2, this.scale.height / 2, 'Connecting...', {
+    this.statusText = this.add.text(this.scale.width / 2, this.scale.height / 2, this.translations.connecting || 'Connecting...', {
       fontFamily: 'monospace',
       fontSize: this.isMobile ? '18px' : '24px',
       color: '#a1a1aa',
@@ -324,7 +327,7 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
     if (this.isMobile) this.leaderboardText.setVisible(false);
 
-    this.aliveText = this.add.text(16, 72, 'Alive: 0', {
+    this.aliveText = this.add.text(16, 72, `${this.translations.alive || 'Alive'}: 0`, {
       fontFamily: 'monospace',
       fontSize: this.isMobile ? '12px' : '14px',
       color: '#71717a',
@@ -376,7 +379,7 @@ export class GameScene extends Phaser.Scene {
     // Persists choice in localStorage; auto-applied on next match via ?quality=
     // override path OR the saved setting is checked by detectQualityTier().
     const qualityLabel = (t: 'low' | 'mid' | 'high') =>
-      t === 'low' ? '◐ LOW' : t === 'mid' ? '◑ MID' : '◉ HIGH';
+      t === 'low' ? (this.translations.qualityLow || '◐ LOW') : t === 'mid' ? (this.translations.qualityMid || '◑ MID') : (this.translations.qualityHigh || '◉ HIGH');
     this.qualityBtn = this.add.text(this.scale.width - 54, this.scale.height - 16, qualityLabel(this.qualityTier), {
       fontFamily: 'monospace',
       fontSize: this.isMobile ? '11px' : '13px',
@@ -633,7 +636,7 @@ export class GameScene extends Phaser.Scene {
     const boostX = w - btnRadius * 2.5 - edgePad;
     const boostY = h - btnRadius * 2 - edgePad;
     this.mobileBoostBtn = this.createMobileButton(
-      boostX, boostY, btnRadius, 'BOOST', 0x00f0ff,
+      boostX, boostY, btnRadius, this.translations.boost || 'BOOST', 0x00f0ff,
       () => this.send({ type: 'boost_start' }),
       () => this.send({ type: 'boost_end' }),
     );
@@ -641,7 +644,7 @@ export class GameScene extends Phaser.Scene {
     // Trap button (right side above boost)
     const trapX = w - btnRadius * 2.5 - edgePad;
     const trapY = h - btnRadius * 5 - edgePad;
-    this.mobileTrapBtn = this.createMobileButton(trapX, trapY, btnRadius, 'TRAP', 0xff2e63, () => {
+    this.mobileTrapBtn = this.createMobileButton(trapX, trapY, btnRadius, this.translations.trap || 'TRAP', 0xff2e63, () => {
       this.send({ type: 'skill_use', skill: 'trap' });
     });
   }
@@ -915,7 +918,7 @@ export class GameScene extends Phaser.Scene {
       // Successful connection — reset backoff counter.
       this.wsReconnectAttempts = 0;
       this.onConnectionStatus?.('connected');
-      this.statusText.setText('Joining queue...');
+      this.statusText.setText(this.translations.joiningQueue || 'Joining queue...');
       // Re-join queue (works for first connect AND reconnect mid-queue)
       this.send({ type: 'join_queue', betAmount: this.wsBetAmount });
     };
@@ -955,7 +958,7 @@ export class GameScene extends Phaser.Scene {
         console.error(`[WS] giving up after ${this.wsMaxReconnects} reconnect attempts`);
         this.onConnectionStatus?.('disconnected');
         this.onError?.({
-          message: 'Lost connection to game server. Please check your internet and try again.',
+          message: this.translations.lostConnection || 'Lost connection to game server. Please check your internet and try again.',
           code: 'WS_RECONNECT_FAILED',
         });
         return;
@@ -964,7 +967,7 @@ export class GameScene extends Phaser.Scene {
       // Exponential backoff: 200ms, 400ms, 800ms, 1.6s, 3.2s, 6.4s
       const delay = Math.min(6400, 200 * Math.pow(2, this.wsReconnectAttempts - 1));
       console.log(`[WS] reconnect attempt ${this.wsReconnectAttempts}/${this.wsMaxReconnects} in ${delay}ms`);
-      this.statusText.setText(`Reconnecting... (${this.wsReconnectAttempts}/${this.wsMaxReconnects})`);
+      this.statusText.setText(`${this.translations.reconnecting || 'Reconnecting...'} (${this.wsReconnectAttempts}/${this.wsMaxReconnects})`);
       // Hint to the lobby UI that we're reconnecting (not a hard failure).
       this.onConnectionStatus?.('reconnecting');
 
@@ -1005,7 +1008,7 @@ export class GameScene extends Phaser.Scene {
         break;
 
       case 'queue_status':
-        this.statusText.setText(`In queue (${msg.position} / ${msg.minPlayers ?? 2} needed)`);
+        this.statusText.setText(`${this.translations.inQueue || 'In queue'} (${msg.position} / ${msg.minPlayers ?? 2} ${this.translations.needed || 'needed'})`);
         break;
 
       case 'queue_state': {
@@ -1015,7 +1018,7 @@ export class GameScene extends Phaser.Scene {
           maxPlayers: number;
           elapsedSeconds?: number;
         };
-        this.statusText.setText(`Finding match... ${data.players.length}/${data.minPlayers}`);
+        this.statusText.setText(`${this.translations.findingMatch || 'Finding match...'} ${data.players.length}/${data.minPlayers}`);
         this.onQueueState?.(data);
         break;
       }
@@ -1025,7 +1028,7 @@ export class GameScene extends Phaser.Scene {
           matchId: string;
           players: { id: string; username: string; avatar: string | null; skinId: string | null }[];
         };
-        this.statusText.setText('Match starting...');
+        this.statusText.setText(this.translations.matchStarting || 'Match starting...');
         this.onMatchStart?.(data);
         break;
       }
@@ -1053,7 +1056,7 @@ export class GameScene extends Phaser.Scene {
           });
         } else if (msg.killerId === this.myPlayerId) {
           // We killed someone — show a satisfying notification
-          const victimName = (this.playerInterp.get(msg.playerId as string)?.username) || 'Enemy';
+          const victimName = (this.playerInterp.get(msg.playerId as string)?.username) || (this.translations.enemy || 'Enemy');
           const lost = (msg.lostAmount as number) ?? 0;
           this.showKillNotification(victimName, lost);
           this.sfx.kill();
@@ -1062,7 +1065,7 @@ export class GameScene extends Phaser.Scene {
 
       case 'game_end': {
         const results = (msg as unknown as { results: { username: string; score: number; placement: number }[] }).results;
-        this.statusText.setText('Game Over');
+        this.statusText.setText(this.translations.gameOver || 'Game Over');
         this.onGameEnd?.(results);
         // Close cleanly — disable auto-reconnect since the match is legitimately over.
         this.closeWebSocketCleanly();
@@ -1070,9 +1073,9 @@ export class GameScene extends Phaser.Scene {
       }
 
       case 'error': {
-        const errMsg = (msg as { message?: string }).message || 'Server error';
+        const errMsg = (msg as { message?: string }).message || (this.translations.serverError || 'Server error');
         const errCode = (msg as { code?: string }).code;
-        this.statusText.setText(`Error: ${errMsg}`);
+        this.statusText.setText(`${this.translations.errorPrefix || 'Error'}: ${errMsg}`);
         // Propagate to React so the matchmaking UI can react (e.g. exit lobby,
         // show toast, redirect to dashboard) instead of staying stuck on
         // "Still Searching...".
@@ -1237,7 +1240,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     const aliveCount = state.players.filter(p => p.alive).length;
-    const aliveStr = `Alive: ${aliveCount}/${state.players.length}`;
+    const aliveLabel = this.translations.alive || 'Alive';
+    const aliveStr = `${aliveLabel}: ${aliveCount}/${state.players.length}`;
     if (this.aliveText.text !== aliveStr) {
       this.aliveText.setText(aliveStr);
     }
@@ -1258,7 +1262,8 @@ export class GameScene extends Phaser.Scene {
       }
       this.prevMyScore = me.score;
       this.prevMyLength = me.segments.length;
-      const scoreStr = `Score: $${me.score.toFixed(2)}`;
+      const scoreLabel = this.translations.score || 'Score';
+      const scoreStr = `${scoreLabel}: $${me.score.toFixed(2)}`;
       if (this.scoreText.text !== scoreStr) {
         this.scoreText.setText(scoreStr);
       }
@@ -1606,8 +1611,10 @@ export class GameScene extends Phaser.Scene {
 
   private showKillNotification(victimName: string, lostAmount: number) {
     const safeName = victimName.length > 18 ? victimName.slice(0, 18) + '…' : victimName;
-    const bonus = lostAmount > 0 ? ` · +$${lostAmount.toFixed(2)} dropped` : '';
-    this.killNotificationText.setText(`☠  ELIMINATED ${safeName}${bonus}`);
+    const droppedLabel = this.translations.dropped || 'dropped';
+    const bonus = lostAmount > 0 ? ` · +$${lostAmount.toFixed(2)} ${droppedLabel}` : '';
+    const eliminatedLabel = this.translations.eliminated || 'ELIMINATED';
+    this.killNotificationText.setText(`☠  ${eliminatedLabel} ${safeName}${bonus}`);
     this.killNotificationText.setX(this.scale.width / 2);
     this.killNotificationText.setAlpha(1);
     this.killNotificationText.setScale(0.85);

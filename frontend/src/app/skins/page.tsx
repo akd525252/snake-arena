@@ -4,6 +4,8 @@ import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
+import { useI18n } from '../../contexts/I18nContext';
+import LanguageSwitcher from '../../components/LanguageSwitcher';
 import { api, Skin } from '../../lib/api';
 import SnakePreview from '../../components/SnakePreview';
 
@@ -167,6 +169,7 @@ const DEFAULT_SKIN: Skin = {
 export default function SkinsShopPage() {
   const router = useRouter();
   const { user, loading, refreshUser } = useAuth();
+  const { t } = useI18n();
 
   const [skins, setSkins] = useState<Skin[]>([]);
   const [ownedSkinIds, setOwnedSkinIds] = useState<Set<string>>(new Set());
@@ -234,9 +237,9 @@ export default function SkinsShopPage() {
       setOwnedSkinIds(prev => new Set([...prev, current.id]));
       const newBalance = (await api.getBalance()).balance;
       setBalance(newBalance);
-      setActionMsg({ type: 'success', text: `${current.name} purchased!` });
+      setActionMsg({ type: 'success', text: `${current.name} ${t.skins.purchased}` });
     } catch (err: unknown) {
-      const text = err instanceof Error ? err.message : 'Purchase failed';
+      const text = err instanceof Error ? err.message : t.skins.purchaseFailed;
       setActionMsg({ type: 'error', text });
     } finally {
       setBusy(false);
@@ -252,9 +255,9 @@ export default function SkinsShopPage() {
       await api.equipSkin(skinIdToEquip);
       setEquippedSkinId(skinIdToEquip);
       await refreshUser();
-      setActionMsg({ type: 'success', text: `${current.name} equipped!` });
+      setActionMsg({ type: 'success', text: `${current.name} ${t.skins.equipped}` });
     } catch (err: unknown) {
-      const text = err instanceof Error ? err.message : 'Equip failed';
+      const text = err instanceof Error ? err.message : t.skins.equipFailed;
       setActionMsg({ type: 'error', text });
     } finally {
       setBusy(false);
@@ -264,7 +267,7 @@ export default function SkinsShopPage() {
   if (loading || loadingData || !user || !current) {
     return (
       <div className="flex flex-1 items-center justify-center min-h-screen">
-        <div className="rpg-text-muted">Loading skins...</div>
+        <div className="rpg-text-muted">{t.common.loading}</div>
       </div>
     );
   }
@@ -273,15 +276,16 @@ export default function SkinsShopPage() {
 
   return (
     <div className="flex flex-col flex-1 min-h-screen">
+      <LanguageSwitcher />
       {/* Nav */}
       <nav className="flex justify-between items-center px-8 py-4 border-b border-[#3a2c1f]">
         <Link href="/dashboard" className="flex items-center gap-2 rpg-text-muted hover:rpg-gold-bright transition-colors">
           <span className="text-lg">←</span>
-          <span className="text-sm">Back to Dashboard</span>
+          <span className="text-sm">{t.skins.backToDashboard}</span>
         </Link>
-        <h1 className="rpg-title text-xl">Snake Skins</h1>
+        <h1 className="rpg-title text-xl">{t.skins.snakeShop}</h1>
         <div className="text-sm rpg-text-muted">
-          Balance: <span className="rpg-gold-bright font-bold">${balance.toFixed(2)}</span>
+          {t.dashboard.balance}: <span className="rpg-gold-bright font-bold">${balance.toFixed(2)}</span>
         </div>
       </nav>
 
@@ -316,14 +320,14 @@ export default function SkinsShopPage() {
             </h2>
             {current.tier === 'premium' && (
               <span className="px-3 py-1 rounded-full text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40">
-                ★ PREMIUM
+                ★ {t.skins.premium}
               </span>
             )}
           </div>
           <p className="rpg-text-muted text-sm max-w-2xl mx-auto">{current.description}</p>
           {!isCurrentDefault && (
             <div className="mt-2 rpg-text-muted text-xs">
-              Price: <span className="rpg-gold-bright font-bold">${current.price_usd.toFixed(2)}</span>
+              {t.skins.price}: <span className="rpg-gold-bright font-bold">${current.price_usd.toFixed(2)}</span>
             </div>
           )}
         </div>
@@ -370,7 +374,7 @@ export default function SkinsShopPage() {
               onTouchEnd={() => setBoostPreview(false)}
               className="btn-rpg btn-rpg-sm select-none"
             >
-              {boostPreview ? '⚡ Boosting!' : 'Hold to preview boost'}
+              {boostPreview ? t.skins.boosting : t.skins.holdToPreview}
             </button>
           </div>
         </div>
@@ -427,9 +431,9 @@ export default function SkinsShopPage() {
                 color: balance >= current.price_usd ? '#fff' : '#71717a',
               }}
             >
-              {busy ? 'Processing...' : balance >= current.price_usd
-                ? `Buy for $${current.price_usd.toFixed(2)}`
-                : `Need $${(current.price_usd - balance).toFixed(2)} more`}
+              {busy ? t.skins.processing : balance >= current.price_usd
+                ? `${t.skins.buyFor} $${current.price_usd.toFixed(2)}`
+                : `${t.skins.needMore} $${(current.price_usd - balance).toFixed(2)} ${t.skins.price || ''}`}
             </button>
           )}
           {isCurrentOwned && !isCurrentEquipped && (
@@ -442,7 +446,7 @@ export default function SkinsShopPage() {
                 color: '#fff',
               }}
             >
-              {busy ? 'Equipping...' : 'Equip This Skin'}
+              {busy ? t.skins.processing : t.skins.equip}
             </button>
           )}
           {isCurrentEquipped && (
@@ -453,13 +457,13 @@ export default function SkinsShopPage() {
                 background: current.color_primary + '15',
               }}
             >
-              ✓ Currently Equipped
+              ✓ {t.skins.equipped}
             </div>
           )}
         </div>
 
         <p className="text-center text-xs rpg-text-muted">
-          ⚠ All skins are <span className="rpg-text font-medium">cosmetic only</span> — no gameplay advantage.
+          ⚠ {t.skins.cosmeticOnly}
         </p>
       </main>
     </div>

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
+import { useI18n } from '../../contexts/I18nContext';
 import MatchmakingLobby, { LobbyPlayer } from '../../components/MatchmakingLobby';
 import Loader from '../../components/Loader';
 
@@ -22,6 +23,7 @@ function DemoPageInner() {
   const router = useRouter();
   const params = useSearchParams();
   const { user, loading } = useAuth();
+  const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<unknown>(null);
   const [status, setStatus] = useState('Initializing...');
@@ -177,15 +179,15 @@ function DemoPageInner() {
   }, [user, loading, router, betAmount]);
 
   if (loading) {
-    return <Loader message="Entering the demo arena…" />;
+    return <Loader message={t.play.enteringArena} />;
   }
 
   return (
     <div className="relative h-[100dvh] w-screen flex flex-col overflow-hidden">
       {/* Demo banner */}
       <div className="bg-[#3a2c1f]/60 border-b border-[#a86a3a]/30 px-4 py-1.5 text-center text-xs">
-        <span className="rpg-gold-bright font-rpg-heading tracking-widest">DEMO MODE</span>
-        <span className="rpg-text-muted ml-2">Playing with fake $50 demo balance</span>
+        <span className="rpg-gold-bright font-rpg-heading tracking-widest">{t.dashboard.demoMode}</span>
+        <span className="rpg-text-muted ml-2">{t.play.demoBalanceBanner}</span>
       </div>
 
       {/* Timer Overlay - Center Top */}
@@ -204,13 +206,13 @@ function DemoPageInner() {
           onClick={() => setShowQuitConfirm(true)}
           className="rpg-text-muted hover:rpg-gold-bright font-rpg-heading tracking-wider transition-colors text-xs sm:text-sm"
         >
-          ← Leave Demo
+          {t.play.leaveDemoBack}
         </button>
         <div className="flex gap-2 sm:gap-6 rpg-text-muted items-center">
           <span className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-md border border-[#a86a3a] bg-[#3a2c1f] rpg-gold-bright text-[10px] sm:text-xs font-rpg-heading tracking-widest">
-            DEMO
+            {t.dashboard.demo.toUpperCase()}
           </span>
-          <span className="hidden md:inline">Mouse = Steer · SPACE = Boost · SHIFT = Trap</span>
+          <span className="hidden md:inline">{t.play.controlsHint}</span>
           <span className={`px-1.5 py-0.5 sm:px-2 rounded-md text-[10px] sm:text-xs font-rpg-heading tracking-wider ${
             status === 'connected' ? 'border border-[#a86a3a] bg-[#3a2c1f] rpg-gold-bright' :
             status === 'error' ? 'border border-[#962323] bg-[#2a0e0e] rpg-crimson' :
@@ -239,15 +241,15 @@ function DemoPageInner() {
       {showQuitConfirm && !results && !deathInfo && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur flex items-center justify-center z-50 px-4">
           <div className="w-full max-w-sm sm:max-w-md rpg-panel p-5 sm:p-8 text-center">
-            <h2 className="rpg-title text-2xl sm:text-3xl mb-4">Leave Demo?</h2>
-            <p className="rpg-text-muted mb-2 text-sm sm:text-base">You will lose your bet and current money!</p>
+            <h2 className="rpg-title text-2xl sm:text-3xl mb-4">{t.play.leaveDemo}</h2>
+            <p className="rpg-text-muted mb-2 text-sm sm:text-base">{t.play.loseBetWarning}</p>
             <div className="flex justify-center gap-6 sm:gap-8 my-4 sm:my-6">
               <div className="text-center">
-                <p className="text-xs sm:text-sm rpg-text-muted">Bet</p>
+                <p className="text-xs sm:text-sm rpg-text-muted">{t.play.bet}</p>
                 <p className="text-lg sm:text-xl font-bold rpg-gold-bright">${betAmount.toFixed(2)}</p>
               </div>
               <div className="text-center">
-                <p className="text-xs sm:text-sm rpg-text-muted">Current Money</p>
+                <p className="text-xs sm:text-sm rpg-text-muted">{t.play.currentMoney}</p>
                 <p className="text-lg sm:text-xl font-bold rpg-text">${currentScore.toFixed(2)}</p>
               </div>
             </div>
@@ -256,13 +258,13 @@ function DemoPageInner() {
                 onClick={() => setShowQuitConfirm(false)}
                 className="btn-rpg flex-1 text-sm sm:text-base"
               >
-                Stay in Demo
+                {t.play.stayInDemo}
               </button>
               <button
                 onClick={() => { window.location.href = '/dashboard'; }}
                 className="btn-rpg btn-rpg-danger flex-1 text-center text-sm sm:text-base"
               >
-                Leave & Lose
+                {t.play.leaveAndLose}
               </button>
             </div>
           </div>
@@ -273,12 +275,12 @@ function DemoPageInner() {
       {deathInfo && !results && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur flex items-center justify-center z-50 px-4">
           <div className="w-full max-w-sm sm:max-w-md rpg-panel p-5 sm:p-8 text-center">
-            <h2 className="rpg-title text-3xl sm:text-4xl mb-2 rpg-crimson">You Died!</h2>
-            <p className="text-lg sm:text-xl rpg-text mb-2">Lost ${deathInfo.lostAmount.toFixed(2)}</p>
+            <h2 className="rpg-title text-3xl sm:text-4xl mb-2 rpg-crimson">{t.play.youDied}</h2>
+            <p className="text-lg sm:text-xl rpg-text mb-2">{t.play.lost} ${deathInfo.lostAmount.toFixed(2)}</p>
             {deathInfo.killerName && (
-              <p className="text-xs sm:text-sm rpg-text-muted mb-4 sm:mb-6">Killed by <span className="rpg-gold-bright font-bold">{deathInfo.killerName}</span></p>
+              <p className="text-xs sm:text-sm rpg-text-muted mb-4 sm:mb-6">{t.play.killedBy} <span className="rpg-gold-bright font-bold">{deathInfo.killerName}</span></p>
             )}
-            {!deathInfo.killerName && <p className="text-xs sm:text-sm rpg-text-muted mb-4 sm:mb-6">You hit the wall</p>}
+            {!deathInfo.killerName && <p className="text-xs sm:text-sm rpg-text-muted mb-4 sm:mb-6">{t.play.hitWall}</p>}
             <div className="flex flex-col gap-2 sm:gap-3">
               {/* Only 'Back to Dashboard' — start a new demo cleanly from there.
                   In-page restart caused the camera to get stuck on a blank screen. */}
@@ -286,13 +288,13 @@ function DemoPageInner() {
                 onClick={() => { window.location.href = '/dashboard'; }}
                 className="btn-rpg btn-rpg-amber btn-rpg-block text-center text-sm sm:text-base"
               >
-                Back to Dashboard
+                {t.play.backToDashboard}
               </button>
               <button
                 onClick={() => setDeathInfo(null)}
                 className="w-full py-2 sm:py-3 rounded-md rpg-text-muted hover:rpg-gold-bright text-xs sm:text-sm font-rpg-heading tracking-wider transition-colors"
               >
-                Continue Watching (Spectate)
+                {t.play.spectate}
               </button>
             </div>
           </div>
@@ -303,8 +305,8 @@ function DemoPageInner() {
       {results && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur flex items-center justify-center z-50 px-4">
           <div className="w-full max-w-sm sm:max-w-md rpg-panel p-5 sm:p-8">
-            <h2 className="rpg-title text-2xl sm:text-3xl mb-2 text-center">Demo Complete</h2>
-            <p className="text-center text-[10px] sm:text-xs rpg-text-muted mb-4 sm:mb-6">These are demo earnings — not withdrawable</p>
+            <h2 className="rpg-title text-2xl sm:text-3xl mb-2 text-center">{t.play.demoComplete}</h2>
+            <p className="text-center text-[10px] sm:text-xs rpg-text-muted mb-4 sm:mb-6">{t.play.demoEarningsNote}</p>
             <div className="space-y-2 mb-4 sm:mb-6 max-h-[40vh] overflow-y-auto">
               {results.map((r, i) => (
                 <div
@@ -325,7 +327,7 @@ function DemoPageInner() {
               onClick={() => { window.location.href = '/dashboard'; }}
               className="btn-rpg btn-rpg-amber btn-rpg-block text-center text-sm sm:text-base"
             >
-              Back to Dashboard
+              {t.play.backToDashboard}
             </button>
           </div>
         </div>
@@ -336,7 +338,7 @@ function DemoPageInner() {
 
 export default function DemoPage() {
   return (
-    <Suspense fallback={<Loader message="Entering the demo arena…" />}>
+    <Suspense fallback={<Loader message="..." />}>
       <DemoPageInner />
     </Suspense>
   );

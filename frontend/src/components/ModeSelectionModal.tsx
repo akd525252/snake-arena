@@ -2,12 +2,14 @@
 
 import { useState } from 'react';
 import { api, User } from '../lib/api';
+import { useI18n } from '../contexts/I18nContext';
 
 interface Props {
   onSelected: (user: User) => void;
 }
 
 export default function ModeSelectionModal({ onSelected }: Props) {
+  const { t } = useI18n();
   const [loading, setLoading] = useState<'demo' | 'pro' | null>(null);
 
   const choose = async (mode: 'demo' | 'pro') => {
@@ -24,9 +26,9 @@ export default function ModeSelectionModal({ onSelected }: Props) {
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="w-full max-w-2xl rpg-panel p-8 md:p-12">
-        <h1 className="rpg-title text-3xl text-center mb-2">Choose Your Mode</h1>
+        <h1 className="rpg-title text-3xl text-center mb-2">{t.modeSelect.chooseYourMode}</h1>
         <p className="rpg-text-muted text-center mb-10">
-          Pick how you want to play. You can switch later.
+          {t.modeSelect.pickHowToPlay}
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -42,27 +44,27 @@ export default function ModeSelectionModal({ onSelected }: Props) {
               </div>
             )}
             <div className="text-3xl mb-3">🎮</div>
-            <h2 className="rpg-title text-xl mb-2">Demo Mode</h2>
+            <h2 className="rpg-title text-xl mb-2">{t.modeSelect.demoModeTitle}</h2>
             <ul className="space-y-1.5 text-sm rpg-text-muted">
               <li className="flex items-start gap-2">
                 <span className="rpg-gold-bright mt-0.5">✓</span>
-                <span>$50 demo balance to start</span>
+                <span>{t.modeSelect.demoFeature1}</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="rpg-gold-bright mt-0.5">✓</span>
-                <span>Play against 9 AI bots</span>
+                <span>{t.modeSelect.demoFeature2}</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="rpg-gold-bright mt-0.5">✓</span>
-                <span>Learn the game risk-free</span>
+                <span>{t.modeSelect.demoFeature3}</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-[#5a4028] mt-0.5">✗</span>
-                <span className="text-[#5a4028]">Cannot withdraw demo funds</span>
+                <span className="text-[#5a4028]">{t.modeSelect.demoFeature4}</span>
               </li>
             </ul>
             <div className="mt-4 py-2 rounded-md bg-[#a86a3a]/30 text-[#f5c265] text-center text-sm font-bold tracking-widest">
-              Start Demo
+              {t.modeSelect.startDemo}
             </div>
           </button>
 
@@ -78,27 +80,27 @@ export default function ModeSelectionModal({ onSelected }: Props) {
               </div>
             )}
             <div className="text-3xl mb-3">💰</div>
-            <h2 className="rpg-title text-xl mb-2" style={{ color: '#d83a3a' }}>Pro Mode</h2>
+            <h2 className="rpg-title text-xl mb-2" style={{ color: '#d83a3a' }}>{t.modeSelect.proModeTitle}</h2>
             <ul className="space-y-1.5 text-sm rpg-text-muted">
               <li className="flex items-start gap-2">
                 <span className="text-[#d83a3a] mt-0.5">✓</span>
-                <span>Play with real USDT</span>
+                <span>{t.modeSelect.proFeature1}</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-[#d83a3a] mt-0.5">✓</span>
-                <span>Compete against real players</span>
+                <span>{t.modeSelect.proFeature2}</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-[#d83a3a] mt-0.5">✓</span>
-                <span>Bet rooms: $1 / $2 / $5</span>
+                <span>{t.modeSelect.proFeature3}</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-[#d83a3a] mt-0.5">✓</span>
-                <span>Withdraw your winnings</span>
+                <span>{t.modeSelect.proFeature4}</span>
               </li>
             </ul>
             <div className="mt-4 py-2 rounded-md bg-[#962323]/30 text-[#d83a3a] text-center text-sm font-bold tracking-widest">
-              Go Pro
+              {t.modeSelect.goPro}
             </div>
           </button>
         </div>

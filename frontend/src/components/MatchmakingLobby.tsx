@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useI18n } from '../contexts/I18nContext';
 
 export interface LobbyPlayer {
   id: string;
@@ -46,6 +47,7 @@ export default function MatchmakingLobby({
   serverElapsed = 0,
   connectionStatus = 'connected',
 }: Props) {
+  const { t } = useI18n();
   const [localElapsed, setLocalElapsed] = useState(serverElapsed);
   const [dots, setDots] = useState('');
   const [visibleSlots, setVisibleSlots] = useState(0);
@@ -116,35 +118,35 @@ export default function MatchmakingLobby({
           <h1 className={`mb-2 rpg-title text-xl sm:text-3xl ${
             !matchStarting ? 'rpg-torch' : ''
           }`}>
-            {matchStarting ? 'Match Found!' : `Finding Players${dots}`}
+            {matchStarting ? t.lobby.matchFound : `${t.lobby.findingPlayers}${dots}`}
           </h1>
           <p className="rpg-text-muted text-sm">
             {matchStarting
-              ? 'Preparing arena...'
+              ? t.lobby.preparingArena
               : isReconnecting
-                ? 'Reconnecting to server…'
+                ? t.lobby.reconnecting
                 : takingLonger
-                  ? 'Taking longer than usual — hang tight, the match will start as soon as opponents are ready.'
+                  ? t.lobby.takingLonger
                   : isDemo
-                    ? 'Finding opponents for your match...'
-                    : `Players ready: ${players.length}`}
+                    ? t.lobby.findingOpponents
+                    : `${t.lobby.playersReady}: ${players.length}`}
           </p>
           {!matchStarting && !isDemo && (
             <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 sm:gap-6 mt-2 sm:mt-3 text-xs rpg-text-muted">
-              <span>Bet: <span className="rpg-gold-bright font-bold">${betAmount}</span></span>
+              <span>{t.play.bet}: <span className="rpg-gold-bright font-bold">${betAmount}</span></span>
               <span>
                 {takingLonger
-                  ? <>Waited: <span className="rpg-text font-mono font-bold">{localElapsed}s</span></>
-                  : <>Scanning: <span className="rpg-text font-mono font-bold">{remaining}s</span></>}
+                  ? <>{t.lobby.waited}: <span className="rpg-text font-mono font-bold">{localElapsed}s</span></>
+                  : <>{t.lobby.scanning}: <span className="rpg-text font-mono font-bold">{remaining}s</span></>}
               </span>
-              <span>Mode: <span className="rpg-crimson font-bold">Pro</span></span>
+              <span>{t.dashboard.mode}: <span className="rpg-crimson font-bold">{t.lobby.proLabel}</span></span>
             </div>
           )}
           {!matchStarting && isDemo && (
             <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 sm:gap-6 mt-2 sm:mt-3 text-xs rpg-text-muted">
-              <span>Bet: <span className="rpg-gold-bright font-bold">${betAmount}</span></span>
-              <span>Time waiting: <span className="rpg-text font-mono">{localElapsed}s</span></span>
-              <span>Mode: <span className="rpg-gold-bright font-bold">Demo</span></span>
+              <span>{t.play.bet}: <span className="rpg-gold-bright font-bold">${betAmount}</span></span>
+              <span>{t.lobby.timeWaiting}: <span className="rpg-text font-mono">{localElapsed}s</span></span>
+              <span>{t.dashboard.mode}: <span className="rpg-gold-bright font-bold">{t.lobby.demoLabel}</span></span>
             </div>
           )}
         </div>
@@ -162,7 +164,7 @@ export default function MatchmakingLobby({
                   <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-full rpg-stone-panel mb-1 sm:mb-2 flex items-center justify-center rpg-text-muted text-xs sm:text-base">
                     ?
                   </div>
-                  <span className="text-[10px] sm:text-xs">Waiting...</span>
+                  <span className="text-[10px] sm:text-xs">{t.lobby.waiting}</span>
                 </div>
               );
             }
@@ -201,7 +203,7 @@ export default function MatchmakingLobby({
                   )}
                 </div>
                 <span className="text-[10px] sm:text-xs rpg-text font-bold truncate w-full text-center">
-                  {p.username}{isMe && <span className="hidden sm:inline"> (you)</span>}
+                  {p.username}{isMe && <span className="hidden sm:inline"> ({t.lobby.you})</span>}
                 </span>
                 {p.betAmount !== undefined && (
                   <span className={`text-[10px] mt-0.5 ${isMe ? 'rpg-gold-bright' : 'rpg-text-muted'}`}>
@@ -230,10 +232,10 @@ export default function MatchmakingLobby({
             </div>
             <div className="text-center text-xs rpg-text-muted mt-2">
               {takingLonger
-                ? 'Filling slots with bots…'
+                ? t.lobby.fillingBots
                 : remaining > 0
-                  ? `Match starts in ${remaining}s`
-                  : 'Starting match now...'}
+                  ? `${t.lobby.matchStartsIn} ${remaining}s`
+                  : t.lobby.startingNow}
             </div>
           </div>
         )}
@@ -244,7 +246,7 @@ export default function MatchmakingLobby({
         {!matchStarting && (
           <div className="flex flex-col sm:flex-row justify-center gap-2 sm:gap-3">
             <button onClick={onCancel} className="btn-rpg text-sm sm:text-base">
-              Cancel
+              {t.common.cancel}
             </button>
           </div>
         )}

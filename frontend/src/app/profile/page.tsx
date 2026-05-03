@@ -4,6 +4,8 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
+import { useI18n } from '../../contexts/I18nContext';
+import LanguageSwitcher from '../../components/LanguageSwitcher';
 import { api } from '../../lib/api';
 import Loader from '../../components/Loader';
 
@@ -13,6 +15,7 @@ const MAX_FILE_MB = 2;
 export default function ProfilePage() {
   const router = useRouter();
   const { user, loading, refreshUser } = useAuth();
+  const { t } = useI18n();
 
   const [username, setUsername] = useState('');
   const [avatar, setAvatar] = useState('');
@@ -50,20 +53,20 @@ export default function ProfilePage() {
     e.preventDefault();
     setUsernameMsg(null);
     if (!username.trim()) {
-      setUsernameMsg({ type: 'error', text: 'Username cannot be empty' });
+      setUsernameMsg({ type: 'error', text: t.profile.cannotBeEmpty });
       return;
     }
     if (username.trim() === user?.username) {
-      setUsernameMsg({ type: 'error', text: 'Username unchanged' });
+      setUsernameMsg({ type: 'error', text: t.profile.unchanged });
       return;
     }
     setSavingUsername(true);
     try {
       await api.updateUsername(username.trim());
       await refreshUser();
-      setUsernameMsg({ type: 'success', text: 'Username updated! Locked for 7 days.' });
+      setUsernameMsg({ type: 'success', text: t.profile.updatedLocked });
     } catch (err: unknown) {
-      const text = err instanceof Error ? err.message : 'Failed to update username';
+      const text = err instanceof Error ? err.message : t.profile.failedUpdateUsername;
       setUsernameMsg({ type: 'error', text });
     } finally {
       setSavingUsername(false);
@@ -77,9 +80,9 @@ export default function ProfilePage() {
       await api.updateAvatar(avatarUrl);
       await refreshUser();
       setAvatar(avatarUrl);
-      setAvatarMsg({ type: 'success', text: 'Avatar updated!' });
+      setAvatarMsg({ type: 'success', text: t.profile.avatarUpdated });
     } catch (err: unknown) {
-      const text = err instanceof Error ? err.message : 'Failed to update avatar';
+      const text = err instanceof Error ? err.message : t.profile.failedUpdateAvatar;
       setAvatarMsg({ type: 'error', text });
     } finally {
       setSavingAvatar(false);
@@ -92,13 +95,13 @@ export default function ProfilePage() {
 
     // Validate type
     if (!file.type.startsWith('image/')) {
-      setAvatarMsg({ type: 'error', text: 'Only image files (PNG, JPG, WEBP, GIF) are allowed.' });
+      setAvatarMsg({ type: 'error', text: t.profile.onlyImages });
       return;
     }
 
     // Validate size
     if (file.size > MAX_FILE_MB * 1024 * 1024) {
-      setAvatarMsg({ type: 'error', text: `Max file size is ${MAX_FILE_MB}MB.` });
+      setAvatarMsg({ type: 'error', text: t.profile.maxFileSize });
       return;
     }
 
@@ -121,9 +124,9 @@ export default function ProfilePage() {
       await refreshUser();
       setAvatar(pendingBase64);
       setPendingBase64(null);
-      setAvatarMsg({ type: 'success', text: 'Avatar uploaded!' });
+      setAvatarMsg({ type: 'success', text: t.profile.avatarUploaded });
     } catch (err: unknown) {
-      const text = err instanceof Error ? err.message : 'Failed to upload avatar';
+      const text = err instanceof Error ? err.message : t.profile.failedUploadAvatar;
       setAvatarMsg({ type: 'error', text });
     } finally {
       setSavingAvatar(false);
@@ -137,18 +140,19 @@ export default function ProfilePage() {
   };
 
   if (loading || !user) {
-    return <Loader message="Loading profile…" />;
+    return <Loader message={t.profile.loadingProfile} />;
   }
 
   return (
     <div className="flex flex-col flex-1 min-h-screen">
+      <LanguageSwitcher />
       {/* Nav */}
       <nav className="flex justify-between items-center px-8 py-4 border-b border-[#3a2c1f]">
         <Link href="/dashboard" className="flex items-center gap-2 rpg-text-muted hover:rpg-gold-bright transition-colors">
           <span className="text-lg">←</span>
-          <span className="text-sm">Back to Dashboard</span>
+          <span className="text-sm">{t.play.backToDashboard}</span>
         </Link>
-        <h1 className="rpg-title text-2xl">Profile Settings</h1>
+        <h1 className="rpg-title text-2xl">{t.profile.profileSettings}</h1>
         <div className="w-32" />
       </nav>
 
@@ -174,7 +178,7 @@ export default function ProfilePage() {
                   ? 'bg-[#3a2c1f] border-[#a86a3a] text-[#f5c265]'
                   : 'bg-[#2a0e0e] border-[#962323] text-[#d83a3a]'
               }`}>
-                {user.game_mode === 'demo' ? 'DEMO' : 'PRO'}
+                {user.game_mode === 'demo' ? t.dashboard.demo.toUpperCase() : t.dashboard.pro.toUpperCase()}
               </span>
             )}
           </div>
@@ -184,14 +188,14 @@ export default function ProfilePage() {
         <div className="rpg-panel p-6">
           <div className="flex items-start justify-between mb-4">
             <div>
-              <h2 className="rpg-subtitle text-base">Username</h2>
-              <p className="text-sm rpg-text-muted">3-20 characters. Letters, numbers, and underscores only.</p>
+              <h2 className="rpg-subtitle text-base">{t.profile.username}</h2>
+              <p className="text-sm rpg-text-muted">{t.profile.usernameRules}</p>
             </div>
             {cooldown && (
               <div className="text-right">
-                <div className="text-xs text-[#d83a3a] font-bold">LOCKED</div>
+                <div className="text-xs text-[#d83a3a] font-bold">{t.profile.locked}</div>
                 <div className="text-xs rpg-text-muted">
-                  {cooldown.days}d {cooldown.hours}h remaining
+                  {cooldown.days}d {cooldown.hours}h {t.profile.remainingSuffix}
                 </div>
               </div>
             )}
@@ -202,7 +206,7 @@ export default function ProfilePage() {
               value={username}
               onChange={e => setUsername(e.target.value)}
               disabled={!!cooldown || savingUsername}
-              placeholder="your_username"
+              placeholder={t.profile.yourUsernamePlaceholder}
               minLength={3}
               maxLength={20}
               className="w-full px-4 py-3 rpg-parchment-inset rpg-text focus:outline-none focus:ring-2 focus:ring-[#d4a04a] disabled:opacity-50 disabled:cursor-not-allowed"
@@ -218,16 +222,14 @@ export default function ProfilePage() {
             )}
             <div className="flex items-center justify-between">
               <p className="text-xs rpg-text-muted">
-                {cooldown
-                  ? '⚠ You can change your username again after the cooldown expires.'
-                  : 'ℹ After saving, you cannot change your username for 7 days.'}
+                {cooldown ? t.profile.cooldownExpired : t.profile.saveLockWarning}
               </p>
               <button
                 type="submit"
                 disabled={!!cooldown || savingUsername || !username.trim() || username.trim() === user.username}
                 className="btn-rpg btn-rpg-primary disabled:opacity-50 disabled:cursor-not-allowed text-sm"
               >
-                {savingUsername ? 'Saving...' : 'Save Username'}
+                {savingUsername ? t.profile.saving : t.profile.saveUsername}
               </button>
             </div>
           </form>
@@ -235,8 +237,8 @@ export default function ProfilePage() {
 
         {/* Avatar section */}
         <div className="rpg-panel p-6">
-          <h2 className="rpg-subtitle text-base">Profile Photo</h2>
-          <p className="text-sm rpg-text-muted mb-6">Upload a photo. Max {MAX_FILE_MB}MB. PNG, JPG, WEBP, GIF.</p>
+          <h2 className="rpg-subtitle text-base">{t.profile.profilePhoto}</h2>
+          <p className="text-sm rpg-text-muted mb-6">{t.profile.photoUploadHint}</p>
 
           <div className="flex flex-col sm:flex-row items-start gap-6">
             {/* Preview */}
@@ -244,7 +246,7 @@ export default function ProfilePage() {
               {(previewUrl || avatar) ? (
                 <img
                   src={previewUrl || avatar}
-                  alt="avatar preview"
+                  alt={t.profile.avatarPreviewAlt}
                   className="w-full h-full object-cover"
                 />
               ) : (
@@ -258,7 +260,7 @@ export default function ProfilePage() {
                   onClick={handleRemoveAvatar}
                   disabled={savingAvatar}
                   className="absolute top-1 right-1 w-6 h-6 rounded-full bg-[#962323] hover:bg-[#d83a3a] text-white text-xs flex items-center justify-center"
-                  title="Remove avatar"
+                  title={t.profile.removeAvatar}
                 >
                   ×
                 </button>
@@ -280,7 +282,7 @@ export default function ProfilePage() {
                 disabled={savingAvatar}
                 className="btn-rpg disabled:opacity-50 text-sm"
               >
-                Choose File
+                {t.profile.chooseFile}
               </button>
 
               {pendingBase64 && (
@@ -291,7 +293,7 @@ export default function ProfilePage() {
                     disabled={savingAvatar}
                     className="btn-rpg btn-rpg-primary disabled:opacity-50 text-sm"
                   >
-                    {savingAvatar ? 'Uploading...' : 'Save Avatar'}
+                    {savingAvatar ? t.profile.uploading : t.profile.saveAvatar}
                   </button>
                   <button
                     type="button"
@@ -299,7 +301,7 @@ export default function ProfilePage() {
                     disabled={savingAvatar}
                     className="btn-rpg disabled:opacity-50 text-sm"
                   >
-                    Cancel
+                    {t.profile.cancel}
                   </button>
                 </div>
               )}

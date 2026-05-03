@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Cinzel, Cormorant_Garamond } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "../contexts/AuthContext";
+import { I18nProvider } from "../contexts/I18nContext";
+import FirstVisitLanguageModal from "../components/FirstVisitLanguageModal";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -102,7 +104,12 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${cinzel.variable} ${cormorant.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-rpg-bg text-rpg-text">
-        <AuthProvider>{children}</AuthProvider>
+        <I18nProvider>
+          <AuthProvider>
+            {children}
+            <FirstVisitLanguageModal />
+          </AuthProvider>
+        </I18nProvider>
       </body>
     </html>
   );

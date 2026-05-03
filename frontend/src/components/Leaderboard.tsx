@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { api, LeaderboardEntry } from '../lib/api';
+import { useI18n } from '../contexts/I18nContext';
 
 interface Props {
   /** Highlight the currently-signed-in user's row if they appear on the board. */
@@ -17,6 +18,7 @@ interface Props {
  * so the rest of the dashboard keeps working.
  */
 export default function Leaderboard({ myUserId, limit = 10 }: Props) {
+  const { t } = useI18n();
   const [entries, setEntries] = useState<LeaderboardEntry[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,13 +57,13 @@ export default function Leaderboard({ myUserId, limit = 10 }: Props) {
     <div className="rpg-panel p-4 sm:p-6">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="rpg-title text-lg sm:text-2xl">Top Earners</h2>
+          <h2 className="rpg-title text-lg sm:text-2xl">{t.leaderboard.topEarners}</h2>
           <p className="text-[10px] sm:text-xs rpg-text-muted font-rpg-heading tracking-wider">
-            All-time leaderboard · Top {limit}
+            {t.leaderboard.allTimeTop} {limit}
           </p>
         </div>
         <span className="text-[10px] sm:text-xs rpg-gold-bright font-rpg-heading tracking-widest border border-[#a86a3a] bg-[#3a2c1f] px-2 py-0.5 rounded-md">
-          LIVE
+          {t.leaderboard.live}
         </span>
       </div>
 
@@ -78,13 +80,13 @@ export default function Leaderboard({ myUserId, limit = 10 }: Props) {
 
       {!loading && error && (
         <p className="text-sm rpg-text-muted text-center py-4">
-          Leaderboard unavailable. Try again later.
+          {t.leaderboard.leaderboardUnavailable}
         </p>
       )}
 
       {!loading && !error && entries && entries.length === 0 && (
         <p className="text-sm rpg-text-muted text-center py-4">
-          No winners yet — be the first to claim the throne!
+          {t.leaderboard.noWinnersYet}
         </p>
       )}
 
@@ -137,12 +139,12 @@ export default function Leaderboard({ myUserId, limit = 10 }: Props) {
                     </span>
                     {isMe && (
                       <span className="text-[9px] sm:text-[10px] rpg-gold-bright font-rpg-heading tracking-wider flex-shrink-0">
-                        (YOU)
+                        ({t.leaderboard.you})
                       </span>
                     )}
                   </div>
                   <div className="text-[10px] sm:text-xs rpg-text-muted">
-                    {e.winsCount} {e.winsCount === 1 ? 'win' : 'wins'}
+                    {e.winsCount} {e.winsCount === 1 ? t.leaderboard.win : t.leaderboard.wins}
                   </div>
                 </div>
 
@@ -152,7 +154,7 @@ export default function Leaderboard({ myUserId, limit = 10 }: Props) {
                     ${fmt(e.totalEarnings)}
                   </div>
                   <div className="text-[9px] sm:text-[10px] rpg-text-muted font-rpg-heading tracking-wider">
-                    EARNED
+                    {t.leaderboard.earnedLabel}
                   </div>
                 </div>
               </li>

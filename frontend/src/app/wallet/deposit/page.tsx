@@ -3,10 +3,13 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api, DepositQuote } from '../../../lib/api';
+import { useI18n } from '../../../contexts/I18nContext';
+import LanguageSwitcher from '../../../components/LanguageSwitcher';
 
 const MIN_DEPOSIT = 5;
 
 export default function DepositPage() {
+  const { t } = useI18n();
   const [amount, setAmount] = useState(10);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -18,7 +21,7 @@ export default function DepositPage() {
   useEffect(() => {
     if (amount < MIN_DEPOSIT) {
       setQuote(null);
-      setQuoteError(`Minimum deposit is ${MIN_DEPOSIT} USDT`);
+      setQuoteError(t.wallet.minDepositValue);
       return;
     }
     setQuoteError(null);
@@ -27,16 +30,16 @@ export default function DepositPage() {
         const q = await api.quoteDeposit(amount);
         setQuote(q);
       } catch (err: unknown) {
-        setQuoteError(err instanceof Error ? err.message : 'Could not estimate fees');
+        setQuoteError(err instanceof Error ? err.message : t.wallet.couldNotEstimate);
         setQuote(null);
       }
     }, 250);
     return () => clearTimeout(timer);
-  }, [amount]);
+  }, [amount, t.wallet.minDepositValue, t.wallet.couldNotEstimate]);
 
   const handleDeposit = async () => {
     if (amount < MIN_DEPOSIT) {
-      setError(`Minimum deposit is ${MIN_DEPOSIT} USDT`);
+      setError(t.wallet.minDepositValue);
       return;
     }
     setBusy(true);
@@ -45,7 +48,7 @@ export default function DepositPage() {
       const res = await api.createDeposit(amount);
       setPaymentUrl(res.payment_url);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to create deposit');
+      setError(err instanceof Error ? err.message : t.wallet.failedCreate);
     } finally {
       setBusy(false);
     }
@@ -53,20 +56,21 @@ export default function DepositPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <LanguageSwitcher />
       <nav className="px-8 py-4 border-b border-[#3a2c1f]">
         <Link href="/dashboard" className="rpg-text-muted hover:rpg-gold-bright text-sm transition-colors">
-          ← Back to Dashboard
+          {t.wallet.backToDashboard}
         </Link>
       </nav>
 
       <main className="flex-1 max-w-md w-full mx-auto px-6 py-10">
-        <h1 className="rpg-title text-3xl mb-2">Deposit USDT</h1>
-        <p className="rpg-text-muted mb-8">Add USDT to your wallet via NOWPayments (BEP20 / BNB Smart Chain)</p>
+        <h1 className="rpg-title text-3xl mb-2">{t.wallet.depositTitle}</h1>
+        <p className="rpg-text-muted mb-8">{t.wallet.depositDesc}</p>
 
         {!paymentUrl ? (
           <div className="space-y-6">
             <div className="rpg-panel p-6">
-              <label className="text-sm rpg-text-muted mb-2 block">Amount (USDT)</label>
+              <label className="text-sm rpg-text-muted mb-2 block">{t.wallet.amountLabel}</label>
               <input
                 type="number"
                 min={MIN_DEPOSIT}
@@ -87,7 +91,7 @@ export default function DepositPage() {
                 ))}
               </div>
               <div className="text-xs rpg-text-muted mt-3">
-                Minimum: <span className="rpg-text font-bold">${MIN_DEPOSIT} USDT</span>
+                {t.wallet.minimum}: <span className="rpg-text font-bold">${MIN_DEPOSIT} USDT</span>
               </div>
             </div>
 
@@ -95,20 +99,20 @@ export default function DepositPage() {
             {quote && (
               <div className="rpg-panel p-5">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-bold rpg-text">Fee Breakdown</h3>
+                  <h3 className="text-sm font-bold rpg-text">{t.wallet.feeBreakdown}</h3>
                   <span className="text-[10px] rpg-gold-bright uppercase tracking-wider">{quote.networkLabel}</span>
                 </div>
                 <div className="space-y-2 text-sm">
-                  <Row label="Deposit amount" value={`$${quote.amount.toFixed(2)}`} />
+                  <Row label={t.wallet.depositAmount} value={`$${quote.amount.toFixed(2)}`} />
                   <Row
-                    label={`NOWPayments processor fee (${quote.processorFeeRate}%)`}
+                    label={`${t.wallet.processorFee} (${quote.processorFeeRate}%)`}
                     value={`+$${quote.processorFee.toFixed(2)}`}
                     muted
                   />
                   <div className="h-px bg-[#3a2c1f] my-2" />
-                  <Row label="You will send" value={`$${quote.youPay.toFixed(2)} USDT`} bold />
+                  <Row label={t.wallet.youWillSend} value={`$${quote.youPay.toFixed(2)} USDT`} bold />
                   <Row
-                    label="Credited to wallet"
+                    label={t.wallet.creditedToWallet}
                     value={`$${quote.youReceiveInWallet.toFixed(2)}`}
                     accent
                   />
@@ -136,23 +140,22 @@ export default function DepositPage() {
               className="btn-rpg btn-rpg-primary btn-rpg-block btn-rpg-lg disabled:opacity-50"
             >
               {busy
-                ? 'Creating invoice...'
+                ? t.wallet.creatingInvoice
                 : quote
-                ? `Send $${quote.youPay.toFixed(2)} → Receive $${amount.toFixed(2)}`
-                : `Deposit $${amount} USDT`}
+                ? `${t.wallet.youWillSend}: $${quote.youPay.toFixed(2)} → ${t.wallet.youReceive}: $${amount.toFixed(2)}`
+                : `${t.wallet.deposit} $${amount} USDT`}
             </button>
 
             <div className="text-xs rpg-text-muted text-center">
-              Payments processed by NOWPayments. USDT-BEP20 (BNB Smart Chain) only.
+              {t.wallet.paymentsBy}
             </div>
           </div>
         ) : (
           <div className="space-y-6">
             <div className="rpg-panel p-6 border-[#d4a04a]">
-              <div className="rpg-gold-bright font-bold mb-2">Invoice created</div>
+              <div className="rpg-gold-bright font-bold mb-2">{t.wallet.invoiceCreated}</div>
               <p className="text-sm rpg-text mb-4">
-                Complete payment of ${amount} USDT in the new tab.
-                Your wallet will be credited after blockchain confirmation.
+                {t.wallet.completePaymentDesc}
               </p>
               <a
                 href={paymentUrl}
@@ -160,14 +163,14 @@ export default function DepositPage() {
                 rel="noopener noreferrer"
                 className="btn-rpg btn-rpg-primary btn-rpg-block btn-rpg-lg text-center"
               >
-                Open Payment Page →
+                {t.wallet.openPaymentPage}
               </a>
             </div>
             <Link
               href="/dashboard"
               className="btn-rpg btn-rpg-block text-center"
             >
-              Back to Dashboard
+              {t.wallet.backToDashboard}
             </Link>
           </div>
         )}

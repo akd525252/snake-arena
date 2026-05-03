@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
+import { useI18n } from '../../contexts/I18nContext';
 import {
   api,
   AdminMetrics,
@@ -18,6 +19,7 @@ type Tab = 'overview' | 'revenue' | 'deposits' | 'withdrawals' | 'users';
 export default function AdminDashboard() {
   const router = useRouter();
   const { user, loading } = useAuth();
+  const { t } = useI18n();
 
   const [tab, setTab] = useState<Tab>('overview');
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
@@ -127,42 +129,42 @@ export default function AdminDashboard() {
   };
 
   if (loading || !user) {
-    return <div className="min-h-screen flex items-center justify-center rpg-text-muted">Loading...</div>;
+    return <div className="min-h-screen flex items-center justify-center rpg-text-muted">{t.admin.loading}</div>;
   }
 
   return (
     <div className="min-h-screen flex flex-col">
       <nav className="px-8 py-4 border-b border-[#3a2c1f] flex items-center justify-between">
         <Link href="/dashboard" className="rpg-text-muted hover:rpg-gold-bright text-sm font-rpg-heading tracking-wider transition-colors">
-          ← Back to Dashboard
+          ← {t.admin.backToDashboard}
         </Link>
         <button
           onClick={refresh}
           disabled={refreshing}
           className="btn-rpg btn-rpg-sm disabled:opacity-50"
         >
-          {refreshing ? 'Refreshing…' : '↻ Refresh'}
+          {refreshing ? t.admin.refreshing : `↻ ${t.admin.refresh}`}
         </button>
       </nav>
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-10 space-y-8">
         <div>
-          <h1 className="rpg-title text-4xl">Admin Panel</h1>
-          <p className="rpg-text-muted text-sm mt-1">Manage deposits, withdrawals, and platform revenue</p>
+          <h1 className="rpg-title text-4xl">{t.admin.adminPanel}</h1>
+          <p className="rpg-text-muted text-sm mt-1">{t.admin.subtitle}</p>
         </div>
 
         {/* Tabs */}
         <div className="flex gap-2 border-b border-[#3a2c1f] overflow-x-auto">
-          {(['overview', 'revenue', 'deposits', 'withdrawals', 'users'] as const).map(t => (
+          {(['overview', 'revenue', 'deposits', 'withdrawals', 'users'] as const).map(tabName => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
+              key={tabName}
+              onClick={() => setTab(tabName)}
               className={`px-4 pb-3 font-rpg-heading tracking-wider text-sm transition-colors whitespace-nowrap capitalize ${
-                tab === t ? 'rpg-gold-bright border-b-2 border-[#d4a04a]' : 'rpg-text-muted hover:rpg-gold-bright'
+                tab === tabName ? 'rpg-gold-bright border-b-2 border-[#d4a04a]' : 'rpg-text-muted hover:rpg-gold-bright'
               }`}
             >
-              {t}
-              {t === 'withdrawals' && pending.length > 0 && (
+              {t.admin[tabName as keyof typeof t.admin]}
+              {tabName === 'withdrawals' && pending.length > 0 && (
                 <span className="ml-2 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[#962323] text-white text-[10px] font-black">
                   {pending.length}
                 </span>

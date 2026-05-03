@@ -1,5 +1,6 @@
 'use client';
 
+import { useI18n } from '../contexts/I18nContext';
 import Logo from './Logo';
 
 /**
@@ -13,11 +14,12 @@ import Logo from './Logo';
  * — no external state. Use <LoaderInline /> for a smaller inline variant.
  */
 export default function Loader({ message }: { message?: string }) {
+  const { t } = useI18n();
   return (
     <div
       role="status"
       aria-live="polite"
-      aria-label={message ?? 'Loading Snake Arena'}
+      aria-label={message ?? t.loader.loadingSnakeArena}
       className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[#0e0a08] text-center px-6"
     >
       {/* Subtle radial glow behind the logo */}
@@ -37,7 +39,7 @@ export default function Loader({ message }: { message?: string }) {
             SNAKE ARENA
           </h1>
           <p className="text-xs rpg-text-muted font-rpg-heading tracking-[0.25em] uppercase">
-            {message ?? 'Preparing the arena…'}
+            {message ?? t.loader.preparingArena}
           </p>
         </div>
 

@@ -3,8 +3,11 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api, Transaction } from '../../../lib/api';
+import { useI18n } from '../../../contexts/I18nContext';
+import LanguageSwitcher from '../../../components/LanguageSwitcher';
 
 export default function TransactionsPage() {
+  const { t } = useI18n();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -40,20 +43,21 @@ export default function TransactionsPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <LanguageSwitcher />
       <nav className="px-8 py-4 border-b border-[#3a2c1f]">
         <Link href="/dashboard" className="rpg-text-muted hover:rpg-gold-bright text-sm transition-colors">
-          ← Back to Dashboard
+          {t.wallet.backToDashboard}
         </Link>
       </nav>
 
       <main className="flex-1 max-w-5xl w-full mx-auto px-6 py-10">
-        <h1 className="rpg-title text-3xl mb-6">Transaction History</h1>
+        <h1 className="rpg-title text-3xl mb-6">{t.wallet.transactionsTitle}</h1>
 
         <div className="rpg-panel overflow-hidden">
           {loading ? (
-            <div className="px-6 py-12 text-center rpg-text-muted">Loading...</div>
+            <div className="px-6 py-12 text-center rpg-text-muted">{t.common.loading}</div>
           ) : transactions.length === 0 ? (
-            <div className="px-6 py-12 text-center rpg-text-muted">No transactions yet</div>
+            <div className="px-6 py-12 text-center rpg-text-muted">{t.wallet.noTransactions}</div>
           ) : (
             <div className="divide-y divide-[#3a2c1f]">
               {transactions.map(tx => {
@@ -66,7 +70,7 @@ export default function TransactionsPage() {
                         {new Date(tx.created_at).toLocaleString()}
                       </div>
                       {tx.reference && (
-                        <div className="text-xs rpg-text-muted">Reference #{tx.reference}</div>
+                        <div className="text-xs rpg-text-muted">{t.wallet.reference} #{tx.reference}</div>
                       )}
                     </div>
                     <div className="flex items-center gap-3">
@@ -88,15 +92,15 @@ export default function TransactionsPage() {
               disabled={page <= 1}
               className="btn-rpg btn-rpg-sm disabled:opacity-50"
             >
-              ← Previous
+              {t.wallet.previous}
             </button>
-            <span className="rpg-text-muted text-sm">Page {page} of {totalPages}</span>
+            <span className="rpg-text-muted text-sm">{page} {t.wallet.pageOf} {totalPages}</span>
             <button
               onClick={() => setPage(p => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
               className="btn-rpg btn-rpg-sm disabled:opacity-50"
             >
-              Next →
+              {t.wallet.nextPage}
             </button>
           </div>
         )}
