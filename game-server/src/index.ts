@@ -16,7 +16,7 @@ import {
   placeTrap,
 } from './game/GameRoom';
 import { createBot, updateBotDirection } from './game/BotAI';
-import { createProBot, updateProBotDirection, clearProBotState } from './game/ProBot';
+import { createProBot, updateProBotDirection, clearProBotState, generateUsername, generateAvatarUrl } from './game/ProBot';
 import { supabase, chargeBet } from './db';
 
 // ============================================
@@ -88,6 +88,47 @@ interface QueueEntry {
 
 const matchmakingQueue: QueueEntry[] = [];
 let proScanStartTime = 0; // timestamp when first pro player entered queue (resets on empty)
+
+// ── Ghost players: fake entries shown in the pro queue_state so the user sees
+// "other players" trickling in during matchmaking. They never actually play —
+// the real bots are injected in createMatch. Ghosts are generated once when
+// the first pro player enters the queue, and cleared when the queue empties.
+interface GhostPlayer {
+  id: string;
+  username: string;
+  avatar: string;
+  skinId: string | null;
+  betAmount: number;
+  revealAt: number; // timestamp after which this ghost becomes visible
+}
+let proGhosts: GhostPlayer[] = [];
+
+const PRO_SKINS_POOL: (string | null)[] = [null, 'neon_cyber', 'inferno_drake', 'void_shadow'];
+
+function generateGhosts(humanBet: number): GhostPlayer[] {
+  const now = Date.now();
+  // 1-3 ghost entries appear at random staggered intervals
+  const count = 1 + Math.floor(Math.random() * 3);
+  const ghosts: GhostPlayer[] = [];
+  for (let i = 0; i < count; i++) {
+    const name = generateUsername();
+    // Reveal after 1.5s - 5.5s staggered so they feel like real players joining
+    const delay = 1500 + Math.random() * 4000;
+    // Ghost bet should look realistic: near the human bet ±20%
+    const minBet = Math.max(CONFIG.MIN_BET, Math.floor(humanBet * 0.8));
+    const maxBet = Math.max(minBet, Math.ceil(humanBet * 1.2));
+    const bet = minBet + Math.floor(Math.random() * (maxBet - minBet + 1));
+    ghosts.push({
+      id: uuidv4(),
+      username: name,
+      avatar: generateAvatarUrl(`${name}-${Date.now()}-${Math.random()}`),
+      skinId: PRO_SKINS_POOL[Math.floor(Math.random() * PRO_SKINS_POOL.length)],
+      betAmount: bet,
+      revealAt: now + delay,
+    });
+  }
+  return ghosts;
+}
 
 // ============================================
 // WebSocket Connection
@@ -378,6 +419,8 @@ function joinQueue(ws: WebSocket, playerId: string, username: string, avatar: st
   // Track when pro scanning started so late joiners see same countdown
   if (!isDemo && proScanStartTime === 0) {
     proScanStartTime = Date.now();
+    // Generate ghost "players" that will trickle into the queue_state for realism
+    proGhosts = generateGhosts(betAmount);
   }
 
   console.log(`[joinQueue] queue size now ${matchmakingQueue.length}`);
@@ -390,13 +433,16 @@ function broadcastQueueState(): void {
   const proPlayers = matchmakingQueue.filter(e => !e.isDemo);
   const demoPlayers = matchmakingQueue.filter(e => e.isDemo);
 
-  // Reset scan timer when pro queue empties
+  // Reset scan timer and ghosts when pro queue empties
   if (proPlayers.length === 0) {
     proScanStartTime = 0;
+    proGhosts = [];
   }
 
-  // Pro queue: send to each pro player the full pro queue.
-  // minPlayers = 2 because pro matches need at least 2 humans + 2 bots.
+  // Pro queue: send to each pro player the full pro queue + visible ghosts.
+  // Ghosts trickle in based on their revealAt timestamp, making it look like
+  // real players are joining the queue over time.
+  const now = Date.now();
   const proList = proPlayers.map(e => ({
     id: e.userId,
     username: e.username,
@@ -404,12 +450,23 @@ function broadcastQueueState(): void {
     skinId: e.skinId,
     betAmount: e.betAmount,
   }));
-  const proElapsed = proScanStartTime ? Math.floor((Date.now() - proScanStartTime) / 1000) : 0;
+  // Only show ghosts whose reveal time has passed
+  const visibleGhosts = proGhosts
+    .filter(g => now >= g.revealAt)
+    .map(g => ({
+      id: g.id,
+      username: g.username,
+      avatar: g.avatar,
+      skinId: g.skinId,
+      betAmount: g.betAmount,
+    }));
+  const combinedList = [...proList, ...visibleGhosts];
+  const proElapsed = proScanStartTime ? Math.floor((now - proScanStartTime) / 1000) : 0;
   for (const p of proPlayers) {
     if (p.ws.readyState !== p.ws.OPEN) continue;
     p.ws.send(JSON.stringify({
       type: 'queue_state',
-      players: proList,
+      players: combinedList,
       minPlayers: 2,
       maxPlayers: CONFIG.MAX_PLAYERS,
       scanStartTime: proScanStartTime,
@@ -435,8 +492,14 @@ function broadcastQueueState(): void {
   }
 }
 
-// Reserve 2 slots in every pro match for the auto-injected pro bots.
-const PRO_BOT_COUNT = 2;
+// Pro matches inject 1-2 bots disguised as real players. The count is
+// randomized per match so the user can't predict a pattern.
+function rollProBotCount(): number {
+  return Math.random() < 0.5 ? 1 : 2;
+}
+// For slot reservation during matchmaking we use the max (2) so we never
+// over-fill a room, but the actual bot injection uses rollProBotCount().
+const PRO_BOT_SLOT_RESERVE = 2;
 
 function tryMatchPlayers(): void {
   // Demo players match instantly (solo + 9 bots) — no waiting for other humans
@@ -447,7 +510,7 @@ function tryMatchPlayers(): void {
 
   // Pro queue: instant match if enough humans are queued, regardless of bet amount.
   // (Bet-matching was removed per request — all active players play together.)
-  const humanSlots = CONFIG.MAX_PLAYERS - PRO_BOT_COUNT;
+  const humanSlots = CONFIG.MAX_PLAYERS - PRO_BOT_SLOT_RESERVE;
   while (true) {
     const proQueue = matchmakingQueue.filter(e => !e.isDemo);
     if (proQueue.length < CONFIG.MIN_PLAYERS) break;
@@ -556,15 +619,16 @@ async function createMatch(entries: QueueEntry[]): Promise<void> {
       }, 200);
     }
   } else {
-    // PRO MATCH: always inject 2 advanced "pro" bots disguised as real players.
+    // PRO MATCH: inject 1-2 advanced "pro" bots disguised as real players.
     // They have realistic names, avatars, random skins, and aggressive AI that
-    // hunts down humans to prevent them from earning.
+    // hunts down humans to prevent them from earning. Count varies randomly.
     //
     // Bots ALWAYS bet exactly $1 regardless of the human bet amount. Their bet is
     // virtual platform money — keeping it at $1 means a bot dying with no earnings
     // costs the platform nothing (bet returns to platform, no drops created).
     const proBotBet = CONFIG.MIN_BET;
-    for (let i = 0; i < 2; i++) {
+    const botCount = rollProBotCount();
+    for (let i = 0; i < botCount; i++) {
       const bot = createProBot(room, proBotBet);
       addPlayerToRoom(room, bot);
       playerRooms.set(bot.id, matchId);
@@ -687,10 +751,10 @@ setInterval(() => {
   if (!oldestPro) return;
 
   const allPros = matchmakingQueue.filter(e => !e.isDemo);
-  const humanSlots = CONFIG.MAX_PLAYERS - PRO_BOT_COUNT;
+  const humanSlots = CONFIG.MAX_PLAYERS - PRO_BOT_SLOT_RESERVE;
   const oldestWaitMs = now - oldestPro.joinedAt;
   console.log(
-    `[matchmaker] fallback fired: ${allPros.length} pro(s) waiting (oldest=${oldestWaitMs}ms), filling with ${PRO_BOT_COUNT} bots`,
+    `[matchmaker] fallback fired: ${allPros.length} pro(s) waiting (oldest=${oldestWaitMs}ms), filling with bots`,
   );
 
   // EMERGENCY watchdog: if a pro player has been waiting > 20s, something is

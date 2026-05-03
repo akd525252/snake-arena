@@ -253,10 +253,10 @@ function gameLoop(room: GameRoom): void {
       }
     }
 
-    // Slow expires by timer
+    // Slow expires by timer — if player is also boosting, restore boost speed
     if (player.snake.slowed && now > player.snake.slowEndTime) {
       player.snake.slowed = false;
-      player.snake.speed = CONFIG.SNAKE_SPEED;
+      player.snake.speed = player.snake.boosted ? CONFIG.SNAKE_BOOST_SPEED : CONFIG.SNAKE_SPEED;
     }
 
     // Smoothly steer toward target angle, then move

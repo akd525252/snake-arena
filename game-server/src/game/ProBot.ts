@@ -36,7 +36,7 @@ function randomFrom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-function generateUsername(): string {
+export function generateUsername(): string {
   const first = randomFrom(FIRST_PARTS);
   const second = randomFrom(SECOND_PARTS);
   // Append a number ~50% of the time, to mimic real gamer tags
@@ -46,7 +46,7 @@ function generateUsername(): string {
   return `${first}${sep}${second}${num}`;
 }
 
-function generateAvatarUrl(seed: string): string {
+export function generateAvatarUrl(seed: string): string {
   const style = randomFrom(AVATAR_STYLES);
   return `https://api.dicebear.com/7.x/${style}/svg?seed=${encodeURIComponent(seed)}`;
 }
