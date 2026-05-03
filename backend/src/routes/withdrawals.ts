@@ -194,7 +194,7 @@ router.get('/admin/pending', authenticateToken, requireAdmin, async (req: AuthRe
   try {
     const { data: withdrawals, error } = await supabase
       .from('withdrawal_requests')
-      .select('*, users(email, username, avatar)')
+      .select('*, users!user_id(email, username, avatar)')
       .eq('status', 'pending')
       .order('created_at', { ascending: true });
 
@@ -219,7 +219,7 @@ router.get('/admin/all', authenticateToken, requireAdmin, async (req: AuthReques
     const status = req.query.status as string | undefined;
     let query = supabase
       .from('withdrawal_requests')
-      .select('*, users(email, username, avatar)')
+      .select('*, users!user_id(email, username, avatar)')
       .order('created_at', { ascending: false })
       .limit(limit);
     if (status && ['pending', 'approved', 'rejected'].includes(status)) {
