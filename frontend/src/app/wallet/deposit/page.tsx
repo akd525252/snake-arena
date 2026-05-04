@@ -15,6 +15,7 @@ interface Network {
   glowColor: string;
   badgeGradient: [string, string];
   badgeSvg: React.ReactNode; // inner SVG content (no wrapper circle — we add it)
+  comingSoon?: boolean;
 }
 
 const networks: Network[] = [
@@ -71,11 +72,12 @@ const networks: Network[] = [
   {
     id: 'solana',
     label: 'USDT on Solana',
-    href: '/wallet/deposit-solana',
+    href: '#',
     badgeId: 'sol',
     networkColor: '#9945FF',
-    glowColor: 'rgba(153,69,255,0.45)',
+    glowColor: 'rgba(153,69,255,0.25)',
     badgeGradient: ['#b06dff', '#7b2ee0'],
+    comingSoon: true,
     badgeSvg: (
       <>
         {/* Solana "S" — stylised slanted bars */}
@@ -186,76 +188,94 @@ function NetworkCard({ network }: { network: Network }) {
     setTilt({ rx: 0, ry: 0, active: false });
   }, []);
 
-  return (
-    <Link href={network.href} className="block">
+  const cardContent = (
+    <div
+      ref={cardRef}
+      onMouseMove={network.comingSoon ? undefined : handleMouseMove}
+      onMouseLeave={network.comingSoon ? undefined : handleMouseLeave}
+      className={`group rpg-panel p-5 transition-shadow duration-300 ${
+        network.comingSoon
+          ? 'opacity-50 cursor-not-allowed'
+          : 'hover:border-[#d4a04a] hover:shadow-[0_0_30px_rgba(212,160,74,0.2)] cursor-pointer'
+      }`}
+      style={{ perspective: '600px' }}
+    >
       <div
-        ref={cardRef}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
-        className="group rpg-panel p-5 transition-shadow duration-300 hover:border-[#d4a04a] hover:shadow-[0_0_30px_rgba(212,160,74,0.2)] cursor-pointer"
-        style={{ perspective: '600px' }}
+        className="flex items-center gap-5 transition-transform duration-150 ease-out"
+        style={{
+          transform: tilt.active
+            ? `rotateX(${tilt.rx}deg) rotateY(${tilt.ry}deg)`
+            : 'rotateX(0) rotateY(0)',
+          transformStyle: 'preserve-3d',
+        }}
       >
-        <div
-          className="flex items-center gap-5 transition-transform duration-150 ease-out"
-          style={{
-            transform: tilt.active
-              ? `rotateX(${tilt.rx}deg) rotateY(${tilt.ry}deg)`
-              : 'rotateX(0) rotateY(0)',
-            transformStyle: 'preserve-3d',
-          }}
-        >
-          {/* 3D icon pair */}
-          <div className="relative flex-shrink-0" style={{ width: 72, height: 80 }}>
-            {/* Glow */}
-            <div
-              className="absolute rounded-full animate-[glowPulse_3s_ease-in-out_infinite]"
-              style={{
-                inset: '-8px',
-                background: `radial-gradient(circle, ${network.glowColor} 0%, transparent 70%)`,
-              }}
-            />
+        {/* 3D icon pair */}
+        <div className="relative flex-shrink-0" style={{ width: 72, height: 80 }}>
+          {/* Glow */}
+          <div
+            className="absolute rounded-full animate-[glowPulse_3s_ease-in-out_infinite]"
+            style={{
+              inset: '-8px',
+              background: `radial-gradient(circle, ${network.glowColor} 0%, transparent 70%)`,
+            }}
+          />
 
-            {/* USDT 3D coin — floats continuously */}
-            <div
-              className="absolute top-0 left-0 animate-[coinFloat_3s_ease-in-out_infinite]"
-              style={{ transformStyle: 'preserve-3d', transform: 'translateZ(20px)' }}
-            >
-              <UsdtCoin3D size={62} id={network.id} />
-            </div>
-
-            {/* Network badge — bounces on its own cycle */}
-            <div
-              className="absolute z-10 animate-[badgeFloat_2.5s_ease-in-out_infinite]"
-              style={{
-                bottom: -2,
-                right: -6,
-                transformStyle: 'preserve-3d',
-                transform: 'translateZ(35px)',
-              }}
-            >
-              <NetworkBadge3D network={network} size={32} />
-            </div>
+          {/* USDT 3D coin — floats continuously */}
+          <div
+            className={`absolute top-0 left-0 ${network.comingSoon ? '' : 'animate-[coinFloat_3s_ease-in-out_infinite]'}`}
+            style={{ transformStyle: 'preserve-3d', transform: 'translateZ(20px)' }}
+          >
+            <UsdtCoin3D size={62} id={network.id} />
           </div>
 
-          {/* Text */}
-          <div className="flex-1 min-w-0" style={{ transform: 'translateZ(10px)' }}>
-            <div className="font-bold rpg-text text-base group-hover:rpg-gold-bright transition-colors">
-              {network.label}
-            </div>
-            <div className="text-xs rpg-text-muted mt-0.5">
-              Min $5 · Auto credited
-            </div>
+          {/* Network badge — bounces on its own cycle */}
+          <div
+            className={`absolute z-10 ${network.comingSoon ? '' : 'animate-[badgeFloat_2.5s_ease-in-out_infinite]'}`}
+            style={{
+              bottom: -2,
+              right: -6,
+              transformStyle: 'preserve-3d',
+              transform: 'translateZ(35px)',
+            }}
+          >
+            <NetworkBadge3D network={network} size={32} />
           </div>
+        </div>
 
-          {/* Arrow */}
+        {/* Text */}
+        <div className="flex-1 min-w-0" style={{ transform: 'translateZ(10px)' }}>
+          <div className={`font-bold text-base transition-colors ${network.comingSoon ? 'rpg-text-muted' : 'rpg-text group-hover:rpg-gold-bright'}`}>
+            {network.label}
+          </div>
+          <div className="text-xs rpg-text-muted mt-0.5">
+            {network.comingSoon ? 'Coming Soon' : 'Min $5 · Auto credited'}
+          </div>
+        </div>
+
+        {/* Arrow or badge */}
+        {network.comingSoon ? (
+          <div className="text-[10px] px-2 py-1 rounded-full border border-[#3a2c1f] rpg-text-muted font-bold uppercase tracking-wider">
+            Soon
+          </div>
+        ) : (
           <div
             className="rpg-text-muted group-hover:rpg-gold-bright transition-all text-lg animate-[arrowPulse_2s_ease-in-out_infinite]"
             style={{ transform: 'translateZ(15px)' }}
           >
             →
           </div>
-        </div>
+        )}
       </div>
+    </div>
+  );
+
+  if (network.comingSoon) {
+    return <div className="block">{cardContent}</div>;
+  }
+
+  return (
+    <Link href={network.href} className="block">
+      {cardContent}
     </Link>
   );
 }
