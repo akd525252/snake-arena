@@ -96,9 +96,9 @@ export default function TonDepositPage() {
       </nav>
 
       <main className="flex-1 max-w-md w-full mx-auto px-6 py-10">
-        <h1 className="rpg-title text-3xl mb-2">TON Deposit</h1>
+        <h1 className="rpg-title text-3xl mb-2">Auto Deposit</h1>
         <p className="rpg-text-muted mb-6 text-sm">
-          Send USDT on the TON network to your personal wallet address below. Near-instant confirmation with ~$0.01 fees.
+          Send USDT on the TON network to your personal wallet address below. Your balance will be credited automatically.
         </p>
 
         {loading ? (
@@ -157,11 +157,7 @@ export default function TonDepositPage() {
                 </div>
                 <div className="flex items-center justify-center gap-2 text-xs">
                   <span className="w-2 h-2 rounded-full bg-[#f5c265]" />
-                  <span className="rpg-text">Min Deposit: <span className="rpg-gold-bright font-bold">$1 USDT</span></span>
-                </div>
-                <div className="flex items-center justify-center gap-2 text-xs">
-                  <span className="w-2 h-2 rounded-full bg-[#39ff14]" />
-                  <span className="rpg-text">Fee: <span className="font-bold text-[#39ff14]">~$0.01</span></span>
+                  <span className="rpg-text">Min Deposit: <span className="rpg-gold-bright font-bold">$5 USDT</span></span>
                 </div>
               </div>
             </div>
@@ -172,8 +168,8 @@ export default function TonDepositPage() {
               <ul className="text-xs rpg-text-muted space-y-1 list-disc list-inside">
                 <li>Send <strong>only USDT</strong> on the <strong>TON</strong> network</li>
                 <li>Sending other tokens will result in <strong>permanent loss</strong></li>
-                <li>Balance is credited within <strong>~5 seconds</strong></li>
-                <li>Send any amount $1+ — nearly zero fees</li>
+                <li>Balance is credited automatically</li>
+                <li>Minimum deposit: <strong>$5 USDT</strong></li>
               </ul>
             </div>
 

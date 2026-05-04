@@ -32,7 +32,7 @@ const USDT_DECIMALS = 6;
 const POLL_INTERVAL_MS = 10_000;
 
 // Minimum deposit amount (USDT)
-const MIN_DEPOSIT_USDT = 1;
+const MIN_DEPOSIT_USDT = 5;
 
 // ---------------------------------------------------------------------------
 // Types
