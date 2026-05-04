@@ -171,15 +171,24 @@ export default function DepositPage() {
               {t.wallet.paymentsBy}
             </div>
 
-            {/* TRC20 Auto-Deposit alternative */}
+            {/* Auto-Deposit alternatives */}
             <div className="rpg-panel p-4 text-center">
-              <div className="text-xs rpg-text-muted mb-2">Or use automatic deposit</div>
-              <Link
-                href="/wallet/deposit-trc20"
-                className="btn-rpg btn-rpg-block text-sm"
-              >
-                ⚡ Auto Deposit (TRC20)
-              </Link>
+              <div className="text-xs rpg-text-muted mb-3">Or use automatic deposit</div>
+              <div className="space-y-2">
+                <Link
+                  href="/wallet/deposit-trc20"
+                  className="btn-rpg btn-rpg-block text-sm"
+                >
+                  ⚡ Auto Deposit (TRC20)
+                </Link>
+                <Link
+                  href="/wallet/deposit-ton"
+                  className="btn-rpg btn-rpg-block text-sm"
+                  style={{ borderColor: '#0088cc' }}
+                >
+                  💎 Auto Deposit (TON) — ~$0.01 fee
+                </Link>
+              </div>
               <p className="text-[10px] rpg-text-muted mt-2">
                 Get your unique wallet address. Send any amount, balance credited automatically.
               </p>

@@ -121,6 +121,16 @@ export const api = {
   getTrc20Status: () =>
     request<Trc20DepositStatus>('/api/trc20/status'),
 
+  // TON Auto-Deposits
+  getTonWallet: () =>
+    request<TonWallet>('/api/ton/wallet'),
+
+  getTonDeposits: () =>
+    request<{ deposits: TonDeposit[] }>('/api/ton/deposits'),
+
+  getTonStatus: () =>
+    request<TonDepositStatus>('/api/ton/status'),
+
   // Withdrawals
   createWithdrawal: (amount: number, wallet_address: string) =>
     request<{ withdrawal: Withdrawal; breakdown: WithdrawalBreakdown }>(
@@ -286,6 +296,31 @@ export interface Trc20Deposit {
 export interface Trc20DepositStatus {
   pending: Trc20Deposit[];
   recentlyConfirmed: Trc20Deposit[];
+}
+
+export interface TonWallet {
+  address: string;
+  rawAddress: string;
+  network: string;
+  token: string;
+  standard: string;
+}
+
+export interface TonDeposit {
+  id: string;
+  tx_hash: string;
+  amount: number;
+  from_address: string;
+  to_address: string;
+  status: 'pending' | 'confirming' | 'confirmed' | 'failed';
+  credited: boolean;
+  detected_at: string;
+  confirmed_at: string | null;
+}
+
+export interface TonDepositStatus {
+  pending: TonDeposit[];
+  recentlyConfirmed: TonDeposit[];
 }
 
 export interface PaymentInvoice {
