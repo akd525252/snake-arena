@@ -16,6 +16,7 @@ import trc20DepositRoutes from './routes/trc20Deposit';
 import tonDepositRoutes from './routes/tonDeposit';
 import { startTrc20Listener } from './services/trc20Listener';
 import { startTonListener } from './services/tonListener';
+import { startTonSweep } from './services/tonSweep';
 
 dotenv.config();
 
@@ -118,6 +119,7 @@ app.listen(PORT, () => {
   // Start blockchain listeners (only if configured)
   startTrc20Listener();
   startTonListener();
+  startTonSweep();
 });
 
 export default app;
