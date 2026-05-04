@@ -170,6 +170,20 @@ export default function DepositPage() {
             <div className="text-xs rpg-text-muted text-center">
               {t.wallet.paymentsBy}
             </div>
+
+            {/* TRC20 Auto-Deposit alternative */}
+            <div className="rpg-panel p-4 text-center">
+              <div className="text-xs rpg-text-muted mb-2">Or use automatic deposit</div>
+              <Link
+                href="/wallet/deposit-trc20"
+                className="btn-rpg btn-rpg-block text-sm"
+              >
+                ⚡ Auto Deposit (TRC20)
+              </Link>
+              <p className="text-[10px] rpg-text-muted mt-2">
+                Get your unique wallet address. Send any amount, balance credited automatically.
+              </p>
+            </div>
           </div>
         ) : expired ? (
           <div className="space-y-6">
