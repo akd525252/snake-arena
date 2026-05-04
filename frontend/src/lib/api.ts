@@ -108,6 +108,9 @@ export const api = {
   getDeposits: () =>
     request<{ deposits: PaymentInvoice[] }>('/api/payments/deposits'),
 
+  cancelDeposit: (invoiceId: string) =>
+    request<{ status: string }>(`/api/payments/deposit/${invoiceId}/cancel`, { method: 'POST' }),
+
   // Withdrawals
   createWithdrawal: (amount: number, wallet_address: string) =>
     request<{ withdrawal: Withdrawal; breakdown: WithdrawalBreakdown }>(

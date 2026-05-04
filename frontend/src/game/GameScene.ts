@@ -153,7 +153,9 @@ export class GameScene extends Phaser.Scene {
   private joystickGraphics!: Phaser.GameObjects.Graphics;
   private mobileBoostBtn!: Phaser.GameObjects.Container;
   private mobileTrapBtn!: Phaser.GameObjects.Container;
+  private mobileCameraResetBtn!: Phaser.GameObjects.Container;
   private touchId: number | null = null;
+  private resetCameraKey!: Phaser.Input.Keyboard.Key;
 
   // Skin effects
   private playerBoostTrails = new Map<string, Phaser.GameObjects.Graphics[]>();
@@ -430,6 +432,10 @@ export class GameScene extends Phaser.Scene {
       this.sfx.trap();
     });
 
+    // Camera reset hotkey — 'R' snaps camera to player's current position
+    this.resetCameraKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.R);
+    this.resetCameraKey.on('down', () => this.resetCamera());
+
     // Camera — zoom in so snake is larger on screen.
     // (Camera background is set by applyThemeCameraBg() above — DO NOT override
     // here, otherwise the themed ground gets painted over with dark gray.)
@@ -652,6 +658,15 @@ export class GameScene extends Phaser.Scene {
     this.mobileTrapBtn = this.createMobileButton(trapX, trapY, btnRadius, this.translations.trap || 'TRAP', 0xff2e63, () => {
       this.send({ type: 'skill_use', skill: 'trap' });
     });
+
+    // Camera reset button (left side, above joystick area)
+    const resetBtnRadius = Math.max(32, Math.min(40, w * 0.08));
+    const resetX = resetBtnRadius + edgePad;
+    const resetY = h - resetBtnRadius - edgePad - 20;
+    this.mobileCameraResetBtn = this.createMobileButton(
+      resetX, resetY, resetBtnRadius, '⊕', 0xfbbf24,
+      () => this.resetCamera(),
+    );
   }
 
   private createMobileButton(
@@ -871,6 +886,18 @@ export class GameScene extends Phaser.Scene {
       // which makes the camera oscillate between integer values when moving
       // slowly, producing visible 1-pixel shake. Trust Phaser's renderer.
       this.cameras.main.centerOn(this.cameraSmooth.x, this.cameraSmooth.y);
+    }
+  }
+
+  /** Instantly snap camera to the player's current head position.
+   *  Useful when camera drifts due to slow server load or lag. */
+  private resetCamera(): void {
+    const data = this.myPlayerId ? this.playerInterp.get(this.myPlayerId) : null;
+    if (data && data.alive && data.currSegments.length > 0) {
+      const head = data.currSegments[0];
+      this.cameraSmooth = { x: head.x, y: head.y };
+      this.cameraTarget = { x: head.x, y: head.y };
+      this.cameras.main.centerOn(head.x, head.y);
     }
   }
 
@@ -1241,6 +1268,10 @@ export class GameScene extends Phaser.Scene {
         }
         if (this.mobileTrapBtn) {
           this.mobileTrapBtn.setPosition(cw - btnR - edgeP, bY - btnR * 2.4);
+        }
+        if (this.mobileCameraResetBtn) {
+          const resetR = Math.max(32, Math.min(40, cw * 0.08));
+          this.mobileCameraResetBtn.setPosition(resetR + edgeP, ch - resetR - edgeP - 20);
         }
       }
     }

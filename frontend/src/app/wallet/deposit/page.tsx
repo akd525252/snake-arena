@@ -16,6 +16,9 @@ export default function DepositPage() {
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
   const [quote, setQuote] = useState<DepositQuote | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState(20);
+  const [expired, setExpired] = useState(false);
 
   // Live fee preview — debounced quote fetch on amount change
   useEffect(() => {
@@ -37,6 +40,21 @@ export default function DepositPage() {
     return () => clearTimeout(timer);
   }, [amount, t.wallet.minDepositValue, t.wallet.couldNotEstimate]);
 
+  // 20-second countdown after invoice creation — auto-cancel when expired
+  useEffect(() => {
+    if (!paymentUrl || expired) return;
+    if (countdown <= 0) {
+      // Time's up — cancel the invoice on the server
+      setExpired(true);
+      if (invoiceId) {
+        api.cancelDeposit(invoiceId).catch(() => {});
+      }
+      return;
+    }
+    const id = setInterval(() => setCountdown(c => c - 1), 1000);
+    return () => clearInterval(id);
+  }, [paymentUrl, countdown, expired, invoiceId]);
+
   const handleDeposit = async () => {
     if (amount < MIN_DEPOSIT) {
       setError(t.wallet.minDepositValue);
@@ -47,6 +65,9 @@ export default function DepositPage() {
     try {
       const res = await api.createDeposit(amount);
       setPaymentUrl(res.payment_url);
+      setInvoiceId(res.invoice_id?.toString() || null);
+      setCountdown(20);
+      setExpired(false);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t.wallet.failedCreate);
     } finally {
@@ -150,6 +171,32 @@ export default function DepositPage() {
               {t.wallet.paymentsBy}
             </div>
           </div>
+        ) : expired ? (
+          <div className="space-y-6">
+            <div className="rpg-panel p-6 border-[#962323]">
+              <div className="rpg-crimson font-bold mb-2">Deposit Cancelled</div>
+              <p className="text-sm rpg-text-muted mb-4">
+                The payment window has expired. No funds were charged.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setPaymentUrl(null);
+                setInvoiceId(null);
+                setExpired(false);
+                setCountdown(20);
+              }}
+              className="btn-rpg btn-rpg-amber btn-rpg-block text-center"
+            >
+              Try Again
+            </button>
+            <Link
+              href="/dashboard"
+              className="btn-rpg btn-rpg-block text-center"
+            >
+              {t.wallet.backToDashboard}
+            </Link>
+          </div>
         ) : (
           <div className="space-y-6">
             <div className="rpg-panel p-6 border-[#d4a04a]">
@@ -157,6 +204,20 @@ export default function DepositPage() {
               <p className="text-sm rpg-text mb-4">
                 {t.wallet.completePaymentDesc}
               </p>
+              <div className="text-center mb-3">
+                <span className={`font-mono font-bold text-lg ${
+                  countdown <= 5 ? 'rpg-crimson animate-pulse' : 'rpg-gold-bright'
+                }`}>
+                  {countdown}s
+                </span>
+                <span className="text-xs rpg-text-muted ml-2">remaining to complete</span>
+              </div>
+              <div className="h-2 rpg-parchment-inset rounded-full overflow-hidden mb-4">
+                <div
+                  className="h-full bg-gradient-to-r from-[#a86a3a] via-[#d4a04a] to-[#f5c265] transition-all duration-1000 ease-linear"
+                  style={{ width: `${(countdown / 20) * 100}%` }}
+                />
+              </div>
               <a
                 href={paymentUrl}
                 target="_blank"

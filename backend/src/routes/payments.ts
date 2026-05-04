@@ -251,9 +251,42 @@ router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+// Cancel a pending deposit invoice
+router.post('/deposit/:invoiceId/cancel', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { invoiceId } = req.params;
+    const { error } = await supabase
+      .from('payment_invoices')
+      .update({ status: 'expired', updated_at: new Date().toISOString() })
+      .eq('invoice_id', invoiceId)
+      .eq('user_id', req.user!.id)
+      .eq('status', 'pending');
+
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+    res.json({ status: 'ok' });
+  } catch (err) {
+    console.error('Cancel deposit error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get deposit history
+// Auto-expire pending invoices older than 20 minutes so they don't clutter history.
+const AUTO_EXPIRE_MS = 20 * 60 * 1000;
 router.get('/deposits', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    // Expire old pending invoices first
+    const cutoff = new Date(Date.now() - AUTO_EXPIRE_MS).toISOString();
+    await supabase
+      .from('payment_invoices')
+      .update({ status: 'expired', updated_at: new Date().toISOString() })
+      .eq('user_id', req.user!.id)
+      .eq('status', 'pending')
+      .lt('created_at', cutoff);
+
     const { data: invoices, error } = await supabase
       .from('payment_invoices')
       .select('*')
