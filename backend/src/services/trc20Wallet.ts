@@ -25,13 +25,12 @@ export const MIN_CONFIRMATIONS = 19;
 // ---------------------------------------------------------------------------
 // Encryption helpers (AES-256-GCM)
 // ---------------------------------------------------------------------------
-const ENCRYPTION_KEY = process.env.TRON_ENCRYPTION_KEY || '';
-
 function getEncKey(): Buffer {
-  if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length < 32) {
+  const key = process.env.TRON_ENCRYPTION_KEY || '';
+  if (!key || key.length < 32) {
     throw new Error('TRON_ENCRYPTION_KEY env var must be at least 32 hex chars');
   }
-  return Buffer.from(ENCRYPTION_KEY.slice(0, 32), 'utf-8');
+  return Buffer.from(key.slice(0, 32), 'utf-8');
 }
 
 export function encryptPrivateKey(privateKeyHex: string): string {

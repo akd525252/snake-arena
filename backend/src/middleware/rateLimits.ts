@@ -6,13 +6,15 @@
  * deserve much stricter limits to mitigate credential stuffing, withdrawal
  * abuse, and invoice spam.
  */
-import rateLimit from 'express-rate-limit';
+import rateLimit, { type Options } from 'express-rate-limit';
 import type { Request } from 'express';
 import type { AuthRequest } from './auth';
 
-const baseHeaders = {
+const baseHeaders: Partial<Options> = {
   standardHeaders: true,
   legacyHeaders: false,
+  // Disable the IPv6 keyGenerator validation — we handle it ourselves.
+  validate: { xForwardedForHeader: false, ip: false },
 };
 
 /**

@@ -20,11 +20,15 @@ import {
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
-const TRONGRID_API = process.env.TRON_NETWORK === 'shasta'
-  ? 'https://api.shasta.trongrid.io'
-  : 'https://api.trongrid.io';
-
-const API_KEY = process.env.TRONGRID_API_KEY || '';
+// Read env vars lazily so they're available after dotenv.config() in index.ts
+function getTronGridApi(): string {
+  return process.env.TRON_NETWORK === 'shasta'
+    ? 'https://api.shasta.trongrid.io'
+    : 'https://api.trongrid.io';
+}
+function getApiKey(): string {
+  return process.env.TRONGRID_API_KEY || '';
+}
 
 // USDT has 6 decimals on TRON
 const USDT_DECIMALS = 6;
@@ -88,10 +92,11 @@ async function fetchTrc20Transfers(
       params.min_timestamp = minTimestamp;
     }
 
+    const apiKey = getApiKey();
     const headers: Record<string, string> = { accept: 'application/json' };
-    if (API_KEY) headers['TRON-PRO-API-KEY'] = API_KEY;
+    if (apiKey) headers['TRON-PRO-API-KEY'] = apiKey;
 
-    const url = `${TRONGRID_API}/v1/accounts/${address}/transactions/trc20`;
+    const url = `${getTronGridApi()}/v1/accounts/${address}/transactions/trc20`;
     const resp = await axios.get<TronGridResponse>(url, { headers, params, timeout: 8000 });
 
     if (!resp.data?.success || !Array.isArray(resp.data.data)) {
@@ -111,11 +116,12 @@ async function fetchTrc20Transfers(
  */
 async function getCurrentBlockNumber(): Promise<number> {
   try {
+    const apiKey = getApiKey();
     const headers: Record<string, string> = { accept: 'application/json' };
-    if (API_KEY) headers['TRON-PRO-API-KEY'] = API_KEY;
+    if (apiKey) headers['TRON-PRO-API-KEY'] = apiKey;
 
     const resp = await axios.post(
-      `${TRONGRID_API}/wallet/getnowblock`,
+      `${getTronGridApi()}/wallet/getnowblock`,
       {},
       { headers, timeout: 5000 },
     );
@@ -130,11 +136,12 @@ async function getCurrentBlockNumber(): Promise<number> {
  */
 async function getTxBlockNumber(txHash: string): Promise<number> {
   try {
+    const apiKey = getApiKey();
     const headers: Record<string, string> = { accept: 'application/json' };
-    if (API_KEY) headers['TRON-PRO-API-KEY'] = API_KEY;
+    if (apiKey) headers['TRON-PRO-API-KEY'] = apiKey;
 
     const resp = await axios.post(
-      `${TRONGRID_API}/wallet/gettransactioninfobyid`,
+      `${getTronGridApi()}/wallet/gettransactioninfobyid`,
       { value: txHash },
       { headers, timeout: 5000 },
     );
@@ -375,7 +382,7 @@ export function startTrc20Listener(): void {
     console.log('[trc20-listener] TRON_MASTER_MNEMONIC not set — TRC20 deposits disabled');
     return;
   }
-  if (!API_KEY) {
+  if (!getApiKey()) {
     console.warn('[trc20-listener] TRONGRID_API_KEY not set — will hit rate limits quickly');
   }
 
