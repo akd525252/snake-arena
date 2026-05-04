@@ -76,7 +76,10 @@ async function fetchJettonTransfers(
   try {
     const apiKey = getApiKey();
     const headers: Record<string, string> = { accept: 'application/json' };
-    if (apiKey) headers['X-API-Key'] = apiKey;
+    if (apiKey) {
+      headers['X-API-Key'] = apiKey;
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
 
     const params: Record<string, string | number> = {
       jetton_id: USDT_JETTON_MASTER,
@@ -85,6 +88,7 @@ async function fetchJettonTransfers(
       limit: 50,
       sort: 'desc',
     };
+    if (apiKey) params.api_key = apiKey;
 
     if (startUtime) {
       params.start_utime = startUtime;
@@ -252,6 +256,7 @@ export function startTonListener(): void {
   console.log(`[ton-listener] Poll interval: ${POLL_INTERVAL_MS}ms`);
   console.log(`[ton-listener] Min deposit: ${MIN_DEPOSIT_USDT} USDT`);
   console.log(`[ton-listener] USDT Jetton master: ${USDT_JETTON_MASTER.slice(0, 16)}...`);
+  console.log(`[ton-listener] API key: ${getApiKey().slice(0, 8)}...${getApiKey().slice(-4)} (len=${getApiKey().length})`);
 
   // Initial scan after a short delay
   setTimeout(() => {
