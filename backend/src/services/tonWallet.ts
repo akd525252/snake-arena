@@ -15,7 +15,7 @@ export const USDT_JETTON_MASTER = 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_
 export const MIN_CONFIRMATIONS = 1;
 
 // ---------------------------------------------------------------------------
-// Encryption helpers (AES-256-GCM) — same pattern as TRC20
+// Encryption helpers (AES-256-GCM)
 // ---------------------------------------------------------------------------
 function getEncKey(): Buffer {
   const key = process.env.TRON_ENCRYPTION_KEY || '';
