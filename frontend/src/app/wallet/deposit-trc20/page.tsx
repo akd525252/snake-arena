@@ -94,7 +94,7 @@ export default function Trc20DepositPage() {
       <LanguageSwitcher />
       <nav className="px-8 py-4 border-b border-[#3a2c1f]">
         <Link href="/wallet/deposit" className="rpg-text-muted hover:rpg-gold-bright text-sm transition-colors">
-          ΓåÉ Back to Deposit Methods
+          ← Back to Deposit Methods
         </Link>
       </nav>
 
@@ -148,7 +148,7 @@ export default function Trc20DepositPage() {
                 onClick={copyAddress}
                 className="btn-rpg btn-rpg-amber btn-rpg-block text-sm"
               >
-                {copied ? 'Γ£ô Copied!' : 'Copy Address'}
+                {copied ? '✓ Copied!' : 'Copy Address'}
               </button>
 
               <div className="mt-4 space-y-1">
@@ -162,19 +162,19 @@ export default function Trc20DepositPage() {
                 </div>
                 <div className="flex items-center justify-center gap-2 text-xs">
                   <span className="w-2 h-2 rounded-full bg-[#f5c265]" />
-                  <span className="rpg-text">Min Deposit: <span className="rpg-gold-bright font-bold">$1 USDT</span></span>
+                  <span className="rpg-text">Min Deposit: <span className="rpg-gold-bright font-bold">$5 USDT</span></span>
                 </div>
               </div>
             </div>
 
             {/* Warning */}
             <div className="rpg-panel p-4 border-[#962323]">
-              <div className="text-xs rpg-crimson font-bold mb-1">ΓÜá Important</div>
+              <div className="text-xs rpg-crimson font-bold mb-1">⚠ Important</div>
               <ul className="text-xs rpg-text-muted space-y-1 list-disc list-inside">
                 <li>Send <strong>only USDT</strong> on the <strong>TRC20</strong> network</li>
                 <li>Sending other tokens will result in <strong>permanent loss</strong></li>
                 <li>Balance is credited after ~19 confirmations (~1 minute)</li>
-                <li>No minimum amount to select ΓÇö send any amount $1+</li>
+                <li>Minimum deposit: <strong>$5 USDT</strong></li>
               </ul>
             </div>
 
@@ -182,7 +182,7 @@ export default function Trc20DepositPage() {
             {pendingDeposits.length > 0 && (
               <div className="rpg-panel p-4 border-[#d4a04a]">
                 <div className="text-xs rpg-gold-bright font-bold mb-2">
-                  ΓÅ│ Deposit Detected ΓÇö Confirming...
+                  ⏳ Deposit Detected — Confirming...
                 </div>
                 {pendingDeposits.map(dep => (
                   <div key={dep.id} className="flex justify-between items-center py-1">
@@ -208,7 +208,7 @@ export default function Trc20DepositPage() {
             {recentConfirmed.length > 0 && (
               <div className="rpg-panel p-4 border-[#39ff14]/30">
                 <div className="text-xs text-[#39ff14] font-bold mb-2">
-                  Γ£ô Deposit Credited!
+                  ✓ Deposit Credited!
                 </div>
                 {recentConfirmed.map(dep => (
                   <div key={dep.id} className="flex justify-between items-center py-1">
