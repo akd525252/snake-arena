@@ -55,6 +55,7 @@ export function decryptPrivateKey(stored: string): string {
 async function deriveKeyPair(index: number): Promise<{ privateKey: string; address: string }> {
   const bip39 = await import('bip39');
   const { HDKey } = await import('@scure/bip32');
+  const jsSha3 = await import('js-sha3');
 
   const mnemonic = process.env.BSC_MASTER_MNEMONIC || '';
   if (!mnemonic || !bip39.validateMnemonic(mnemonic)) {
@@ -69,36 +70,15 @@ async function deriveKeyPair(index: number): Promise<{ privateKey: string; addre
 
   const privateKeyHex = Buffer.from(child.privateKey).toString('hex');
 
-  // Derive Ethereum/BSC address from uncompressed public key using Node crypto
-  // HDKey gives compressed pubkey — we need to compute keccak256 of the
-  // uncompressed (x,y) coordinates. We use the built-in Node.js createECDH
-  // to decompress, then compute keccak256 with createHash if available,
-  // or fall back to a manual implementation.
+  // Derive Ethereum/BSC address from uncompressed public key
   const ecdh = crypto.createECDH('secp256k1');
   ecdh.setPrivateKey(Buffer.from(child.privateKey));
   const uncompressedPub = ecdh.getPublicKey(); // 65 bytes: 04 + x + y
   const pubXY = uncompressedPub.subarray(1); // 64 bytes
 
-  // Keccak-256 (Ethereum uses keccak, not SHA-3)
-  // Node.js doesn't have keccak natively, but @scure/bip32 pulls in @noble/hashes.
-  // We dynamically import it at the top level of the package (not subpath).
-  let keccak: (data: Uint8Array) => Uint8Array;
-  try {
-    const mod = await import('@noble/hashes/sha3' as string);
-    keccak = mod.keccak_256;
-  } catch {
-    // Fallback: require from the ethers bundled keccak via tronweb's dependency
-    const { createHash } = await import('crypto');
-    // Node 18+ has createHash('sha3-256') but Ethereum uses keccak-256 which is
-    // different from NIST SHA3-256. We need @noble/hashes for correctness.
-    // Since @noble/hashes IS installed (dep of @scure/bip32), force require it.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const noble = require('@noble/hashes/sha3');
-    keccak = noble.keccak_256;
-  }
-
-  const hash = keccak(pubXY);
-  const address = '0x' + Buffer.from(hash).subarray(-20).toString('hex');
+  // Keccak-256 (Ethereum uses keccak, not NIST SHA-3)
+  const hash = jsSha3.keccak256(Buffer.from(pubXY));
+  const address = '0x' + hash.slice(-40); // last 20 bytes = 40 hex chars
 
   return { privateKey: privateKeyHex, address: address.toLowerCase() };
 }
