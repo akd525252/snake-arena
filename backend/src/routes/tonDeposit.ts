@@ -6,16 +6,15 @@
  * /api/ton/status   — GET: live deposit status (pending + recently confirmed)
  */
 import { Router, Response } from 'express';
-import { AuthRequest } from '../middleware/auth';
+import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { getOrCreateTonWallet } from '../services/tonWallet';
 import { supabase } from '../config/supabase';
 
 const router = Router();
 
 // GET /api/ton/wallet — Returns the user's unique TON deposit address
-router.get('/wallet', async (req, res: Response) => {
-  const authReq = req as AuthRequest;
-  const userId = authReq.user?.id;
+router.get('/wallet', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const userId = req.user?.id;
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
@@ -34,9 +33,8 @@ router.get('/wallet', async (req, res: Response) => {
 });
 
 // GET /api/ton/deposits — Returns deposit history
-router.get('/deposits', async (req, res: Response) => {
-  const authReq = req as AuthRequest;
-  const userId = authReq.user?.id;
+router.get('/deposits', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const userId = req.user?.id;
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
   const { data, error } = await supabase
@@ -51,9 +49,8 @@ router.get('/deposits', async (req, res: Response) => {
 });
 
 // GET /api/ton/status — Live deposit status polling
-router.get('/status', async (req, res: Response) => {
-  const authReq = req as AuthRequest;
-  const userId = authReq.user?.id;
+router.get('/status', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const userId = req.user?.id;
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
   // Pending / confirming deposits
