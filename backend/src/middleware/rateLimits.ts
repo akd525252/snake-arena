@@ -13,8 +13,9 @@ import type { AuthRequest } from './auth';
 const baseHeaders: Partial<Options> = {
   standardHeaders: true,
   legacyHeaders: false,
-  // Disable the IPv6 keyGenerator validation — we handle it ourselves.
-  validate: { xForwardedForHeader: false, ip: false },
+  // We use custom keyGenerators (IP + user-id). Suppress IPv6 subnet
+  // validations — Railway proxy provides trusted req.ip already.
+  validate: { keyGeneratorIpFallback: false, ipv6SubnetOrKeyGenerator: false },
 };
 
 /**
