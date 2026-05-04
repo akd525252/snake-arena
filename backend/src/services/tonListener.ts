@@ -1,7 +1,7 @@
 /**
  * TON Blockchain Listener
  *
- * Polls TON Center API v3 for incoming USDT Jetton transfers to user wallets.
+ * Polls tonapi.io v2 for incoming USDT Jetton transfers to user wallets.
  * Detects deposits, validates them, and credits user balances automatically.
  */
 import axios from 'axios';
@@ -15,10 +15,10 @@ import {
 // ---------------------------------------------------------------------------
 // Config — read lazily so env vars are available after dotenv.config()
 // ---------------------------------------------------------------------------
-function getTonCenterApi(): string {
+function getTonApiBase(): string {
   return process.env.TON_NETWORK === 'testnet'
-    ? 'https://testnet.toncenter.com'
-    : 'https://toncenter.com';
+    ? 'https://testnet.tonapi.io'
+    : 'https://tonapi.io';
 }
 
 function getApiKey(): string {
@@ -35,22 +35,50 @@ const POLL_INTERVAL_MS = 10_000;
 const MIN_DEPOSIT_USDT = 5;
 
 // ---------------------------------------------------------------------------
-// Types
+// Types — tonapi.io v2 response shapes
 // ---------------------------------------------------------------------------
+interface TonApiJettonTransfer {
+  sender?: { address: string; name?: string };
+  recipient?: { address: string; name?: string };
+  senders_wallet: string;
+  recipients_wallet: string;
+  amount: string;
+  jetton: {
+    address: string;
+    name?: string;
+    symbol?: string;
+    decimals: number;
+  };
+  comment?: string;
+}
+
+interface TonApiAction {
+  type: string;
+  status: string;
+  JettonTransfer?: TonApiJettonTransfer;
+}
+
+interface TonApiEvent {
+  event_id: string;
+  timestamp: number;
+  actions: TonApiAction[];
+  lt: number;
+  in_progress: boolean;
+}
+
+interface TonApiEventsResponse {
+  events: TonApiEvent[];
+}
+
+// Normalised transfer used internally
 interface JettonTransfer {
   transaction_hash: string;
   transaction_lt: string;
   transaction_now: number;
-  source: string;          // sender's Jetton wallet
-  destination: string;     // receiver's Jetton wallet
-  source_owner: string;    // sender's owner wallet
-  destination_owner: string; // receiver's owner wallet (our user wallet)
-  amount: string;          // raw Jetton amount
-  jetton_master: string;   // Jetton master contract
-}
-
-interface TonCenterJettonResponse {
-  jetton_transfers: JettonTransfer[];
+  source_owner: string;
+  destination_owner: string;
+  amount: string;
+  jetton_master: string;
 }
 
 // Cache wallet list for efficiency
@@ -62,12 +90,12 @@ const WALLET_CACHE_TTL = 60_000; // 1 minute
 const lastScanTime = new Map<string, number>();
 
 // ---------------------------------------------------------------------------
-// API calls
+// API calls — tonapi.io v2
 // ---------------------------------------------------------------------------
 
 /**
- * Fetch incoming Jetton transfers for a specific wallet address.
- * Uses TON Center API v3 /jetton/transfers endpoint.
+ * Fetch incoming Jetton transfer events for a specific wallet address.
+ * Uses tonapi.io /v2/accounts/{id}/events endpoint.
  */
 async function fetchJettonTransfers(
   ownerAddress: string,
@@ -77,38 +105,66 @@ async function fetchJettonTransfers(
     const apiKey = getApiKey();
     const headers: Record<string, string> = { accept: 'application/json' };
     if (apiKey) {
-      headers['X-API-Key'] = apiKey;
       headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
     const params: Record<string, string | number> = {
-      jetton_id: USDT_JETTON_MASTER,
-      owner_address: ownerAddress,
-      direction: 'in',
       limit: 50,
-      sort: 'desc',
+      initiator: 'false',
+      subject_only: 'true' as unknown as string,
     };
-    if (apiKey) params.api_key = apiKey;
 
     if (startUtime) {
-      params.start_utime = startUtime;
+      params.start_date = startUtime;
     }
 
-    const url = `${getTonCenterApi()}/api/v3/jetton/transfers`;
-    const resp = await axios.get<TonCenterJettonResponse>(url, {
+    const url = `${getTonApiBase()}/v2/accounts/${encodeURIComponent(ownerAddress)}/events`;
+    const resp = await axios.get<TonApiEventsResponse>(url, {
       headers,
       params,
-      timeout: 8000,
+      timeout: 10000,
     });
 
-    if (!resp.data?.jetton_transfers || !Array.isArray(resp.data.jetton_transfers)) {
+    if (!resp.data?.events || !Array.isArray(resp.data.events)) {
       return [];
     }
 
-    return resp.data.jetton_transfers;
+    // Extract Jetton transfers from events and normalise
+    const transfers: JettonTransfer[] = [];
+    for (const event of resp.data.events) {
+      if (event.in_progress) continue; // skip unfinished
+
+      for (const action of event.actions) {
+        if (action.type !== 'JettonTransfer' || action.status !== 'ok') continue;
+        const jt = action.JettonTransfer;
+        if (!jt) continue;
+
+        // Filter: only USDT Jetton master
+        const jettonAddr = jt.jetton.address || '';
+        if (!jettonAddr.includes('EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id')) continue;
+
+        // Filter: only incoming to our wallet
+        const recipientAddr = jt.recipient?.address || '';
+        if (!recipientAddr) continue;
+
+        transfers.push({
+          transaction_hash: event.event_id,
+          transaction_lt: String(event.lt || 0),
+          transaction_now: event.timestamp,
+          source_owner: jt.sender?.address || jt.senders_wallet || '',
+          destination_owner: recipientAddr,
+          amount: jt.amount,
+          jetton_master: jettonAddr,
+        });
+      }
+    }
+
+    return transfers;
   } catch (err: unknown) {
+    const axErr = err as { response?: { status?: number; data?: unknown } };
+    const status = axErr?.response?.status;
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[ton-listener] fetch error for ${ownerAddress.slice(0, 10)}:`, msg);
+    console.error(`[ton-listener] fetch error for ${ownerAddress.slice(0, 10)}: ${msg}${status ? ` (HTTP ${status})` : ''}`);
     return [];
   }
 }
@@ -161,7 +217,7 @@ async function processTransfer(
       tx_hash: txHash,
       amount,
       raw_amount: rawAmount,
-      from_address: transfer.source_owner || transfer.source,
+      from_address: transfer.source_owner,
       to_address: walletAddress,
       lt: String(parseInt(transfer.transaction_lt, 10) || 0),
       status: 'confirmed',
@@ -252,6 +308,7 @@ export function startTonListener(): void {
   }
 
   console.log('[ton-listener] Starting TON deposit listener...');
+  console.log(`[ton-listener] API: ${getTonApiBase()}`);
   console.log(`[ton-listener] Network: ${process.env.TON_NETWORK || 'mainnet'}`);
   console.log(`[ton-listener] Poll interval: ${POLL_INTERVAL_MS}ms`);
   console.log(`[ton-listener] Min deposit: ${MIN_DEPOSIT_USDT} USDT`);
