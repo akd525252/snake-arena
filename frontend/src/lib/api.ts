@@ -141,6 +141,16 @@ export const api = {
   getBep20Status: () =>
     request<Bep20DepositStatus>('/api/bep20/status'),
 
+  // Solana (SPL) Auto-Deposits
+  getSolanaWallet: () =>
+    request<SolanaWallet>('/api/solana/wallet'),
+
+  getSolanaDeposits: () =>
+    request<{ deposits: SolanaDeposit[] }>('/api/solana/deposits'),
+
+  getSolanaStatus: () =>
+    request<SolanaDepositStatus>('/api/solana/status'),
+
   // Withdrawals
   createWithdrawal: (amount: number, wallet_address: string) =>
     request<{ withdrawal: Withdrawal; breakdown: WithdrawalBreakdown }>(
@@ -359,6 +369,32 @@ export interface Bep20Deposit {
 export interface Bep20DepositStatus {
   pending: Bep20Deposit[];
   recentlyConfirmed: Bep20Deposit[];
+}
+
+export interface SolanaWallet {
+  address: string;
+  network: string;
+  token: string;
+  mint: string;
+  isNew: boolean;
+  note: string;
+}
+
+export interface SolanaDeposit {
+  id: string;
+  tx_hash: string;
+  amount: number;
+  from_address: string;
+  to_address: string;
+  status: 'confirmed' | 'failed';
+  credited: boolean;
+  detected_at: string;
+  confirmed_at: string | null;
+}
+
+export interface SolanaDepositStatus {
+  pending: SolanaDeposit[];
+  recentlyConfirmed: SolanaDeposit[];
 }
 
 export interface PaymentInvoice {

@@ -68,6 +68,23 @@ const networks: Network[] = [
       </>
     ),
   },
+  {
+    id: 'solana',
+    label: 'USDT on Solana',
+    href: '/wallet/deposit-solana',
+    badgeId: 'sol',
+    networkColor: '#9945FF',
+    glowColor: 'rgba(153,69,255,0.45)',
+    badgeGradient: ['#b06dff', '#7b2ee0'],
+    badgeSvg: (
+      <>
+        {/* Solana "S" — stylised slanted bars */}
+        <path d="M16 38L40 38L36 42L12 42Z" fill="white" fillOpacity="0.95" />
+        <path d="M16 26L40 26L36 30L12 30Z" fill="white" fillOpacity="0.95" />
+        <path d="M12 14L36 14L40 18L16 18Z" fill="white" fillOpacity="0.95" />
+      </>
+    ),
+  },
 ];
 
 /* ─── 3D USDT Coin — thick coin with edge, highlight, shadow ───────────── */
