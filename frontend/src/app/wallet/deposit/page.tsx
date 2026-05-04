@@ -7,49 +7,89 @@ import LanguageSwitcher from '../../../components/LanguageSwitcher';
 /* ─── Network definitions ──────────────────────────────────────────────── */
 interface Network {
   id: string;
-  name: string;
   label: string;
   href: string;
   networkColor: string;
+  glowColor: string;
   networkIcon: React.ReactNode;
+  delay: number; // stagger animation delay in ms
 }
 
 const networks: Network[] = [
   {
     id: 'ton',
-    name: 'TON',
     label: 'USDT on TON',
     href: '/wallet/deposit-ton',
     networkColor: '#0088cc',
+    glowColor: 'rgba(0,136,204,0.5)',
+    delay: 0,
     networkIcon: (
+      /* TON diamond logo — proper faceted gem shape */
       <svg viewBox="0 0 56 56" fill="none" className="w-full h-full">
-        <circle cx="28" cy="28" r="28" fill="#0088cc" />
-        <path d="M28 11L41 28H15L28 11Z" fill="white" />
-        <path d="M28 45L15 28H41L28 45Z" fill="white" opacity="0.6" />
+        <defs>
+          <linearGradient id="ton-grad" x1="14" y1="12" x2="42" y2="44" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#29b6f6" />
+            <stop offset="100%" stopColor="#0277bd" />
+          </linearGradient>
+        </defs>
+        <circle cx="28" cy="28" r="28" fill="url(#ton-grad)" />
+        {/* Diamond top facet */}
+        <path d="M28 8L44 26H12L28 8Z" fill="white" fillOpacity="0.95" />
+        {/* Diamond bottom facet */}
+        <path d="M12 26L28 48L44 26H12Z" fill="white" fillOpacity="0.6" />
+        {/* Center divider line for 3D facet feel */}
+        <path d="M12 26H44" stroke="rgba(0,136,204,0.3)" strokeWidth="0.8" />
+        {/* Left inner edge */}
+        <path d="M28 8L22 26L28 48" fill="white" fillOpacity="0.15" />
       </svg>
     ),
   },
   {
     id: 'trc20',
-    name: 'TRON',
     label: 'USDT on TRON',
     href: '/wallet/deposit-trc20',
     networkColor: '#eb0029',
+    glowColor: 'rgba(235,0,41,0.5)',
+    delay: 150,
     networkIcon: (
+      /* TRON logo — the angular ◇ shape */
       <svg viewBox="0 0 56 56" fill="none" className="w-full h-full">
-        <circle cx="28" cy="28" r="28" fill="#eb0029" />
-        <path d="M18 16L40 20L28 44L18 16Z" fill="white" />
-        <path d="M18 16L40 20L30 22L18 16Z" fill="white" opacity="0.6" />
+        <defs>
+          <linearGradient id="trx-grad" x1="14" y1="10" x2="42" y2="46" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#ff4444" />
+            <stop offset="100%" stopColor="#c50022" />
+          </linearGradient>
+        </defs>
+        <circle cx="28" cy="28" r="28" fill="url(#trx-grad)" />
+        {/* TRON triangle body */}
+        <path d="M16 15L42 19L28 46L16 15Z" fill="white" fillOpacity="0.95" />
+        {/* TRON top highlight facet */}
+        <path d="M16 15L42 19L32 22L16 15Z" fill="white" fillOpacity="0.6" />
+        {/* Inner edge for 3D look */}
+        <path d="M32 22L28 46" stroke="rgba(235,0,41,0.25)" strokeWidth="0.6" />
       </svg>
     ),
   },
 ];
 
-/* ─── USDT Logo (shared) ───────────────────────────────────────────────── */
+/* ─── USDT Logo with 3D gradient ───────────────────────────────────────── */
 function UsdtIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 64 64" fill="none" className={className}>
-      <circle cx="32" cy="32" r="32" fill="#26a17b" />
+      <defs>
+        <linearGradient id="usdt-grad" x1="10" y1="10" x2="54" y2="54" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#50d4a0" />
+          <stop offset="50%" stopColor="#26a17b" />
+          <stop offset="100%" stopColor="#1a7a5a" />
+        </linearGradient>
+        <filter id="usdt-shadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#26a17b" floodOpacity="0.4" />
+        </filter>
+      </defs>
+      <circle cx="32" cy="32" r="31" fill="url(#usdt-grad)" filter="url(#usdt-shadow)" />
+      {/* Rim highlight for 3D coin effect */}
+      <circle cx="32" cy="32" r="29" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" />
+      <ellipse cx="32" cy="28" rx="18" ry="6" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="0.5" />
       <path
         d="M35.5 33.6V33.6C35.3 33.6 34 33.7 32 33.7C30.4 33.7 28.8 33.6 28.6 33.6C22.4 33.3 17.8 32.2 17.8 30.9C17.8 29.6 22.4 28.5 28.6 28.2V32.4C28.8 32.4 30.4 32.6 32 32.6C33.9 32.6 35.3 32.4 35.5 32.4V28.2C41.6 28.5 46.2 29.6 46.2 30.9C46.2 32.2 41.6 33.3 35.5 33.6ZM35.5 27.8V24H44V18H20V24H28.6V27.8C21.6 28.2 16 29.6 16 31.3C16 33 21.6 34.4 28.6 34.8V48H35.5V34.8C42.5 34.4 48 33 48 31.3C48 29.6 42.4 28.2 35.5 27.8Z"
         fill="white"
@@ -63,20 +103,38 @@ function NetworkCard({ network }: { network: Network }) {
   return (
     <Link
       href={network.href}
-      className="group block rpg-panel p-5 hover:border-[#d4a04a] transition-all duration-300 hover:shadow-[0_0_20px_rgba(212,160,74,0.15)]"
+      className="group block rpg-panel p-5 hover:border-[#d4a04a] transition-all duration-300 hover:shadow-[0_0_24px_rgba(212,160,74,0.2)]"
     >
-      <div className="flex items-center gap-4">
-        {/* Animated icon pair */}
-        <div className="relative w-16 h-16 flex-shrink-0">
-          {/* USDT icon — slides in from left */}
-          <div className="absolute inset-0 animate-[fadeSlideIn_0.6s_ease-out_both]">
-            <UsdtIcon className="w-14 h-14 drop-shadow-lg" />
-          </div>
-          {/* Network icon — bounces in from bottom-right */}
+      <div className="flex items-center gap-5">
+        {/* Animated icon pair container */}
+        <div className="relative w-[68px] h-[68px] flex-shrink-0">
+          {/* Glow ring behind icons */}
           <div
-            className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full border-2 border-[#0e0a08] shadow-lg animate-[popIn_0.5s_ease-out_0.3s_both]"
+            className="absolute inset-0 rounded-full animate-[glowPulse_3s_ease-in-out_infinite]"
+            style={{
+              background: `radial-gradient(circle, ${network.glowColor} 0%, transparent 70%)`,
+              animationDelay: `${network.delay}ms`,
+            }}
+          />
+
+          {/* USDT main icon — continuous float */}
+          <div
+            className="absolute top-0 left-0 animate-[coinFloat_3s_ease-in-out_infinite]"
+            style={{ animationDelay: `${network.delay}ms` }}
           >
-            {network.networkIcon}
+            <div className="animate-[coinSpin_6s_linear_infinite]" style={{ animationDelay: `${network.delay}ms` }}>
+              <UsdtIcon className="w-[52px] h-[52px]" />
+            </div>
+          </div>
+
+          {/* Network badge icon — continuous bounce */}
+          <div
+            className="absolute -bottom-0.5 -right-0.5 w-[30px] h-[30px] rounded-full border-[2.5px] border-[#0e0a08] shadow-lg animate-[badgeBounce_2s_ease-in-out_infinite] z-10"
+            style={{ animationDelay: `${network.delay + 200}ms` }}
+          >
+            <div className="animate-[badgeSpin_4s_ease-in-out_infinite]" style={{ animationDelay: `${network.delay}ms` }}>
+              {network.networkIcon}
+            </div>
           </div>
         </div>
 
@@ -90,8 +148,8 @@ function NetworkCard({ network }: { network: Network }) {
           </div>
         </div>
 
-        {/* Arrow */}
-        <div className="rpg-text-muted group-hover:rpg-gold-bright transition-all group-hover:translate-x-1 text-lg">
+        {/* Animated arrow */}
+        <div className="rpg-text-muted group-hover:rpg-gold-bright transition-all group-hover:translate-x-1 text-lg animate-[arrowPulse_2s_ease-in-out_infinite]">
           →
         </div>
       </div>
@@ -151,31 +209,48 @@ export default function DepositPage() {
         </Link>
       </main>
 
-      {/* Keyframe animations */}
+      {/* Continuous 3D-style keyframe animations */}
       <style jsx global>{`
-        @keyframes fadeSlideIn {
-          from {
-            opacity: 0;
-            transform: translateX(-12px) scale(0.8);
-          }
-          to {
-            opacity: 1;
-            transform: translateX(0) scale(1);
-          }
+        /* USDT coin floats up and down continuously */
+        @keyframes coinFloat {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-5px); }
         }
-        @keyframes popIn {
-          from {
-            opacity: 0;
-            transform: scale(0) translateY(8px);
-          }
-          60% {
-            opacity: 1;
-            transform: scale(1.15) translateY(-2px);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1) translateY(0);
-          }
+
+        /* Subtle Y-axis rotation for 3D coin spin feel */
+        @keyframes coinSpin {
+          0% { transform: perspective(200px) rotateY(0deg); }
+          25% { transform: perspective(200px) rotateY(12deg); }
+          50% { transform: perspective(200px) rotateY(0deg); }
+          75% { transform: perspective(200px) rotateY(-12deg); }
+          100% { transform: perspective(200px) rotateY(0deg); }
+        }
+
+        /* Network badge bounces subtly */
+        @keyframes badgeBounce {
+          0%, 100% { transform: translateY(0px) scale(1); }
+          50% { transform: translateY(-3px) scale(1.08); }
+        }
+
+        /* Network badge subtle rotation */
+        @keyframes badgeSpin {
+          0% { transform: perspective(150px) rotateY(0deg) rotateZ(0deg); }
+          25% { transform: perspective(150px) rotateY(-10deg) rotateZ(-3deg); }
+          50% { transform: perspective(150px) rotateY(0deg) rotateZ(0deg); }
+          75% { transform: perspective(150px) rotateY(10deg) rotateZ(3deg); }
+          100% { transform: perspective(150px) rotateY(0deg) rotateZ(0deg); }
+        }
+
+        /* Glow ring pulses behind the icon pair */
+        @keyframes glowPulse {
+          0%, 100% { opacity: 0.3; transform: scale(0.9); }
+          50% { opacity: 0.7; transform: scale(1.15); }
+        }
+
+        /* Arrow pulses right */
+        @keyframes arrowPulse {
+          0%, 100% { transform: translateX(0px); opacity: 0.6; }
+          50% { transform: translateX(3px); opacity: 1; }
         }
       `}</style>
     </div>
