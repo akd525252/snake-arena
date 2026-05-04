@@ -14,9 +14,11 @@ import skinsRoutes from './routes/skins';
 import leaderboardRoutes from './routes/leaderboard';
 import trc20DepositRoutes from './routes/trc20Deposit';
 import tonDepositRoutes from './routes/tonDeposit';
+import bep20DepositRoutes from './routes/bep20Deposit';
 import { startTrc20Listener } from './services/trc20Listener';
 import { startTonListener } from './services/tonListener';
 import { startTonSweep } from './services/tonSweep';
+import { startBep20Listener } from './services/bep20Listener';
 
 dotenv.config();
 
@@ -65,6 +67,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
 app.use('/api/trc20', trc20DepositRoutes);
 app.use('/api/ton', tonDepositRoutes);
+app.use('/api/bep20', bep20DepositRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -102,6 +105,7 @@ app.get(['/', '/status'], (_req, res) => {
       <li><code>/api/payments</code> &mdash; Deposits (NOWPayments)</li>
       <li><code>/api/trc20</code> &mdash; TRC20 USDT Auto-Deposits</li>
       <li><code>/api/ton</code> &mdash; TON USDT Auto-Deposits</li>
+      <li><code>/api/bep20</code> &mdash; BEP20 (BSC) USDT Auto-Deposits</li>
       <li><code>/api/withdrawals</code> &mdash; Withdraw requests</li>
       <li><code>/api/admin</code> &mdash; Admin metrics, revenue, users</li>
       <li><code>/api/skins</code> &mdash; Skin shop</li>
@@ -120,6 +124,7 @@ app.listen(PORT, () => {
   startTrc20Listener();
   startTonListener();
   startTonSweep();
+  startBep20Listener();
 });
 
 export default app;

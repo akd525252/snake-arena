@@ -52,6 +52,22 @@ const networks: Network[] = [
       </>
     ),
   },
+  {
+    id: 'bep20',
+    label: 'USDT on BSC',
+    href: '/wallet/deposit-bep20',
+    badgeId: 'bsc',
+    networkColor: '#f0b90b',
+    glowColor: 'rgba(240,185,11,0.45)',
+    badgeGradient: ['#fcd535', '#d4a000'],
+    badgeSvg: (
+      <>
+        {/* Binance diamond — rotated square */}
+        <rect x="20" y="20" width="16" height="16" rx="1" transform="rotate(45 28 28)" fill="white" fillOpacity="0.95" />
+        <rect x="23" y="23" width="10" height="10" rx="0.5" transform="rotate(45 28 28)" fill="white" fillOpacity="0.55" />
+      </>
+    ),
+  },
 ];
 
 /* ─── 3D USDT Coin — thick coin with edge, highlight, shadow ───────────── */

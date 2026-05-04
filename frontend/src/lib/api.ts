@@ -131,6 +131,16 @@ export const api = {
   getTonStatus: () =>
     request<TonDepositStatus>('/api/ton/status'),
 
+  // BEP20 (BSC) Auto-Deposits
+  getBep20Wallet: () =>
+    request<Bep20Wallet>('/api/bep20/wallet'),
+
+  getBep20Deposits: () =>
+    request<{ deposits: Bep20Deposit[] }>('/api/bep20/deposits'),
+
+  getBep20Status: () =>
+    request<Bep20DepositStatus>('/api/bep20/status'),
+
   // Withdrawals
   createWithdrawal: (amount: number, wallet_address: string) =>
     request<{ withdrawal: Withdrawal; breakdown: WithdrawalBreakdown }>(
@@ -322,6 +332,33 @@ export interface TonDeposit {
 export interface TonDepositStatus {
   pending: TonDeposit[];
   recentlyConfirmed: TonDeposit[];
+}
+
+export interface Bep20Wallet {
+  address: string;
+  network: string;
+  token: string;
+  contract: string;
+  isNew: boolean;
+  note: string;
+}
+
+export interface Bep20Deposit {
+  id: string;
+  tx_hash: string;
+  amount: number;
+  from_address: string;
+  to_address: string;
+  status: 'pending' | 'confirming' | 'confirmed' | 'failed';
+  confirmations: number;
+  credited: boolean;
+  detected_at: string;
+  confirmed_at: string | null;
+}
+
+export interface Bep20DepositStatus {
+  pending: Bep20Deposit[];
+  recentlyConfirmed: Bep20Deposit[];
 }
 
 export interface PaymentInvoice {
