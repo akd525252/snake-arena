@@ -111,6 +111,16 @@ export const api = {
   cancelDeposit: (invoiceId: string) =>
     request<{ status: string }>(`/api/payments/deposit/${invoiceId}/cancel`, { method: 'POST' }),
 
+  // TRC20 Auto-Deposits
+  getTrc20Wallet: () =>
+    request<Trc20Wallet>('/api/trc20/wallet'),
+
+  getTrc20Deposits: () =>
+    request<{ deposits: Trc20Deposit[] }>('/api/trc20/deposits'),
+
+  getTrc20Status: () =>
+    request<Trc20DepositStatus>('/api/trc20/status'),
+
   // TON Auto-Deposits
   getTonWallet: () =>
     request<TonWallet>('/api/ton/wallet'),
@@ -261,6 +271,33 @@ export interface Skin {
   created_at: string;
 }
 
+
+export interface Trc20Wallet {
+  address: string;
+  network: string;
+  token: string;
+  contract: string;
+  isNew: boolean;
+  note: string;
+}
+
+export interface Trc20Deposit {
+  id: string;
+  tx_hash: string;
+  amount: number;
+  from_address: string;
+  to_address: string;
+  status: 'pending' | 'confirming' | 'confirmed' | 'failed';
+  confirmations: number;
+  credited: boolean;
+  detected_at: string;
+  confirmed_at: string | null;
+}
+
+export interface Trc20DepositStatus {
+  pending: Trc20Deposit[];
+  recentlyConfirmed: Trc20Deposit[];
+}
 
 export interface TonWallet {
   address: string;

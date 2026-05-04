@@ -12,7 +12,9 @@ import matchmakingRoutes from './routes/matchmaking';
 import adminRoutes from './routes/admin';
 import skinsRoutes from './routes/skins';
 import leaderboardRoutes from './routes/leaderboard';
+import trc20DepositRoutes from './routes/trc20Deposit';
 import tonDepositRoutes from './routes/tonDeposit';
+import { startTrc20Listener } from './services/trc20Listener';
 import { startTonListener } from './services/tonListener';
 import { startTonSweep } from './services/tonSweep';
 
@@ -61,6 +63,7 @@ app.use('/api/matchmaking', matchmakingRoutes);
 app.use('/api/skins', skinsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
+app.use('/api/trc20', trc20DepositRoutes);
 app.use('/api/ton', tonDepositRoutes);
 
 // Health check
@@ -97,6 +100,7 @@ app.get(['/', '/status'], (_req, res) => {
       <li><code>/api/auth</code> &mdash; Login &amp; user profile</li>
       <li><code>/api/wallet</code> &mdash; Balance &amp; transactions</li>
       <li><code>/api/payments</code> &mdash; Deposits (NOWPayments)</li>
+      <li><code>/api/trc20</code> &mdash; TRC20 USDT Auto-Deposits</li>
       <li><code>/api/ton</code> &mdash; TON USDT Auto-Deposits</li>
       <li><code>/api/withdrawals</code> &mdash; Withdraw requests</li>
       <li><code>/api/admin</code> &mdash; Admin metrics, revenue, users</li>
@@ -113,6 +117,7 @@ app.get(['/', '/status'], (_req, res) => {
 app.listen(PORT, () => {
   console.log(`[Backend] Server running on port ${PORT}`);
   // Start blockchain listeners (only if configured)
+  startTrc20Listener();
   startTonListener();
   startTonSweep();
 });
