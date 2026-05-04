@@ -35,9 +35,12 @@ function getTonClient(): TonClient {
   const endpoint = process.env.TON_NETWORK === 'testnet'
     ? 'https://testnet.toncenter.com/api/v2/jsonRPC'
     : 'https://toncenter.com/api/v2/jsonRPC';
+  // NOTE: TON_API_KEY is for tonapi.io — toncenter.com needs its own key.
+  // Get a free one from @toncenter Telegram bot, or omit for rate-limited access.
+  const apiKey = process.env.TONCENTER_API_KEY;
   return new TonClient({
     endpoint,
-    apiKey: process.env.TON_API_KEY,
+    ...(apiKey ? { apiKey } : {}),
   });
 }
 
