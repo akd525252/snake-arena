@@ -434,7 +434,29 @@ export interface AdminWithdrawal extends Withdrawal {
   users?: { email: string; username: string | null; avatar: string | null } | null;
 }
 
-export interface AdminDeposit extends PaymentInvoice {
+/**
+ * Unified admin-view deposit row. The backend merges NOWPayments invoices
+ * with every direct-chain deposit table into this shape so admins can see
+ * real on-chain deposits (TRC20/BEP20/TON/SOL) alongside abandoned checkout
+ * invoices in a single list.
+ *
+ * - `source` — which channel the deposit came through.
+ * - `credited = true` means money actually landed in the user's wallet.
+ *   This is the signal the UI uses to show a green "REAL" badge.
+ * - `tx_hash` — on-chain proof of payment. Populated for direct deposits
+ *   always; for NOWPayments only if the webhook delivered `payin_hash`.
+ * - `invoice_id` — only set for NOWPayments rows.
+ */
+export interface AdminDeposit {
+  id: string;
+  source: 'NOWPAYMENTS' | 'TRC20' | 'BEP20' | 'TON' | 'SOL';
+  user_id: string;
+  amount: number;
+  status: string;
+  credited: boolean;
+  tx_hash: string | null;
+  invoice_id: string | null;
+  created_at: string;
   users?: { email: string; username: string | null; avatar: string | null } | null;
 }
 

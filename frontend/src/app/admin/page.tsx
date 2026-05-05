@@ -285,24 +285,7 @@ export default function AdminDashboard() {
               {deposits.length === 0 ? (
                 <div className="text-center py-12 rpg-text-muted">No deposits yet</div>
               ) : (
-                deposits.map(d => (
-                  <div key={d.id} className="px-6 py-3 flex items-center gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm rpg-text">
-                        {d.users?.username || d.users?.email || 'Unknown'}
-                      </div>
-                      <div className="text-[11px] rpg-text-muted">{d.users?.email}</div>
-                      <div className="text-[10px] rpg-text-muted font-mono truncate">
-                        invoice: {d.invoice_id}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="rpg-text font-bold font-mono">${parseFloat(d.amount.toString()).toFixed(2)}</div>
-                      <StatusBadge status={d.status} />
-                      <div className="text-[10px] rpg-text-muted mt-0.5">{new Date(d.created_at).toLocaleString()}</div>
-                    </div>
-                  </div>
-                ))
+                deposits.map(d => <AdminDepositRow key={`${d.source}-${d.id}`} d={d} />)
               )}
             </div>
           </div>
@@ -519,6 +502,99 @@ function SourceBadge({ source }: { source: RevenueEvent['source'] }) {
     <span className={`px-2 py-1 rounded-md text-[10px] font-rpg-heading tracking-wider ${s.color}`}>
       {s.label}
     </span>
+  );
+}
+
+// Map each deposit source to a block-explorer URL + styled pill. Direct chain
+// deposits get a tx-hash link; NOWPayments has no useful per-invoice URL so we
+// just show the invoice id as text.
+const DEPOSIT_SOURCE_META: Record<AdminDeposit['source'], {
+  label: string;
+  color: string;
+  explorer: (hash: string) => string | null;
+}> = {
+  NOWPAYMENTS: {
+    label: 'INVOICE',
+    color: 'border border-[#5b3a8a] bg-[#1a0e2a] text-[#c388ff]',
+    explorer: h => (h ? `https://tronscan.org/#/transaction/${h}` : null), // best-effort; NP uses whichever chain user paid on
+  },
+  TRC20: {
+    label: 'TRC20',
+    color: 'border border-[#962323] bg-[#2a0e0e] rpg-crimson',
+    explorer: h => `https://tronscan.org/#/transaction/${h}`,
+  },
+  BEP20: {
+    label: 'BEP20',
+    color: 'border border-[#a86a3a] bg-[#3a2c1f] rpg-gold-bright',
+    explorer: h => `https://bscscan.com/tx/${h}`,
+  },
+  TON: {
+    label: 'TON',
+    color: 'border border-[#3a7abf] bg-[#0e1a2a] text-[#7cb8e8]',
+    explorer: h => `https://tonviewer.com/transaction/${h}`,
+  },
+  SOL: {
+    label: 'SOL',
+    color: 'border border-[#3a7a3a] bg-[#1c2c1c] text-[#7cd17c]',
+    explorer: h => `https://solscan.io/tx/${h}`,
+  },
+};
+
+function AdminDepositRow({ d }: { d: AdminDeposit }) {
+  const meta = DEPOSIT_SOURCE_META[d.source];
+  const explorer = d.tx_hash ? meta.explorer(d.tx_hash) : null;
+  // A deposit is "real money" when either the dedicated `credited` flag is
+  // set OR when the status is one of the terminal-success values AND there's
+  // a tx_hash we can point to as proof.
+  const isReal = d.credited;
+
+  return (
+    <div className="px-6 py-3 flex items-center gap-4">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={`px-2 py-0.5 rounded-md text-[10px] font-rpg-heading tracking-wider ${meta.color}`}>
+            {meta.label}
+          </span>
+          {isReal && (
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-rpg-heading tracking-wider border border-[#3a7a3a] bg-[#1c2c1c] text-[#7cd17c]">
+              REAL ✓
+            </span>
+          )}
+          <span className="text-sm rpg-text font-bold truncate">
+            {d.users?.username || d.users?.email || 'Unknown'}
+          </span>
+        </div>
+        <div className="text-[11px] rpg-text-muted truncate">{d.users?.email}</div>
+        <div className="text-[10px] rpg-text-muted font-mono truncate">
+          {d.source === 'NOWPAYMENTS' ? (
+            <>invoice: {d.invoice_id || '—'}{d.tx_hash ? ` · tx: ${d.tx_hash.slice(0, 16)}…` : ''}</>
+          ) : d.tx_hash ? (
+            <>
+              tx:{' '}
+              {explorer ? (
+                <a
+                  href={explorer}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:rpg-gold-bright"
+                >
+                  {d.tx_hash.slice(0, 20)}…{d.tx_hash.slice(-6)}
+                </a>
+              ) : (
+                <>{d.tx_hash.slice(0, 20)}…</>
+              )}
+            </>
+          ) : (
+            '—'
+          )}
+        </div>
+      </div>
+      <div className="text-right">
+        <div className="rpg-text font-bold font-mono">${d.amount.toFixed(2)}</div>
+        <StatusBadge status={d.status} />
+        <div className="text-[10px] rpg-text-muted mt-0.5">{new Date(d.created_at).toLocaleString()}</div>
+      </div>
+    </div>
   );
 }
 

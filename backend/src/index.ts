@@ -21,6 +21,7 @@ import { startTonListener } from './services/tonListener';
 import { startTonSweep } from './services/tonSweep';
 import { startBep20Listener } from './services/bep20Listener';
 // import { startSolanaListener } from './services/solanaListener'; // Coming soon
+import { startInvoiceExpiry } from './services/invoiceExpiry';
 
 dotenv.config();
 
@@ -130,6 +131,9 @@ app.listen(PORT, () => {
   startTonSweep();
   startBep20Listener();
   // startSolanaListener(); // Coming soon
+  // Auto-expire NOWPayments invoices older than 24h that never got paid,
+  // so the admin panel stays clean of abandoned checkouts.
+  startInvoiceExpiry();
 });
 
 export default app;
