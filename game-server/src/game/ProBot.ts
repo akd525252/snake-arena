@@ -131,13 +131,13 @@ export function createProBot(room: GameRoom, betAmount: number): Player {
 // Pro bots NEVER make intentional mistakes. They are fast, accurate, and lethal.
 // ============================================================================
 
-const PRO_HUNT_RANGE = 500;          // scan distance for humans
-const PRO_KILL_RANGE = 180;          // close enough to commit to kill angle
-const PRO_BOOST_KILL_RANGE = 120;    // boost to finish the kill
-const PRO_BLOCK_LOOKAHEAD = 90;      // cutoff prediction distance
-const PRO_FORWARD_THREAT_RANGE = 80;
-const PRO_WALL_MARGIN = 90;          // extra margin from wall
-const PRO_BODY_AVOID_RANGE = 55;
+const PRO_HUNT_RANGE = 600;          // scan distance for humans (wider — be aware of threats earlier)
+const PRO_BOOST_KILL_RANGE = 300;    // pre-emptively boost to close the gap (was 120 — way too passive)
+const PRO_BOOST_COMMIT_RANGE = 140;  // guaranteed-kill range: boost through anything, no back-off
+const PRO_BLOCK_LOOKAHEAD = 180;     // cutoff prediction distance — ~3s of movement
+const PRO_FORWARD_THREAT_RANGE = 65; // tighter — bot should only avoid imminent collisions
+const PRO_WALL_MARGIN = 70;          // smaller margin — willing to get closer to wall for kills
+const PRO_BODY_AVOID_RANGE = 40;     // tighter — commit harder to attacks
 
 // Bubble AI tuning
 const PRO_BUBBLE_SEEK_RANGE = 700;   // notice bubbles anywhere reasonably close
@@ -193,12 +193,20 @@ function angleToward(from: Position, to: Position): number {
   return Math.atan2(to.y - from.y, to.x - from.x);
 }
 
-/** Predict where a snake will be after `lookahead` units of travel. */
+/**
+ * Predict where a snake will be after `lookahead` units of travel.
+ * Scales the lookahead by the target's current speed so that a boosted
+ * (2x) or speed-bubble-boosted (3x) enemy gets led proportionally further.
+ * This fixes the common case where the bot undershoots a fleeing boosted
+ * player and never manages the intercept.
+ */
 function predictPosition(p: Player, lookahead: number): Position {
   const head = p.snake.segments[0];
+  const speedRatio = p.snake.speed / CONFIG.SNAKE_SPEED; // 1 normal, 2 boost, 3 speed-bubble
+  const lead = lookahead * speedRatio;
   return {
-    x: head.x + Math.cos(p.snake.angle) * lookahead,
-    y: head.y + Math.sin(p.snake.angle) * lookahead,
+    x: head.x + Math.cos(p.snake.angle) * lead,
+    y: head.y + Math.sin(p.snake.angle) * lead,
   };
 }
 
@@ -395,16 +403,6 @@ function botHasEffect(bot: Player, effect: 'speed' | 'magnet' | 'ghost'): boolea
   }
 }
 
-/** Total score of all humans (used to decide if bot is ahead/behind). */
-function scoreLead(bot: Player, room: GameRoom): number {
-  let maxHuman = 0;
-  for (const [, p] of room.players) {
-    if (p.id === bot.id || p.isBot || !p.snake.alive) continue;
-    maxHuman = Math.max(maxHuman, p.snake.score);
-  }
-  return bot.snake.score - maxHuman; // +ve = ahead, -ve = behind
-}
-
 /**
  * Try to boost THIS tick. Centralized so every code path has consistent
  * affordability and cooldown checks. Returns true if boost is active after call.
@@ -458,7 +456,6 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
   // ─── Self-state snapshot (used by multiple branches) ─────────────────
   const iHaveGhost = botHasEffect(bot, 'ghost');
   const iHaveSpeedBubble = botHasEffect(bot, 'speed');
-  const lead = scoreLead(bot, room);
 
   // ──────────────────────────────────────────────────────────────────────────
   // PRIORITY 0: Wall / zone avoidance — always runs first
@@ -473,8 +470,17 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
 
   // ──────────────────────────────────────────────────────────────────────────
   // PRIORITY 1: Imminent body threat — but ignore bodies if I'm ghost
+  // ── OR if I'm already committed to a kill. A pro player doesn't back
+  //    off when the victim's head is 100px away; they ram through.
   // ──────────────────────────────────────────────────────────────────────────
-  if (!iHaveGhost) {
+  // Peek the nearest human now so the kill-commit override can skip body
+  // avoidance when we're in guaranteed-kill range.
+  const nearestHumanForCommit = findNearestHuman(bot, room);
+  const commitToKill =
+    nearestHumanForCommit &&
+    dist(head, nearestHumanForCommit.snake.segments[0]) < PRO_BOOST_COMMIT_RANGE;
+
+  if (!iHaveGhost && !commitToKill) {
     const threat = bodyDirectlyAhead(bot, room);
     if (threat) {
       bot.snake.targetAngle = threat.angleAway;
@@ -503,62 +509,78 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // PRIORITY 3: Hunt humans — effect-aware
+  // PRIORITY 3: Hunt humans — effect-aware, ruthlessly aggressive
+  // Key upgrades over previous version:
+  //   - Pre-emptive boost at 300px (not 120) — closes the gap before human reacts
+  //   - Kill-commit zone at 140px: ignore body threats, ram through for the kill
+  //   - Speed-aware lead: boosted humans get a proportionally longer cutoff
+  //   - Removed the "I'm ahead so play safe" branch — user wants kills, period
+  //   - Hunt boost cooldown is a tight 1200ms (was 2200ms) — near-continuous pressure
   // ──────────────────────────────────────────────────────────────────────────
-  const human = findNearestHuman(bot, room);
+  const human = nearestHumanForCommit; // reuse the one we already computed above
   if (human) {
     const oh = human.snake.segments[0];
     const distToHuman = dist(head, oh);
     const risk = humanRiskTier(human);
 
-    // Avoid humans who have a speed boost unless I also have speed or ghost.
-    // Boosted enemies can close the gap fast and kill us, so keep distance.
-    const tooDangerousToHunt = risk === 'speed' && !iHaveSpeedBubble && !iHaveGhost;
+    // Only back off from speed-boosted humans if I have neither speed nor ghost
+    // AND I'm already outside committed-kill range. Inside commit range the
+    // human has no time to turn and punish me, so ram through.
+    const tooDangerousToHunt =
+      risk === 'speed' && !iHaveSpeedBubble && !iHaveGhost &&
+      distToHuman > PRO_BOOST_COMMIT_RANGE;
 
-    // Lock onto a target for consistent harassment (~6s at 30hz)
+    // Lock onto a target for consistent harassment (~1.5s at 20tps)
     if (state.targetCoolDown <= 0 || state.targetVictimId !== human.id) {
       state.targetVictimId = human.id;
       state.targetCoolDown = 30;
     }
     state.targetCoolDown--;
 
-    // Hunt if within range AND it's not too dangerous
     if (distToHuman < PRO_HUNT_RANGE && !tooDangerousToHunt) {
-      // Score-aware: if I'm way ahead, only commit to a clean kill.
-      // Clean kill = I can boost and reach them before they escape.
-      const bigLead = lead > 5; // I'm >$5 ahead — play safe
-      if (bigLead && distToHuman > PRO_BOOST_KILL_RANGE) {
-        // Close but not close enough to guarantee kill — farm instead
-        // Fall through to coin/food logic below.
+      // Predict cutoff. Lookahead scales with distance so short-range hunts
+      // don't wildly overshoot past the target's head.
+      const lookahead = Math.min(PRO_BLOCK_LOOKAHEAD, Math.max(40, distToHuman * 0.9));
+      const cutoff = predictPosition(human, lookahead);
+      const cutoffSafe = dist(cutoff, { x: cx, y: cy }) < room.arenaRadius - PRO_WALL_MARGIN;
+
+      // Aim selection
+      if (commitToKill || iHaveGhost) {
+        // Inside kill zone or ghost: go straight at the head for a head-on KO.
+        // This is the classic slither.io assassination angle.
+        bot.snake.targetAngle = angleToward(head, oh);
+      } else if (cutoffSafe) {
+        bot.snake.targetAngle = angleToward(head, cutoff);
       } else {
-        // Predict victim's future position for cutoff
-        const lookahead = Math.min(PRO_BLOCK_LOOKAHEAD, distToHuman * 0.75);
-        const cutoff = predictPosition(human, lookahead);
-        const cutoffSafe = dist(cutoff, { x: cx, y: cy }) < room.arenaRadius - PRO_WALL_MARGIN;
-
-        if (iHaveGhost) {
-          // Ghost mode: charge straight at the head — their body no longer matters.
-          // Aim for head-to-head (my head, their head) to kill them instantly.
-          bot.snake.targetAngle = angleToward(head, oh);
-        } else if (cutoffSafe) {
-          bot.snake.targetAngle = angleToward(head, cutoff);
-        } else {
-          bot.snake.targetAngle = angleToward(head, oh);
-        }
-
-        // Boost decision — closer kill range if I have speed bubble (3x speed)
-        const killRange = iHaveSpeedBubble ? 160 : PRO_BOOST_KILL_RANGE;
-        const wantsBoost = distToHuman < killRange && (iHaveGhost || cutoffSafe);
-        if (wantsBoost) {
-          tryBoost(bot, state, 2200);
-        } else {
-          stopBoost(bot, state);
-        }
-
-        state.currentGoal = 'hunt';
-        state.goalCooldown = 3;
-        return;
+        // Cutoff point is near the wall — just chase the head directly.
+        bot.snake.targetAngle = angleToward(head, oh);
       }
+
+      // BOOST decision — much more aggressive than before
+      // 1. Inside kill-commit range → always boost (chase cooldown reset allowed)
+      // 2. Inside pre-emptive boost range → boost if cutoff is safe
+      // 3. Speed-bubble active → extend boost range by 40% (3x speed covers more ground)
+      const effectiveBoostRange = iHaveSpeedBubble
+        ? PRO_BOOST_KILL_RANGE * 1.4
+        : PRO_BOOST_KILL_RANGE;
+
+      const wantsBoost =
+        (commitToKill) ||
+        (iHaveGhost && distToHuman < PRO_HUNT_RANGE * 0.7) ||
+        (distToHuman < effectiveBoostRange && cutoffSafe);
+
+      if (wantsBoost) {
+        // Tight 1.2s cooldown during hunts — near-continuous boost pressure.
+        // Ghost mode → even tighter (0.8s) so the bot chains kills.
+        const cd = iHaveGhost ? 800 : 1200;
+        tryBoost(bot, state, cd);
+      } else {
+        stopBoost(bot, state);
+      }
+
+      state.currentGoal = 'hunt';
+      state.goalCooldown = 3;
+      return;
     }
   }
 

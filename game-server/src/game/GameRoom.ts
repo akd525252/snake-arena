@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { CONFIG } from '../config';
+import { CONFIG, rollCoinValue } from '../config';
 import { creditWinnings, recordRevenue } from '../db';
 import {
   GameRoom,
@@ -630,7 +630,7 @@ function spawnCoin(room: GameRoom): void {
       y: room.arenaCenterY + Math.sin(a) * r,
     },
     isTrap: false,
-    value: CONFIG.COIN_VALUE,
+    value: rollCoinValue(), // $0.05 or $0.10 per spec
   };
 
   room.coins.push(coin);

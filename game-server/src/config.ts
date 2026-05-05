@@ -19,10 +19,15 @@ export const CONFIG = {
   // Coin values (USDT). Field coins are picked up from the arena floor;
   // death coins drop when a snake dies. Field is the lower-value currency,
   // death is the high-stakes reward for kills.
-  COIN_VALUE: 0.50,        // field coin worth $0.50 (was $0.10)
+  //
+  // Field coins now roll a random low denomination per-spawn so the total
+  // match payout stays small (~$0.30 expected value over a 60s match).
+  // See `rollCoinValue()` for the weighted roll.
+  COIN_VALUES: [0.05, 0.10] as const, // possible denominations
+  COIN_VALUE_WEIGHTS: [0.6, 0.4] as const, // favor $0.05 slightly (avg ≈ $0.07)
   DEATH_COIN_VALUE: 0.90,  // each death-drop coin is worth $0.90
-  COIN_SPAWN_INTERVAL: 15000, // ms — very slow spawn so coins are a rare treasure
-  MAX_COINS: 5,             // low cap — coins should feel scarce
+  COIN_SPAWN_INTERVAL: 18000, // ms — slower spawn; fewer coins per match
+  MAX_COINS: 3,             // very low cap — coins feel rare & contested
   INITIAL_COINS: 2,         // minimal starting coins
 
   // Food (cosmetic, dense, grows snake, no money)
@@ -83,3 +88,22 @@ export const CONFIG = {
   BUBBLE_EXPLOSION_RADIUS: 150,             // scatter radius
   BUBBLE_GHOST_DURATION_MS: 8000,           // 8 seconds
 };
+
+/**
+ * Roll a random field-coin value using the weighted distribution from
+ * CONFIG.COIN_VALUES + CONFIG.COIN_VALUE_WEIGHTS. Keeps total match payout
+ * low (~$0.30 expected across a 60s match at current spawn rate).
+ */
+export function rollCoinValue(): number {
+  const vals = CONFIG.COIN_VALUES;
+  const weights = CONFIG.COIN_VALUE_WEIGHTS;
+  // Cumulative-weight roll
+  let sum = 0;
+  for (const w of weights) sum += w;
+  let r = Math.random() * sum;
+  for (let i = 0; i < vals.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return vals[i];
+  }
+  return vals[vals.length - 1];
+}

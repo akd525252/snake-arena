@@ -55,25 +55,29 @@ export default function LanguageSwitcher({ position = 'fixed' }: { position?: 'f
         </svg>
       </button>
       {open && (
-        <div
-          role="menu"
-          className="absolute right-0 mt-2 w-44 rpg-panel py-1 shadow-xl"
-        >
-          {LANGUAGES.map(l => (
-            <button
-              key={l.code}
-              role="menuitem"
-              type="button"
-              onClick={() => handlePick(l.code)}
-              className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-[#3a2c1f] transition-colors ${
-                l.code === lang ? 'rpg-gold-bright font-bold' : 'rpg-text'
-              }`}
-            >
-              <span aria-hidden className="text-base">{l.flag}</span>
-              <span className="flex-1">{l.nativeName}</span>
-              {l.code === lang && <span aria-hidden>✓</span>}
-            </button>
-          ))}
+        // The `.rpg-panel` helper class sets `position: relative` in globals.css,
+        // which silently overrides Tailwind's `.absolute` utility. If we put
+        // rpg-panel directly on the dropdown, it drops into normal flow and
+        // makes the entire nav taller. Fix: outer wrapper owns the absolute
+        // positioning, inner element handles the themed panel chrome.
+        <div className="absolute right-0 mt-2 w-44 z-[80]">
+          <div role="menu" className="rpg-panel py-1 shadow-xl">
+            {LANGUAGES.map(l => (
+              <button
+                key={l.code}
+                role="menuitem"
+                type="button"
+                onClick={() => handlePick(l.code)}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-[#3a2c1f] transition-colors ${
+                  l.code === lang ? 'rpg-gold-bright font-bold' : 'rpg-text'
+                }`}
+              >
+                <span aria-hidden className="text-base">{l.flag}</span>
+                <span className="flex-1">{l.nativeName}</span>
+                {l.code === lang && <span aria-hidden>✓</span>}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>
