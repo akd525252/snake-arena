@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import WebSocket from 'ws';
-import { Player, Position, GameRoom, Coin, Food } from '../types';
+import { Player, Position, GameRoom, Coin, Food, Bubble } from '../types';
 import { CONFIG } from '../config';
 
 // ============================================================================
@@ -104,25 +104,49 @@ export function createProBot(room: GameRoom, betAmount: number): Player {
 }
 
 // ============================================================================
-// ADVANCED PRO BOT AI
+// ADVANCED PRO BOT AI (v2 — bubble-aware, coin-racing, effect-aware)
 //
-// Behavior priorities (in order):
-//   1. Wall avoidance (don't suicide on the boundary)
-//   2. Body avoidance (don't run into other snakes' bodies)
-//   3. AGGRESSIVE: cut off / block the nearest human player to kill them
-//   4. Hunt humans down — boost in for the kill when in close range
-//   5. Pick up coins on the way (low priority — primary goal is killing)
+// Priority order (decides target direction for the tick):
+//   0. Wall / zone avoidance  (never suicide on the boundary)
+//   1. Imminent body threat   (turn out of the way if about to hit a snake)
+//   2. BUBBLE seeking         (power-ups >>> coins if reachable)
+//   3. Ghost-mode hunting     (if I have ghost: go straight through bodies)
+//   4. Coin racing            (deny humans coins — get there first)
+//   5. Human hunting          (cut-off / head-on based on effects)
+//   6. Food farming           (grow segments when nothing else to do)
+//   7. Wander                 (fallback — stay near the center)
+//
+// Score-aware aggression modulates the above:
+//   - When ahead: prefer safe farming & coin racing, only commit to a kill
+//     when the kill is clean (boost from behind with short ETA).
+//   - When behind: hunt harder, take more risks, chase bubbles aggressively.
+//
+// Effect-aware behavior:
+//   - Self has GHOST     → hunt directly through bodies, fearless
+//   - Self has SPEED     → boost-chase victims (closer kill range)
+//   - Self has MAGNET    → prefer areas with dense food/coins
+//   - Enemy has GHOST    → avoid them (can pass through my body, but can kill me head-on)
+//   - Enemy has SPEED    → keep distance, let their boost expire
 //
 // Pro bots NEVER make intentional mistakes. They are fast, accurate, and lethal.
 // ============================================================================
 
-const PRO_HUNT_RANGE = 500;          // much wider than demo bots
-const PRO_KILL_RANGE = 180;          // when this close, attack mode
-const PRO_BOOST_KILL_RANGE = 120;    // boost in when really close
-const PRO_BLOCK_LOOKAHEAD = 90;      // how far ahead to predict victim's path
+const PRO_HUNT_RANGE = 500;          // scan distance for humans
+const PRO_KILL_RANGE = 180;          // close enough to commit to kill angle
+const PRO_BOOST_KILL_RANGE = 120;    // boost to finish the kill
+const PRO_BLOCK_LOOKAHEAD = 90;      // cutoff prediction distance
 const PRO_FORWARD_THREAT_RANGE = 80;
-const PRO_WALL_MARGIN = 90;          // extra safe margin from wall (was 70)
+const PRO_WALL_MARGIN = 90;          // extra margin from wall
 const PRO_BODY_AVOID_RANGE = 55;
+
+// Bubble AI tuning
+const PRO_BUBBLE_SEEK_RANGE = 700;   // notice bubbles anywhere reasonably close
+const PRO_BUBBLE_BOOST_RANGE = 250;  // boost when we're close enough to beat humans
+const PRO_BUBBLE_CONTEST_ADVANTAGE = 40; // px — we go for it if we're this much closer than nearest human
+
+// Coin racing tuning
+const PRO_COIN_RACE_RANGE = 350;     // look this far for contestable coins
+const PRO_COIN_DENY_RANGE = 180;     // if a human is within this range of the coin, try to grab first
 
 interface ProBotState {
   lastBoostTime: number;
@@ -131,6 +155,10 @@ interface ProBotState {
   boostActiveSince: number; // timestamp when boost started (0 if not boosting)
   foodWanderTarget: Position | null;
   foodWanderCooldown: number;
+  // Current macro goal, used for lightweight hysteresis so the bot doesn't
+  // flip-flop between hunt/coin every single tick.
+  currentGoal: 'bubble' | 'hunt' | 'coin' | 'food' | 'wander' | 'defend';
+  goalCooldown: number;   // ticks until goal can change freely
 }
 
 const proBotStates = new Map<string, ProBotState>();
@@ -138,7 +166,16 @@ const proBotStates = new Map<string, ProBotState>();
 function getState(botId: string): ProBotState {
   let s = proBotStates.get(botId);
   if (!s) {
-    s = { lastBoostTime: 0, targetVictimId: null, targetCoolDown: 0, boostActiveSince: 0, foodWanderTarget: null, foodWanderCooldown: 0 };
+    s = {
+      lastBoostTime: 0,
+      targetVictimId: null,
+      targetCoolDown: 0,
+      boostActiveSince: 0,
+      foodWanderTarget: null,
+      foodWanderCooldown: 0,
+      currentGoal: 'wander',
+      goalCooldown: 0,
+    };
     proBotStates.set(botId, s);
   }
   return s;
@@ -262,8 +299,148 @@ function nearestFood(bot: Player, room: GameRoom): Food | null {
   return best;
 }
 
+// ─── NEW: bubble & effect & coin-race helpers ───────────────────────────────
+
+/**
+ * Decide whether the bot should chase the active bubble this tick.
+ * We only commit if:
+ *   - the bubble is reasonably close
+ *   - OR we're meaningfully closer to it than the nearest human
+ * Returns the bubble position or null.
+ */
+function shouldSeekBubble(bot: Player, room: GameRoom): Bubble | null {
+  const bubble = room.bubble;
+  if (!bubble) return null;
+  const head = bot.snake.segments[0];
+  if (!head) return null;
+  const myDist = dist(head, bubble.position);
+  if (myDist > PRO_BUBBLE_SEEK_RANGE) return null;
+
+  // Find nearest human's distance to the bubble — we want to beat them there
+  let humanDist = Infinity;
+  for (const [, p] of room.players) {
+    if (p.id === bot.id || p.isBot || !p.snake.alive) continue;
+    const h = p.snake.segments[0];
+    if (!h) continue;
+    humanDist = Math.min(humanDist, dist(h, bubble.position));
+  }
+  // If we're closer OR comparable, go for it. Bubble > most other goals.
+  const humanAdvantage = humanDist - myDist;
+  const weCanWin = humanDist === Infinity || humanAdvantage > -PRO_BUBBLE_CONTEST_ADVANTAGE;
+  return weCanWin ? bubble : null;
+}
+
+/**
+ * Decide whether the bot should race a human to a nearby coin.
+ * Returns a coin worth contesting, or null if none.
+ * Only considers non-trap coins we can plausibly get before the human does.
+ */
+function findContestableCoin(bot: Player, room: GameRoom): Coin | null {
+  const head = bot.snake.segments[0];
+  if (!head) return null;
+
+  // Pre-compute alive humans for speed
+  const humans: Player[] = [];
+  for (const [, p] of room.players) {
+    if (p.id === bot.id || p.isBot || !p.snake.alive) continue;
+    humans.push(p);
+  }
+
+  let best: Coin | null = null;
+  let bestScore = -Infinity;
+  for (const coin of room.coins) {
+    if (coin.isTrap && coin.placedBy !== bot.id) continue;
+    const myD = dist(head, coin.position);
+    if (myD > PRO_COIN_RACE_RANGE) continue;
+
+    // Find nearest human distance to this coin
+    let humanD = Infinity;
+    for (const h of humans) {
+      const hh = h.snake.segments[0];
+      if (!hh) continue;
+      humanD = Math.min(humanD, dist(hh, coin.position));
+    }
+
+    // If no human is close, still grab it but de-prioritize vs contested ones
+    const contested = humanD < PRO_COIN_DENY_RANGE;
+    // Score = coin value / my distance, with a big bonus when contested
+    // (we want to DENY the human) and a penalty if they'd beat us.
+    const winsRace = myD < humanD - 10; // 10px fudge factor
+    if (contested && !winsRace) continue; // can't deny it, skip
+    const denialBonus = contested && winsRace ? 5 : 1;
+    const score = (coin.value * denialBonus) / Math.max(20, myD);
+    if (score > bestScore) {
+      bestScore = score;
+      best = coin;
+    }
+  }
+  return best;
+}
+
+/** Return "risk tier" for a human based on active bubble effects. */
+function humanRiskTier(h: Player): 'ghost' | 'speed' | 'normal' {
+  const now = Date.now();
+  if (h.snake.ghostEndTime > now) return 'ghost';
+  if (h.snake.speedBoostEndTime > now) return 'speed';
+  return 'normal';
+}
+
+/** True if bot currently has this effect active. */
+function botHasEffect(bot: Player, effect: 'speed' | 'magnet' | 'ghost'): boolean {
+  const now = Date.now();
+  switch (effect) {
+    case 'speed':  return bot.snake.speedBoostEndTime > now;
+    case 'magnet': return bot.snake.magnetEndTime > now;
+    case 'ghost':  return bot.snake.ghostEndTime > now;
+  }
+}
+
+/** Total score of all humans (used to decide if bot is ahead/behind). */
+function scoreLead(bot: Player, room: GameRoom): number {
+  let maxHuman = 0;
+  for (const [, p] of room.players) {
+    if (p.id === bot.id || p.isBot || !p.snake.alive) continue;
+    maxHuman = Math.max(maxHuman, p.snake.score);
+  }
+  return bot.snake.score - maxHuman; // +ve = ahead, -ve = behind
+}
+
+/**
+ * Try to boost THIS tick. Centralized so every code path has consistent
+ * affordability and cooldown checks. Returns true if boost is active after call.
+ */
+function tryBoost(bot: Player, state: ProBotState, cooldownMs = 2500): boolean {
+  const now = Date.now();
+  const canAfford = bot.snake.score >= bot.betAmount + 0.25;
+  if (now - state.lastBoostTime < cooldownMs) {
+    // If we're already boosting mid-attack, refresh the end time so we don't drop mid-tick
+    if (bot.snake.boosted) {
+      bot.snake.boostEndTime = now + 2000;
+      return true;
+    }
+    return false;
+  }
+  if (!canAfford) return false;
+  if (!bot.snake.boosted) {
+    bot.snake.boosted = true;
+    bot.snake.speed = CONFIG.SNAKE_BOOST_SPEED;
+    state.boostActiveSince = now;
+    state.lastBoostTime = now;
+  }
+  bot.snake.boostEndTime = now + 2000;
+  return true;
+}
+
+function stopBoost(bot: Player, state: ProBotState): void {
+  if (bot.snake.boosted) {
+    bot.snake.boosted = false;
+    bot.snake.speed = CONFIG.SNAKE_SPEED;
+    state.boostActiveSince = 0;
+  }
+}
+
 // ============================================================================
-// MAIN UPDATE FUNCTION
+// MAIN UPDATE FUNCTION — full priority pipeline
 // ============================================================================
 
 export function updateProBotDirection(bot: Player, room: GameRoom): void {
@@ -275,145 +452,187 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
   const cx = room.arenaCenterX;
   const cy = room.arenaCenterY;
 
+  // Decrement goal cooldown every tick
+  if (state.goalCooldown > 0) state.goalCooldown--;
+
+  // ─── Self-state snapshot (used by multiple branches) ─────────────────
+  const iHaveGhost = botHasEffect(bot, 'ghost');
+  const iHaveSpeedBubble = botHasEffect(bot, 'speed');
+  const lead = scoreLead(bot, room);
+
   // ──────────────────────────────────────────────────────────────────────────
-  // PRIORITY 1: Wall / zone avoidance
+  // PRIORITY 0: Wall / zone avoidance — always runs first
   // ──────────────────────────────────────────────────────────────────────────
   const distToCenter = dist(head, { x: cx, y: cy });
   if (distToCenter > room.arenaRadius - PRO_WALL_MARGIN) {
-    // Steer toward center aggressively when near edge
     bot.snake.targetAngle = angleToward(head, { x: cx, y: cy });
-    // Cancel boost if we accidentally boosted toward the wall
-    if (bot.snake.boosted) {
-      bot.snake.boosted = false;
-      bot.snake.speed = CONFIG.SNAKE_SPEED;
-      state.boostActiveSince = 0;
-    }
+    stopBoost(bot, state);
+    state.currentGoal = 'defend';
     return;
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // PRIORITY 2: Body collision avoidance (don't suicide)
+  // PRIORITY 1: Imminent body threat — but ignore bodies if I'm ghost
   // ──────────────────────────────────────────────────────────────────────────
-  const threat = bodyDirectlyAhead(bot, room);
-  if (threat) {
-    bot.snake.targetAngle = threat.angleAway;
-    return;
-  }
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // PRIORITY 3 & 4: AGGRESSIVE HUMAN HUNTING
-  // ──────────────────────────────────────────────────────────────────────────
-  const human = findNearestHuman(bot, room);
-
-  if (human) {
-    const oh = human.snake.segments[0];
-    const distToHuman = dist(head, oh);
-
-    // Lock onto a target for a few seconds at a time (consistent harassment)
-    if (state.targetCoolDown <= 0 || state.targetVictimId !== human.id) {
-      state.targetVictimId = human.id;
-      state.targetCoolDown = 30; // ~6 seconds at 200ms ticks
-    }
-    state.targetCoolDown--;
-
-    if (distToHuman < PRO_HUNT_RANGE) {
-      // ── Engage ────────────────────────────────────────────────────────────
-
-      // Predict victim's path. Cut them off!
-      const lookahead = Math.min(PRO_BLOCK_LOOKAHEAD, distToHuman * 0.7);
-      const cutoff = predictPosition(human, lookahead);
-      const angleToCutoff = angleToward(head, cutoff);
-
-      // Check that the cutoff point is safe (not into our own body or wall)
-      const cutoffSafe =
-        dist(cutoff, { x: cx, y: cy }) < room.arenaRadius - PRO_WALL_MARGIN;
-
-      if (cutoffSafe) {
-        bot.snake.targetAngle = angleToCutoff;
-      } else {
-        // Direct chase if cutoff would hit wall
-        bot.snake.targetAngle = angleToward(head, oh);
-      }
-
-      // BOOST decision (hold-to-boost style: activate/deactivate each tick)
-      const now = Date.now();
-      const boostCooldown = 2500;
-      const canAffordBoost = bot.snake.score >= bot.betAmount + 0.25; // keep a buffer
-      const wantsBoost =
-        distToHuman < PRO_BOOST_KILL_RANGE &&
-        now - state.lastBoostTime > boostCooldown &&
-        canAffordBoost &&
-        cutoffSafe; // only boost if cutoff is safe
-
-      if (wantsBoost) {
-        if (!bot.snake.boosted) {
-          bot.snake.boosted = true;
-          bot.snake.speed = CONFIG.SNAKE_BOOST_SPEED;
-          // Bots use timed boost (gameLoop cancels when boostEndTime expires).
-          // Refresh on every tick we still want to boost so it feels continuous.
-          bot.snake.boostEndTime = now + 2000;
-          state.boostActiveSince = now;
-          state.lastBoostTime = now;
-        } else {
-          // Already boosting — keep refreshing the expiry while we still want to.
-          bot.snake.boostEndTime = now + 2000;
-        }
-      } else {
-        if (bot.snake.boosted) {
-          bot.snake.boosted = false;
-          bot.snake.speed = CONFIG.SNAKE_SPEED;
-          state.boostActiveSince = 0;
-        }
-      }
-
+  if (!iHaveGhost) {
+    const threat = bodyDirectlyAhead(bot, room);
+    if (threat) {
+      bot.snake.targetAngle = threat.angleAway;
+      stopBoost(bot, state);
+      state.currentGoal = 'defend';
       return;
     }
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // PRIORITY 5: Coin & food farming (when no humans in range)
+  // PRIORITY 2: Bubble seeking — power-ups change the game
   // ──────────────────────────────────────────────────────────────────────────
-  // Don't pick up coins blindly — avoid going through other snakes' bodies
-  if (bodyVeryClose(bot, room)) {
-    // Just keep moving toward center safely
-    bot.snake.targetAngle = angleToward(head, { x: cx, y: cy });
-    // Make sure boost is off when evading
-    if (bot.snake.boosted) {
-      bot.snake.boosted = false;
-      bot.snake.speed = CONFIG.SNAKE_SPEED;
-      state.boostActiveSince = 0;
+  const bubble = shouldSeekBubble(bot, room);
+  if (bubble) {
+    bot.snake.targetAngle = angleToward(head, bubble.position);
+    const d = dist(head, bubble.position);
+    // Boost when close, to snipe it from humans
+    if (d < PRO_BUBBLE_BOOST_RANGE) {
+      tryBoost(bot, state, 1800); // slightly shorter cooldown when bubble is contested
+    } else {
+      stopBoost(bot, state);
     }
+    state.currentGoal = 'bubble';
+    state.goalCooldown = 4;
     return;
   }
 
-  // Stop boost if we were hunting and lost the target
-  if (bot.snake.boosted) {
-    bot.snake.boosted = false;
-    bot.snake.speed = CONFIG.SNAKE_SPEED;
-    state.boostActiveSince = 0;
+  // ──────────────────────────────────────────────────────────────────────────
+  // PRIORITY 3: Hunt humans — effect-aware
+  // ──────────────────────────────────────────────────────────────────────────
+  const human = findNearestHuman(bot, room);
+  if (human) {
+    const oh = human.snake.segments[0];
+    const distToHuman = dist(head, oh);
+    const risk = humanRiskTier(human);
+
+    // Avoid humans who have a speed boost unless I also have speed or ghost.
+    // Boosted enemies can close the gap fast and kill us, so keep distance.
+    const tooDangerousToHunt = risk === 'speed' && !iHaveSpeedBubble && !iHaveGhost;
+
+    // Lock onto a target for consistent harassment (~6s at 30hz)
+    if (state.targetCoolDown <= 0 || state.targetVictimId !== human.id) {
+      state.targetVictimId = human.id;
+      state.targetCoolDown = 30;
+    }
+    state.targetCoolDown--;
+
+    // Hunt if within range AND it's not too dangerous
+    if (distToHuman < PRO_HUNT_RANGE && !tooDangerousToHunt) {
+      // Score-aware: if I'm way ahead, only commit to a clean kill.
+      // Clean kill = I can boost and reach them before they escape.
+      const bigLead = lead > 5; // I'm >$5 ahead — play safe
+      if (bigLead && distToHuman > PRO_BOOST_KILL_RANGE) {
+        // Close but not close enough to guarantee kill — farm instead
+        // Fall through to coin/food logic below.
+      } else {
+        // Predict victim's future position for cutoff
+        const lookahead = Math.min(PRO_BLOCK_LOOKAHEAD, distToHuman * 0.75);
+        const cutoff = predictPosition(human, lookahead);
+        const cutoffSafe = dist(cutoff, { x: cx, y: cy }) < room.arenaRadius - PRO_WALL_MARGIN;
+
+        if (iHaveGhost) {
+          // Ghost mode: charge straight at the head — their body no longer matters.
+          // Aim for head-to-head (my head, their head) to kill them instantly.
+          bot.snake.targetAngle = angleToward(head, oh);
+        } else if (cutoffSafe) {
+          bot.snake.targetAngle = angleToward(head, cutoff);
+        } else {
+          bot.snake.targetAngle = angleToward(head, oh);
+        }
+
+        // Boost decision — closer kill range if I have speed bubble (3x speed)
+        const killRange = iHaveSpeedBubble ? 160 : PRO_BOOST_KILL_RANGE;
+        const wantsBoost = distToHuman < killRange && (iHaveGhost || cutoffSafe);
+        if (wantsBoost) {
+          tryBoost(bot, state, 2200);
+        } else {
+          stopBoost(bot, state);
+        }
+
+        state.currentGoal = 'hunt';
+        state.goalCooldown = 3;
+        return;
+      }
+    }
   }
 
-  // Prefer coins (money) over food, but food is great for growing
+  // ──────────────────────────────────────────────────────────────────────────
+  // PRIORITY 4: Coin racing — deny humans money
+  // ──────────────────────────────────────────────────────────────────────────
+  // Don't pick up through bodies unless ghost
+  if (!iHaveGhost && bodyVeryClose(bot, room)) {
+    bot.snake.targetAngle = angleToward(head, { x: cx, y: cy });
+    stopBoost(bot, state);
+    state.currentGoal = 'defend';
+    return;
+  }
+
+  const contestedCoin = findContestableCoin(bot, room);
+  if (contestedCoin) {
+    bot.snake.targetAngle = angleToward(head, contestedCoin.position);
+    // Boost briefly if racing a human AND we can afford it
+    const humanNear = room.coins.length > 0 && isHumanNearCoin(contestedCoin, room);
+    if (humanNear) {
+      tryBoost(bot, state, 3000);
+    } else {
+      stopBoost(bot, state);
+    }
+    state.currentGoal = 'coin';
+    state.goalCooldown = 3;
+    return;
+  }
+
+  // No humans & no contestable coins — stop any stale boost
+  stopBoost(bot, state);
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // PRIORITY 5: Nearest safe coin (non-contested farming)
+  // ──────────────────────────────────────────────────────────────────────────
   const coin = nearestSafeCoin(bot, room);
   if (coin) {
     bot.snake.targetAngle = angleToward(head, coin.position);
+    state.currentGoal = 'coin';
     return;
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // PRIORITY 6: Food farming
+  // ──────────────────────────────────────────────────────────────────────────
   const food = nearestFood(bot, room);
   if (food) {
     bot.snake.targetAngle = angleToward(head, food.position);
+    state.currentGoal = 'food';
     return;
   }
 
-  // Wander toward a random point near center, refreshing occasionally
+  // ──────────────────────────────────────────────────────────────────────────
+  // PRIORITY 7: Wander fallback
+  // ──────────────────────────────────────────────────────────────────────────
   if (!state.foodWanderTarget || state.foodWanderCooldown <= 0) {
     state.foodWanderTarget = {
       x: cx + (Math.random() - 0.5) * room.arenaRadius * 0.6,
       y: cy + (Math.random() - 0.5) * room.arenaRadius * 0.6,
     };
-    state.foodWanderCooldown = 40 + Math.floor(Math.random() * 40); // ~2-4 seconds
+    state.foodWanderCooldown = 40 + Math.floor(Math.random() * 40);
   }
   state.foodWanderCooldown--;
   bot.snake.targetAngle = angleToward(head, state.foodWanderTarget);
+  state.currentGoal = 'wander';
+}
+
+/** Helper used by coin-racing to decide if a boost is worth it. */
+function isHumanNearCoin(coin: Coin, room: GameRoom): boolean {
+  for (const [, p] of room.players) {
+    if (p.isBot || !p.snake.alive) continue;
+    const h = p.snake.segments[0];
+    if (!h) continue;
+    if (dist(h, coin.position) < PRO_COIN_DENY_RANGE) return true;
+  }
+  return false;
 }

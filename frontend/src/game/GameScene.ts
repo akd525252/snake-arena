@@ -153,6 +153,9 @@ export class GameScene extends Phaser.Scene {
   private bubbleContainer: Phaser.GameObjects.Container | null = null;
   // Bubble spawn time (performance.now) for floating animation
   private bubbleSpawnAt = 0;
+  // Expected lifetime of current bubble in ms (from bubble_spawn).
+  // Used to pulse faster in the last 2s so players feel the urgency.
+  private bubbleLifetimeMs = 8000;
   // Center text banner shown when a bubble is consumed (auto-hides).
   private bubbleNotificationText!: Phaser.GameObjects.Text;
   private bubbleNotificationTween: Phaser.Tweens.Tween | null = null;
@@ -872,11 +875,24 @@ export class GameScene extends Phaser.Scene {
     }
     // low tier: intentionally skipped — decorative particles are a luxury
 
-    // Bubble float animation: tiny vertical bob (cheap — single sin() per frame)
+    // Bubble float animation: tiny vertical bob + urgency flicker near expiry.
+    // Skip entirely if offscreen: no visual impact, small perf win.
     if (this.bubbleContainer && this.currentBubble) {
-      const t = (performance.now() - this.bubbleSpawnAt) / 1000;
-      const bob = Math.sin(t * 2.8) * 3; // ~±3px bob, 0.45Hz
-      this.bubbleContainer.setY(this.currentBubble.position.y + bob);
+      const b = this.currentBubble.position;
+      if (this.isOnScreen(b.x, b.y, 60)) {
+        const elapsedMs = performance.now() - this.bubbleSpawnAt;
+        const remainMs = this.bubbleLifetimeMs - elapsedMs;
+        const t = elapsedMs / 1000;
+        const bob = Math.sin(t * 2.8) * 3; // ~±3px bob
+        this.bubbleContainer.setY(b.y + bob);
+        // Urgency flicker: last 2s, alpha pulses fast to tell players it's about to vanish.
+        if (remainMs < 2000 && remainMs > 0) {
+          const flicker = 0.55 + 0.45 * Math.abs(Math.sin(performance.now() / 90));
+          this.bubbleContainer.setAlpha(flicker);
+        } else if (this.bubbleContainer.alpha < 1 && remainMs > 2000) {
+          this.bubbleContainer.setAlpha(1);
+        }
+      }
     }
 
     // Mouse steering (desktop only — mobile uses joystick)
@@ -916,10 +932,15 @@ export class GameScene extends Phaser.Scene {
     // Compute interp factor t in [0,1] based on time elapsed since last server tick.
     // No extrapolation — limiting t to 1.0 prevents overshoot snap-backs that
     // cause visible camera jitter when a new server state arrives.
+    //
+    // Smoothstep easing: t*t*(3 - 2t). Same endpoints (0 and 1), same average
+    // speed, but with a gentle ease-in/ease-out curve. Visually this removes
+    // the subtle "hitch" when a new state lands — motion blends silkier.
     let t = 1;
     if (this.lastServerStateTime > 0) {
-      t = (performance.now() - this.lastServerStateTime) / this.serverInterval;
-      t = Math.max(0, Math.min(1, t));
+      const raw = (performance.now() - this.lastServerStateTime) / this.serverInterval;
+      const clamped = Math.max(0, Math.min(1, raw));
+      t = clamped * clamped * (3 - 2 * clamped);
     }
 
     let myInterpHead: Position | null = null;
@@ -1218,6 +1239,17 @@ export class GameScene extends Phaser.Scene {
       case 'game_state':
         this.renderGameState((msg as unknown as GameStateMessage).state);
         break;
+
+      case 'bubble_spawn': {
+        // Server tells us the bubble lifetime explicitly. Cache it so we can
+        // render an urgency pulse as the bubble nears expiration.
+        const data = msg as unknown as {
+          bubble: { id: string; type: BubbleType; position: Position; expiresInMs: number };
+        };
+        this.bubbleLifetimeMs = data.bubble.expiresInMs || 8000;
+        // (The actual visuals are created by syncBubble on the next game_state.)
+        break;
+      }
 
       case 'bubble_consumed': {
         // Server says someone ate the bubble. Play the burst at the LAST known
@@ -1564,8 +1596,12 @@ export class GameScene extends Phaser.Scene {
 
     // ── Glow / attractive effects on coins & food ───────────────────
     // Single Graphics clear + redraw per tick is cheaper than individual tweens.
-    // Skipped on low tier for performance.
-    if (this.qualityTier !== 'low') {
+    // Skipped on low tier for performance. On mid tier, run every 2nd frame —
+    // the pulse period is ~1s so a 2x framerate on glow is imperceptible.
+    const shouldDrawGlow =
+      (this.qualityTier === 'high') ||
+      (this.qualityTier === 'mid' && (this.frameCount & 1) === 0);
+    if (shouldDrawGlow) {
       this.glowGfx.clear();
       const pulse = 0.35 + 0.25 * Math.sin(performance.now() / 400);
       const pulse2 = 0.3 + 0.2 * Math.sin(performance.now() / 500 + 1);
@@ -1608,10 +1644,20 @@ export class GameScene extends Phaser.Scene {
       }
       return;
     }
-    // Bubble changed or disappeared — tear down old visuals
+    // Bubble changed or disappeared — fade out old visuals smoothly instead
+    // of popping them out instantly. This feels way nicer when a bubble
+    // expires or gets consumed.
     if (this.bubbleContainer) {
-      this.bubbleContainer.destroy();
+      const dying = this.bubbleContainer;
       this.bubbleContainer = null;
+      this.tweens.add({
+        targets: dying,
+        scale: 0,
+        alpha: 0,
+        duration: 220,
+        ease: 'Back.in',
+        onComplete: () => dying.destroy(),
+      });
     }
     this.currentBubble = next;
     if (next) {
@@ -1655,14 +1701,28 @@ export class GameScene extends Phaser.Scene {
 
     this.bubbleContainer = container;
 
-    // Gentle pulsing tween: scale between 0.9 and 1.08
+    // Spawn animation: pop in with a bounce, then enter the infinite pulse.
+    // Starting at scale 0 + alpha 0 feels much smoother than instant appearance.
+    container.setScale(0);
+    container.setAlpha(0);
     this.tweens.add({
       targets: container,
-      scale: { from: 0.92, to: 1.08 },
-      duration: 600,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.inOut',
+      scale: 1,
+      alpha: 1,
+      duration: 260,
+      ease: 'Back.out',
+      onComplete: () => {
+        // Only start the infinite pulse if this bubble wasn't already removed mid-spawn
+        if (this.bubbleContainer !== container) return;
+        this.tweens.add({
+          targets: container,
+          scale: { from: 0.92, to: 1.08 },
+          duration: 600,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.inOut',
+        });
+      },
     });
   }
 
