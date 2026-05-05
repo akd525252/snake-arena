@@ -82,30 +82,30 @@ export default function SolanaDepositPage() {
       <LanguageSwitcher />
       <nav className="px-8 py-4 border-b border-[#3a2c1f]">
         <Link href="/wallet/deposit" className="rpg-text-muted hover:rpg-gold-bright text-sm transition-colors">
-          ← Back to Deposit Methods
+          {t.depositPage.backToDepositMethods}
         </Link>
       </nav>
 
       <main className="flex-1 max-w-md w-full mx-auto px-6 py-10">
-        <h1 className="rpg-title text-3xl mb-2">Auto Deposit</h1>
+        <h1 className="rpg-title text-3xl mb-2">{t.depositPage.autoDeposit}</h1>
         <p className="rpg-text-muted mb-6 text-sm">
-          Send USDT (SPL) to your personal Solana wallet address below. Your balance will be credited automatically.
+          {t.depositPage.sendUsdtDesc}
         </p>
 
         {loading ? (
           <div className="rpg-panel p-8 text-center">
-            <div className="animate-pulse rpg-text-muted">Generating your wallet...</div>
+            <div className="animate-pulse rpg-text-muted">{t.depositPage.generatingWallet}</div>
           </div>
         ) : error ? (
           <div className="rpg-panel p-6 border-[#962323]">
-            <div className="rpg-crimson font-bold mb-2">Error</div>
+            <div className="rpg-crimson font-bold mb-2">{t.depositPage.errorTitle}</div>
             <p className="text-sm rpg-text-muted">{error}</p>
           </div>
         ) : wallet ? (
           <div className="space-y-6">
             <div className="rpg-panel p-6 text-center">
               <div className="text-xs rpg-text-muted mb-1 uppercase tracking-wider font-bold">
-                Your USDT (SPL) Deposit Address
+                {t.depositPage.yourDepositAddress}
               </div>
 
               {qrUrl && (
@@ -124,39 +124,39 @@ export default function SolanaDepositPage() {
               </div>
 
               <button onClick={copyAddress} className="btn-rpg btn-rpg-amber btn-rpg-block text-sm">
-                {copied ? '✓ Copied!' : 'Copy Address'}
+                {copied ? t.depositPage.copied : t.depositPage.copyAddress}
               </button>
 
               <div className="mt-4 space-y-1">
                 <div className="flex items-center justify-center gap-2 text-xs">
                   <span className="w-2 h-2 rounded-full bg-[#9945FF]" />
-                  <span className="rpg-text">Network: <span className="rpg-gold-bright font-bold">Solana</span></span>
+                  <span className="rpg-text">{t.depositPage.network}: <span className="rpg-gold-bright font-bold">Solana</span></span>
                 </div>
                 <div className="flex items-center justify-center gap-2 text-xs">
                   <span className="w-2 h-2 rounded-full bg-[#39ff14]" />
-                  <span className="rpg-text">Token: <span className="rpg-gold-bright font-bold">USDT (SPL)</span></span>
+                  <span className="rpg-text">{t.depositPage.token}: <span className="rpg-gold-bright font-bold">USDT (SPL)</span></span>
                 </div>
                 <div className="flex items-center justify-center gap-2 text-xs">
                   <span className="w-2 h-2 rounded-full bg-[#f5c265]" />
-                  <span className="rpg-text">Min Deposit: <span className="rpg-gold-bright font-bold">$5 USDT</span></span>
+                  <span className="rpg-text">{t.depositPage.minDeposit}: <span className="rpg-gold-bright font-bold">$5 USDT</span></span>
                 </div>
               </div>
             </div>
 
             <div className="rpg-panel p-4 border-[#962323]">
-              <div className="text-xs rpg-crimson font-bold mb-1">⚠ Important</div>
+              <div className="text-xs rpg-crimson font-bold mb-1">{t.depositPage.important}</div>
               <ul className="text-xs rpg-text-muted space-y-1 list-disc list-inside">
-                <li>Send <strong>only USDT (SPL)</strong> on the <strong>Solana</strong> network</li>
-                <li>Sending other tokens will result in <strong>permanent loss</strong></li>
-                <li>Balance is credited <strong>instantly</strong> (Solana has instant finality)</li>
-                <li>Minimum deposit: <strong>$5 USDT</strong></li>
+                <li>{t.depositPage.sendOnly}</li>
+                <li>{t.depositPage.permanentLoss}</li>
+                <li>{t.depositPage.creditedAfterConfirmations}</li>
+                <li>{t.depositPage.minimumDeposit}</li>
               </ul>
             </div>
 
             {recentConfirmed.length > 0 && (
               <div className="rpg-panel p-4 border-[#39ff14]/30">
                 <div className="text-xs text-[#39ff14] font-bold mb-2">
-                  ✓ Deposit Credited!
+                  {t.depositPage.depositCredited}
                 </div>
                 {recentConfirmed.map(dep => (
                   <div key={dep.id} className="flex justify-between items-center py-1">
@@ -174,7 +174,7 @@ export default function SolanaDepositPage() {
             {deposits.length > 0 && (
               <div className="rpg-panel overflow-hidden">
                 <div className="px-4 py-3 border-b border-[#3a2c1f]">
-                  <h3 className="text-sm font-bold rpg-text">Deposit History</h3>
+                  <h3 className="text-sm font-bold rpg-text">{t.depositPage.depositHistory}</h3>
                 </div>
                 <div className="divide-y divide-[#3a2c1f] max-h-60 overflow-y-auto">
                   {deposits.map(dep => (
@@ -198,7 +198,7 @@ export default function SolanaDepositPage() {
                             ? 'bg-[#962323]/10 rpg-crimson border border-[#962323]/30'
                             : 'bg-[#3a2c1f] rpg-text-muted'
                         }`}>
-                          {dep.credited ? 'Credited' : dep.status.charAt(0).toUpperCase() + dep.status.slice(1)}
+                          {dep.credited ? t.depositPage.credited : dep.status.charAt(0).toUpperCase() + dep.status.slice(1)}
                         </span>
                       </div>
                     </div>

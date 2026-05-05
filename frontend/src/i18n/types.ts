@@ -414,6 +414,34 @@ export interface Translations {
     equipFailed: string;
     purchased: string;
   };
+  depositPage: {
+    backToDepositMethods: string;
+    autoDeposit: string;
+    sendUsdtDesc: string;
+    generatingWallet: string;
+    errorTitle: string;
+    yourDepositAddress: string;
+    copyAddress: string;
+    copied: string;
+    network: string;
+    token: string;
+    minDeposit: string;
+    important: string;
+    sendOnly: string;
+    permanentLoss: string;
+    creditedAfterConfirmations: string;
+    minimumDeposit: string;
+    depositDetected: string;
+    depositCredited: string;
+    depositHistory: string;
+    credited: string;
+    confirmations: string;
+    comingSoon: string;
+    chooseNetwork: string;
+    chooseNetworkDesc: string;
+    minAutoCredit: string;
+    instantCredit: string;
+  };
   demo: { badge: string };
   modeSelect: {
     chooseYourMode: string;
@@ -441,5 +469,15 @@ export interface Translations {
     wins: string;
     you: string;
     earnedLabel: string;
+  };
+  countryFlag: {
+    title: string;
+    desc: string;
+    selectCountry: string;
+    searchCountry: string;
+    noResults: string;
+    saved: string;
+    failedUpdate: string;
+    currentFlag: string;
   };
 }

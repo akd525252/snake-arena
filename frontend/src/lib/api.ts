@@ -77,6 +77,12 @@ export const api = {
       body: JSON.stringify({ avatar }),
     }),
 
+  updateCountryFlag: (country_flag: string) =>
+    request<{ user: User }>('/api/auth/me/country-flag', {
+      method: 'PATCH',
+      body: JSON.stringify({ country_flag }),
+    }),
+
   setGameMode: (game_mode: 'demo' | 'pro') =>
     request<{ user: User }>('/api/auth/mode', {
       method: 'PATCH',
@@ -267,6 +273,7 @@ export interface User {
   game_mode?: 'demo' | 'pro' | null;
   demo_balance?: number;
   equipped_skin_id?: string | null;
+  country_flag?: string | null;
 }
 
 export interface Transaction {

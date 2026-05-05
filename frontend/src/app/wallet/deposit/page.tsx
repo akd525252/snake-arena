@@ -170,6 +170,7 @@ function NetworkBadge3D({ network, size }: { network: Network; size: number }) {
 
 /* ─── Interactive 3D Card with mouse tracking ──────────────────────────── */
 function NetworkCard({ network }: { network: Network }) {
+  const { t } = useI18n();
   const cardRef = useRef<HTMLDivElement>(null);
   const [tilt, setTilt] = useState({ rx: 0, ry: 0, active: false });
 
@@ -248,14 +249,14 @@ function NetworkCard({ network }: { network: Network }) {
             {network.label}
           </div>
           <div className="text-xs rpg-text-muted mt-0.5">
-            {network.comingSoon ? 'Coming Soon' : 'Min $5 · Auto credited'}
+            {network.comingSoon ? t.depositPage.comingSoon : t.depositPage.minAutoCredit}
           </div>
         </div>
 
         {/* Arrow or badge */}
         {network.comingSoon ? (
           <div className="text-[10px] px-2 py-1 rounded-full border border-[#3a2c1f] rpg-text-muted font-bold uppercase tracking-wider">
-            Soon
+            {t.depositPage.comingSoon}
           </div>
         ) : (
           <div
@@ -296,7 +297,7 @@ export default function DepositPage() {
       <main className="flex-1 max-w-md w-full mx-auto px-6 py-10">
         <h1 className="rpg-title text-3xl mb-2">{t.wallet.depositTitle}</h1>
         <p className="rpg-text-muted mb-8">
-          Choose a network to deposit USDT. Your balance will be credited automatically.
+          {t.depositPage.chooseNetworkDesc}
         </p>
 
         {/* Network selection cards */}
@@ -311,15 +312,15 @@ export default function DepositPage() {
           <div className="text-xs rpg-text-muted space-y-1.5">
             <div className="flex items-start gap-2">
               <span className="rpg-gold-bright">•</span>
-              <span>Each network gives you a <strong className="rpg-text">unique wallet address</strong></span>
+              <span>{t.depositPage.instantCredit}</span>
             </div>
             <div className="flex items-start gap-2">
               <span className="rpg-gold-bright">•</span>
-              <span>Send <strong className="rpg-text">USDT only</strong> — other tokens will be lost</span>
+              <span>{t.depositPage.sendOnly}</span>
             </div>
             <div className="flex items-start gap-2">
               <span className="rpg-gold-bright">•</span>
-              <span>Minimum deposit: <strong className="rpg-text">$5 USDT</strong></span>
+              <span>{t.depositPage.minimumDeposit}</span>
             </div>
           </div>
         </div>

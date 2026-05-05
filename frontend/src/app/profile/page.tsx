@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useI18n } from '../../contexts/I18nContext';
 import LanguageSwitcher from '../../components/LanguageSwitcher';
 import { api } from '../../lib/api';
+import { countryCodeToEmoji, COUNTRY_LIST } from '../../lib/countryFlag';
 import Loader from '../../components/Loader';
 
 const COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
@@ -25,6 +26,10 @@ export default function ProfilePage() {
   const [avatarMsg, setAvatarMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [savingUsername, setSavingUsername] = useState(false);
   const [savingAvatar, setSavingAvatar] = useState(false);
+  const [flagSearch, setFlagSearch] = useState('');
+  const [flagOpen, setFlagOpen] = useState(false);
+  const [flagMsg, setFlagMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [savingFlag, setSavingFlag] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -317,6 +322,85 @@ export default function ProfilePage() {
               )}
             </div>
           </div>
+        </div>
+        {/* Country Flag section */}
+        <div className="rpg-panel p-6">
+          <h2 className="rpg-subtitle text-base">{t.countryFlag.title}</h2>
+          <p className="text-sm rpg-text-muted mb-4">{t.countryFlag.desc}</p>
+
+          {user.country_flag && (
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-2xl">{countryCodeToEmoji(user.country_flag)}</span>
+              <span className="text-sm rpg-text-muted">{t.countryFlag.currentFlag}: {COUNTRY_LIST.find(([c]) => c === user.country_flag)?.[1] || user.country_flag}</span>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setFlagOpen(!flagOpen)}
+            disabled={savingFlag}
+            className="btn-rpg text-sm"
+          >
+            {t.countryFlag.selectCountry}
+          </button>
+
+          {flagOpen && (
+            <div className="mt-3 rpg-parchment-inset rounded-md overflow-hidden">
+              <input
+                type="text"
+                value={flagSearch}
+                onChange={e => setFlagSearch(e.target.value)}
+                placeholder={t.countryFlag.searchCountry}
+                className="w-full px-3 py-2 rpg-parchment-inset rpg-text text-sm focus:outline-none border-b border-[#3a2c1f]"
+              />
+              <div className="max-h-48 overflow-y-auto">
+                {COUNTRY_LIST
+                  .filter(([, name]) => name.toLowerCase().includes(flagSearch.toLowerCase()))
+                  .map(([code, name]) => (
+                    <button
+                      key={code}
+                      type="button"
+                      onClick={async () => {
+                        setSavingFlag(true);
+                        setFlagMsg(null);
+                        try {
+                          await api.updateCountryFlag(code);
+                          await refreshUser();
+                          setFlagMsg({ type: 'success', text: t.countryFlag.saved });
+                          setFlagOpen(false);
+                          setFlagSearch('');
+                        } catch (err: unknown) {
+                          setFlagMsg({ type: 'error', text: err instanceof Error ? err.message : t.countryFlag.failedUpdate });
+                        } finally {
+                          setSavingFlag(false);
+                        }
+                      }}
+                      disabled={savingFlag}
+                      className={`w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-[#3a2c1f]/50 transition-colors text-left ${
+                        user.country_flag === code ? 'bg-[#3a2c1f]/30 rpg-gold-bright' : 'rpg-text'
+                      }`}
+                    >
+                      <span className="text-lg">{countryCodeToEmoji(code)}</span>
+                      <span>{name}</span>
+                      {user.country_flag === code && <span className="ml-auto text-xs rpg-gold-bright">✓</span>}
+                    </button>
+                  ))}
+                {COUNTRY_LIST.filter(([, name]) => name.toLowerCase().includes(flagSearch.toLowerCase())).length === 0 && (
+                  <div className="px-3 py-4 text-sm rpg-text-muted text-center">{t.countryFlag.noResults}</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {flagMsg && (
+            <div className={`mt-3 p-3 rounded-md text-sm ${
+              flagMsg.type === 'success'
+                ? 'bg-[#1c2c1c] border border-[#3a7a3a] text-[#7cd17c]'
+                : 'bg-[#2a0e0e] border border-[#962323] text-[#d83a3a]'
+            }`}>
+              {flagMsg.text}
+            </div>
+          )}
         </div>
       </main>
     </div>

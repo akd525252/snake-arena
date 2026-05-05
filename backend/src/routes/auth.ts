@@ -29,9 +29,22 @@ router.post('/login', authLimiter, async (req: Request, res: Response): Promise<
     // Look up user row from DB — source of truth for is_admin, account_status, etc.
     let { data: userRow, error: userErr } = await supabase
       .from('users')
-      .select('game_mode, username, avatar, equipped_skin_id, is_admin, account_status, skins(skin_key)')
+      .select('game_mode, username, avatar, equipped_skin_id, is_admin, account_status, country_flag, skins(skin_key)')
       .eq('id', user.id)
       .single();
+
+    // Auto-detect country from IP for new users
+    let detectedCountry: string | null = null;
+    try {
+      const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip;
+      if (clientIp && clientIp !== '127.0.0.1' && clientIp !== '::1') {
+        const geoRes = await fetch(`https://ipapi.co/${clientIp}/country/`);
+        if (geoRes.ok) {
+          const code = (await geoRes.text()).trim();
+          if (/^[A-Z]{2}$/.test(code)) detectedCountry = code;
+        }
+      }
+    } catch { /* geo detection is best-effort */ }
 
     // Auto-create user row if it doesn't exist (first-time signup)
     if (userErr && userErr.code === 'PGRST116') {
@@ -44,8 +57,9 @@ router.post('/login', authLimiter, async (req: Request, res: Response): Promise<
           game_mode: 'demo',
           demo_balance: 50.00,
           account_status: 'active',
+          country_flag: detectedCountry,
         })
-        .select('game_mode, username, avatar, equipped_skin_id, is_admin, account_status, skins(skin_key)')
+        .select('game_mode, username, avatar, equipped_skin_id, is_admin, account_status, country_flag, skins(skin_key)')
         .single();
 
       if (createErr) {
@@ -78,6 +92,12 @@ router.post('/login', authLimiter, async (req: Request, res: Response): Promise<
     const isAdmin = (userRow as unknown as { is_admin?: boolean }).is_admin === true;
     const accountStatus = (userRow as unknown as { account_status?: string }).account_status || 'active';
     const dbAvatar = (userRow as unknown as { avatar?: string | null }).avatar ?? null;
+    const countryFlag = (userRow as unknown as { country_flag?: string | null }).country_flag ?? null;
+
+    // Auto-detect country flag if not set yet
+    if (!countryFlag && detectedCountry) {
+      await supabase.from('users').update({ country_flag: detectedCountry }).eq('id', user.id);
+    }
 
     // Single-device enforcement: rotate session_id on every successful login.
     // Any tokens previously issued (i.e. on other devices) will fail the
@@ -123,6 +143,7 @@ router.post('/login', authLimiter, async (req: Request, res: Response): Promise<
         demo_balance: demoBalance,
         equipped_skin_id: userRow.equipped_skin_id,
         skin_key: playerSkinId,
+        country_flag: countryFlag || detectedCountry,
       },
     });
   } catch (err) {
@@ -137,7 +158,7 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res: Response): Pr
   try {
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, email, username, avatar, created_at, username_changed_at, account_status, is_admin, game_mode, demo_balance, equipped_skin_id, skins(skin_key)')
+      .select('id, email, username, avatar, created_at, username_changed_at, account_status, is_admin, game_mode, demo_balance, equipped_skin_id, country_flag, skins(skin_key)')
       .eq('id', req.user!.id)
       .single();
 
@@ -237,7 +258,7 @@ router.patch('/me/avatar', authenticateToken, async (req: AuthRequest, res: Resp
         .from('users')
         .update({ avatar: null })
         .eq('id', req.user!.id)
-        .select('id, email, username, avatar, created_at, username_changed_at, account_status, is_admin, game_mode, demo_balance, equipped_skin_id, skins(skin_key)')
+        .select('id, email, username, avatar, created_at, username_changed_at, account_status, is_admin, game_mode, demo_balance, equipped_skin_id, country_flag, skins(skin_key)')
         .single();
 
       if (error) {
@@ -271,7 +292,7 @@ router.patch('/me/avatar', authenticateToken, async (req: AuthRequest, res: Resp
       .from('users')
       .update({ avatar: trimmed })
       .eq('id', req.user!.id)
-      .select('id, email, username, avatar, created_at, username_changed_at, account_status, is_admin, game_mode, demo_balance, equipped_skin_id, skins(skin_key)')
+      .select('id, email, username, avatar, created_at, username_changed_at, account_status, is_admin, game_mode, demo_balance, equipped_skin_id, country_flag, skins(skin_key)')
       .single();
 
     if (error) {
@@ -282,6 +303,39 @@ router.patch('/me/avatar', authenticateToken, async (req: AuthRequest, res: Resp
     res.json({ user: data });
   } catch (err) {
     console.error('Update avatar error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update country flag
+router.patch('/me/country-flag', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { country_flag } = req.body;
+    if (typeof country_flag !== 'string') {
+      res.status(400).json({ error: 'country_flag required (ISO 3166-1 alpha-2 code)' });
+      return;
+    }
+    const code = country_flag.trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(code)) {
+      res.status(400).json({ error: 'Invalid country code. Must be 2-letter ISO code (e.g. US, PK, IN).' });
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('users')
+      .update({ country_flag: code })
+      .eq('id', req.user!.id)
+      .select('id, email, username, avatar, created_at, username_changed_at, account_status, is_admin, game_mode, demo_balance, equipped_skin_id, country_flag, skins(skin_key)')
+      .single();
+
+    if (error) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+
+    res.json({ user: data });
+  } catch (err) {
+    console.error('Update country flag error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

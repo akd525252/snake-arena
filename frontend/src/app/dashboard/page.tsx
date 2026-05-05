@@ -11,6 +11,7 @@ import Loader from '../../components/Loader';
 import Logo from '../../components/Logo';
 import Leaderboard from '../../components/Leaderboard';
 import LanguageSwitcher from '../../components/LanguageSwitcher';
+import { countryCodeToEmoji } from '../../lib/countryFlag';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -167,17 +168,24 @@ export default function Dashboard() {
             href="/profile"
             className="flex items-center gap-2 text-sm rpg-text-muted hover:rpg-gold-bright group"
           >
-            <span className={`w-9 h-9 rounded-full overflow-hidden border-2 transition-colors flex-shrink-0 ${
-              isDemo ? 'border-[#a86a3a]' : 'border-[#d4a04a]'
-            }`}>
-              {user.avatar ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={user.avatar} alt="avatar" className="w-full h-full object-cover" />
-              ) : (
-                <span className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${
-                  isDemo ? 'from-[#d4a04a] to-[#a86a3a]' : 'from-[#962323] to-[#4a0c0c]'
-                } text-[#0e0a08] font-black text-sm`}>
-                  {userInitial}
+            <span className="relative flex-shrink-0">
+              <span className={`block w-9 h-9 rounded-full overflow-hidden border-2 transition-colors ${
+                isDemo ? 'border-[#a86a3a]' : 'border-[#d4a04a]'
+              }`}>
+                {user.avatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={user.avatar} alt="avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <span className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${
+                    isDemo ? 'from-[#d4a04a] to-[#a86a3a]' : 'from-[#962323] to-[#4a0c0c]'
+                  } text-[#0e0a08] font-black text-sm`}>
+                    {userInitial}
+                  </span>
+                )}
+              </span>
+              {user.country_flag && (
+                <span className="absolute -bottom-1 -right-1 text-sm leading-none drop-shadow" title={user.country_flag}>
+                  {countryCodeToEmoji(user.country_flag)}
                 </span>
               )}
             </span>
