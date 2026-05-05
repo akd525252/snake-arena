@@ -9,156 +9,22 @@ import LanguageSwitcher from '../../components/LanguageSwitcher';
 import { api, Skin } from '../../lib/api';
 import SnakePreview from '../../components/SnakePreview';
 
-interface SkinSkill {
-  name: string;
-  description: string;
-  icon: string;
-}
-
-const SKIN_SKILLS: Record<string, SkinSkill[]> = {
-  neon_cyber: [
-    {
-      name: 'Neon Overdrive',
-      description: '5-segment neon trail glows behind you when boosting',
-      icon: '⚡',
-    },
-    {
-      name: 'Glitch Death',
-      description: 'Pixelated dissolve effect when you die',
-      icon: '⚠',
-    },
-    {
-      name: 'Circuit Aura',
-      description: 'Animated circuit pattern flows along your body',
-      icon: '◈',
-    },
-  ],
-  inferno_drake: [
-    {
-      name: 'Flame Boost',
-      description: 'Fire particle trail when boosting through coins',
-      icon: '🔥',
-    },
-    {
-      name: 'Ash to Ash',
-      description: 'Coins you drop on death are colored as glowing embers',
-      icon: '✦',
-    },
-    {
-      name: 'Lava Glow',
-      description: 'Persistent lava-orange aura around your snake',
-      icon: '☀',
-    },
-  ],
-  void_shadow: [
-    {
-      name: 'Shadow Clone',
-      description: 'Two ghost clones appear when you start boosting (1.5s)',
-      icon: '◊',
-    },
-    {
-      name: 'Void Portal',
-      description: 'Purple black-hole swirl effect on death',
-      icon: '◉',
-    },
-    {
-      name: 'Dark Matter Aura',
-      description: 'Pulsing void-purple aura that intimidates opponents',
-      icon: '✦',
-    },
-  ],
-  default: [
-    {
-      name: 'Classic',
-      description: 'The standard emerald snake. Clean, simple, deadly.',
-      icon: '◐',
-    },
-    {
-      name: 'Speed Boost',
-      description: 'Standard boost ability available to all snakes',
-      icon: '⚡',
-    },
-    {
-      name: 'Trap Drop',
-      description: 'Standard trap ability available to all snakes',
-      icon: '✕',
-    },
-  ],
-  venom_serpent: [
-    {
-      name: 'Toxic Trail',
-      description: 'Leaves behind acid puddles that damage opponents who touch them',
-      icon: '☠',
-    },
-    {
-      name: 'Acid Drop',
-      description: 'Death coins appear as bubbling acid pools worth +20% more',
-      icon: '☢',
-    },
-    {
-      name: 'Sludge Boost',
-      description: 'Green toxic cloud trail that obscures vision briefly',
-      icon: '☁',
-    },
-  ],
-  frost_wyrm: [
-    {
-      name: 'Icy Aura',
-      description: 'Nearby enemies move 10% slower when close to you',
-      icon: '❄',
-    },
-    {
-      name: 'Frozen Death',
-      description: 'Shatters into ice shards on death that others can collect',
-      icon: '✦',
-    },
-    {
-      name: 'Cryo Breath',
-      description: 'Brief freezing wave on boost that slows coins nearby',
-      icon: '🌨',
-    },
-  ],
-  golden_emperor: [
-    {
-      name: 'Magnate',
-      description: 'Coins you drop on death are worth 50% more than standard',
-      icon: '💎',
-    },
-    {
-      name: 'Gilded Aura',
-      description: 'Radiant gold particles sparkle as you move',
-      icon: '✨',
-    },
-    {
-      name: 'Royal Decree',
-      description: 'Entry emote: golden crown briefly appears above head',
-      icon: '👑',
-    },
-  ],
-  cyber_samurai: [
-    {
-      name: 'Katana Slash',
-      description: 'Sharp blade trail effect when boosting at max speed',
-      icon: '⚔',
-    },
-    {
-      name: 'Honor Death',
-      description: 'Clean slice death animation — no messy particles',
-      icon: '✦',
-    },
-    {
-      name: 'Steel Discipline',
-      description: 'Boost costs 20% less to activate and maintain',
-      icon: '⛓',
-    },
-  ],
+const SKILL_ICONS: Record<string, string[]> = {
+  default: ['◐', '⚡', '✕'],
+  neon_cyber: ['⚡', '⚠', '◈'],
+  inferno_drake: ['🔥', '✦', '☀'],
+  void_shadow: ['◊', '◉', '✦'],
+  venom_serpent: ['☠', '☢', '☁'],
+  frost_wyrm: ['❄', '✦', '🌨'],
+  golden_emperor: ['💎', '✨', '👑'],
+  cyber_samurai: ['⚔', '✦', '⛓'],
 };
 
 const DEFAULT_SKIN: Skin = {
   id: 'default',
   skin_key: 'default',
   name: 'Classic Emerald',
-  description: 'The original Snake Arena look. Free for everyone.',
+  description: '',
   price_usd: 0,
   tier: 'standard',
   color_primary: '#10b981',
@@ -237,7 +103,7 @@ export default function SkinsShopPage() {
       setOwnedSkinIds(prev => new Set([...prev, current.id]));
       const newBalance = (await api.getBalance()).balance;
       setBalance(newBalance);
-      setActionMsg({ type: 'success', text: `${current.name} ${t.skins.purchased}` });
+      setActionMsg({ type: 'success', text: `${t.skins[(`skinName_${current.skin_key}` as keyof typeof t.skins)] || current.name} ${t.skins.purchased}` });
     } catch (err: unknown) {
       const text = err instanceof Error ? err.message : t.skins.purchaseFailed;
       setActionMsg({ type: 'error', text });
@@ -255,7 +121,7 @@ export default function SkinsShopPage() {
       await api.equipSkin(skinIdToEquip);
       setEquippedSkinId(skinIdToEquip);
       await refreshUser();
-      setActionMsg({ type: 'success', text: `${current.name} ${t.skins.equipped}` });
+      setActionMsg({ type: 'success', text: `${t.skins[(`skinName_${current.skin_key}` as keyof typeof t.skins)] || current.name} ${t.skins.equipped}` });
     } catch (err: unknown) {
       const text = err instanceof Error ? err.message : t.skins.equipFailed;
       setActionMsg({ type: 'error', text });
@@ -272,7 +138,24 @@ export default function SkinsShopPage() {
     );
   }
 
-  const skills = SKIN_SKILLS[current.skin_key] || SKIN_SKILLS.default;
+  // Build translated skill list from translation keys
+  const skinKey = current.skin_key;
+  const icons = SKILL_ICONS[skinKey] || SKILL_ICONS.default;
+  const skills = icons.map((icon, i) => {
+    const nameKey = `skill_${skinKey}_${i}_name` as keyof typeof t.skins;
+    const descKey = `skill_${skinKey}_${i}_desc` as keyof typeof t.skins;
+    return {
+      name: t.skins[nameKey] || '',
+      description: t.skins[descKey] || '',
+      icon,
+    };
+  });
+
+  // Translated skin name and description
+  const skinNameKey = `skinName_${skinKey}` as keyof typeof t.skins;
+  const skinDescKey = `skinDesc_${skinKey}` as keyof typeof t.skins;
+  const displayName = t.skins[skinNameKey] || current.name;
+  const displayDesc = t.skins[skinDescKey] || current.description;
 
   return (
     <div className="flex flex-col flex-1 min-h-screen">
@@ -307,7 +190,7 @@ export default function SkinsShopPage() {
               style={{
                 background: i === activeIdx ? s.color_primary : '#3f3f46',
               }}
-              title={s.name}
+              title={(t.skins[`skinName_${s.skin_key}` as keyof typeof t.skins] as string) || s.name}
             />
           ))}
         </div>
@@ -316,7 +199,7 @@ export default function SkinsShopPage() {
         <div className="text-center">
           <div className="flex items-center justify-center gap-3 mb-2">
             <h2 className="text-4xl font-black tracking-tight" style={{ color: current.color_primary }}>
-              {current.name}
+              {displayName}
             </h2>
             {current.tier === 'premium' && (
               <span className="px-3 py-1 rounded-full text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40">
@@ -324,7 +207,7 @@ export default function SkinsShopPage() {
               </span>
             )}
           </div>
-          <p className="rpg-text-muted text-sm max-w-2xl mx-auto">{current.description}</p>
+          <p className="rpg-text-muted text-sm max-w-2xl mx-auto">{displayDesc}</p>
           {!isCurrentDefault && (
             <div className="mt-2 rpg-text-muted text-xs">
               {t.skins.price}: <span className="rpg-gold-bright font-bold">${current.price_usd.toFixed(2)}</span>
