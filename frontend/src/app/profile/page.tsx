@@ -354,7 +354,7 @@ export default function ProfilePage() {
                 placeholder={t.countryFlag.searchCountry}
                 className="w-full px-3 py-2 rpg-parchment-inset rpg-text text-sm focus:outline-none border-b border-[#3a2c1f]"
               />
-              <div className="max-h-48 overflow-y-auto">
+              <div className="max-h-72 overflow-y-auto">
                 {COUNTRY_LIST
                   .filter(([, name]) => name.toLowerCase().includes(flagSearch.toLowerCase()))
                   .map(([code, name]) => (
