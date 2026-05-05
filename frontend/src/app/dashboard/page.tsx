@@ -11,7 +11,7 @@ import Loader from '../../components/Loader';
 import Logo from '../../components/Logo';
 import Leaderboard from '../../components/Leaderboard';
 import LanguageSwitcher from '../../components/LanguageSwitcher';
-import { countryCodeToEmoji } from '../../lib/countryFlag';
+import CountryFlag from '../../components/CountryFlag';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -184,8 +184,8 @@ export default function Dashboard() {
                 )}
               </span>
               {user.country_flag && (
-                <span className="absolute -bottom-1 -right-1 text-sm leading-none drop-shadow" title={user.country_flag}>
-                  {countryCodeToEmoji(user.country_flag)}
+                <span className="absolute -bottom-1 -right-1 drop-shadow">
+                  <CountryFlag code={user.country_flag} size="sm" />
                 </span>
               )}
             </span>

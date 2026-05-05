@@ -70,11 +70,17 @@ function PlayPageInner() {
       const token = typeof window !== 'undefined' ? localStorage.getItem('app_token') : null;
       const wsUrl = process.env.NEXT_PUBLIC_GAME_SERVER_URL || 'ws://localhost:4001';
 
-      // Detect low-end device for adaptive renderer settings
+      // Detect low-end device for adaptive renderer settings.
+      // Match the stricter heuristic used in GameScene.detectQualityTier()
+      // so the Phaser renderer config is consistent with the quality tier.
       const cores = (navigator.hardwareConcurrency as number | undefined) || 4;
       const mem = (navigator as unknown as { deviceMemory?: number }).deviceMemory || 4;
       const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-      const isLowEnd = isMobile && (cores <= 4 || mem <= 2);
+      const screenW = Math.min(window.screen.width, window.screen.height);
+      const conn = (navigator as unknown as { connection?: { effectiveType?: string; saveData?: boolean } }).connection;
+      const slowNet = conn?.effectiveType === 'slow-2g' || conn?.effectiveType === '2g' || conn?.effectiveType === '3g';
+      const saveData = conn?.saveData === true;
+      const isLowEnd = isMobile && (cores <= 6 || mem <= 3 || screenW < 380 || slowNet || saveData);
 
       // Note: do NOT pass `scene` in config — it would auto-start with empty
       // data, calling init() with `undefined` props and leaking a bad WS

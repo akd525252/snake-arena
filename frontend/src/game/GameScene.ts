@@ -145,6 +145,18 @@ export class GameScene extends Phaser.Scene {
   private viewHalfW = 1000;
   private viewHalfH = 1000;
 
+  // ── Adaptive quality (FPS watchdog) ──────────────────────────────
+  // Sample FPS over a 2-second rolling window. If sustained FPS drops
+  // below threshold, automatically downgrade the quality tier. This
+  // catches devices that "look" powerful (8 cores reported) but throttle
+  // hard in practice (cheap tablets, old Chromebooks, mobile power save).
+  private fpsSamples: number[] = [];
+  private fpsLastSampleTime = 0;
+  private fpsLastCheckTime = 0;
+  private autoDowngradeUsed = false; // only downgrade once automatically
+  // User explicitly set a quality — don't auto-downgrade against their choice.
+  private qualityIsUserLocked = false;
+
   // Mobile controls
   private isMobile = false;
   private joystickOrigin: Position | null = null;
@@ -400,6 +412,8 @@ export class GameScene extends Phaser.Scene {
       // Cycle: high → mid → low → high
       this.qualityTier = this.qualityTier === 'high' ? 'mid' : this.qualityTier === 'mid' ? 'low' : 'high';
       this.qualityBtn.setText(qualityLabel(this.qualityTier));
+      // User took explicit control — disable auto-downgrade
+      this.qualityIsUserLocked = true;
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem('snake_quality', this.qualityTier);
       }
@@ -466,12 +480,25 @@ export class GameScene extends Phaser.Scene {
     const dpr = window.devicePixelRatio || 1;
     const isMobile = this.isMobile;
 
-    // Heuristic: low-end mobile = ≤4 cores OR ≤2GB RAM
-    // mid: any mobile, or low-spec desktop (≤4 cores)
-    // high: desktop ≥6 cores
-    if (isMobile && (cores <= 4 || mem <= 2)) {
+    // Network type hint — 'slow-2g'/'2g'/'3g' often correlates with budget devices
+    const conn = (navigator as unknown as { connection?: { effectiveType?: string; saveData?: boolean } }).connection;
+    const slowNet = conn?.effectiveType === 'slow-2g' || conn?.effectiveType === '2g' || conn?.effectiveType === '3g';
+    const saveData = conn?.saveData === true;
+
+    // Screen size heuristic: small phones (< 380px) are almost always budget devices
+    const screenW = Math.min(window.screen.width, window.screen.height);
+    const smallScreen = screenW < 380;
+
+    // Battery saver / data saver → respect user preference by going lighter
+    const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+    // More aggressive heuristic (covers budget/mid-range Android):
+    //   low  : mobile + (≤6 cores OR ≤3GB RAM OR small screen OR slow net OR save-data OR reduced-motion)
+    //   mid  : any mobile, or low-spec desktop (≤4 cores, ≤4GB RAM)
+    //   high : desktop ≥6 cores AND ≥6GB RAM
+    if (isMobile && (cores <= 6 || mem <= 3 || smallScreen || slowNet || saveData || prefersReducedMotion)) {
       this.qualityTier = 'low';
-    } else if (isMobile || cores <= 4) {
+    } else if (isMobile || cores <= 4 || mem <= 4) {
       this.qualityTier = 'mid';
     } else {
       this.qualityTier = 'high';
@@ -482,6 +509,7 @@ export class GameScene extends Phaser.Scene {
       const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('snake_quality') : null;
       if (saved === 'low' || saved === 'mid' || saved === 'high') {
         this.qualityTier = saved;
+        this.qualityIsUserLocked = true;
       }
     } catch { /* noop */ }
 
@@ -491,11 +519,71 @@ export class GameScene extends Phaser.Scene {
       const q = params.get('quality');
       if (q === 'low' || q === 'mid' || q === 'high') {
         this.qualityTier = q;
+        this.qualityIsUserLocked = true;
       }
     } catch { /* noop */ }
 
     // eslint-disable-next-line no-console
-    console.info(`[GameScene] Quality tier: ${this.qualityTier} (cores=${cores}, mem=${mem}GB, dpr=${dpr.toFixed(1)}, mobile=${isMobile})`);
+    console.info(`[GameScene] Quality tier: ${this.qualityTier} (cores=${cores}, mem=${mem}GB, dpr=${dpr.toFixed(1)}, mobile=${isMobile}, screenW=${screenW}, slowNet=${slowNet})`);
+  }
+
+  /**
+   * Rolling FPS watchdog. Call once per frame from update(). If sustained FPS
+   * falls below 40 for 3+ seconds, auto-downgrade ONE tier (high→mid or mid→low).
+   * Runs only once per session and is skipped if the user has manually selected
+   * a quality tier (respects their choice).
+   */
+  private monitorFps(now: number, delta: number) {
+    if (this.autoDowngradeUsed || this.qualityIsUserLocked) return;
+    if (this.qualityTier === 'low') return; // already at the floor
+
+    // Sample once per frame — delta is ms since last frame
+    if (delta > 0 && delta < 500) {
+      this.fpsSamples.push(1000 / delta);
+    }
+
+    // Check every 1 second
+    if (now - this.fpsLastCheckTime < 1000) return;
+    this.fpsLastCheckTime = now;
+
+    // Need at least 30 samples (≈0.5s @ 60fps) to make a decision
+    if (this.fpsSamples.length < 30) return;
+
+    // Use the 20th-percentile (not mean) — this catches sustained bad frames,
+    // not single stutters. Sort ascending, pick element at 20% position.
+    const sorted = [...this.fpsSamples].sort((a, b) => a - b);
+    const p20 = sorted[Math.floor(sorted.length * 0.2)];
+
+    // Keep the last ~3 seconds of samples (trim old ones)
+    if (this.fpsSamples.length > 180) {
+      this.fpsSamples = this.fpsSamples.slice(-180);
+    }
+
+    // Trigger: p20 FPS below 38 for 3+ seconds of samples
+    if (p20 < 38 && this.fpsSamples.length >= 100) {
+      const before = this.qualityTier;
+      this.qualityTier = this.qualityTier === 'high' ? 'mid' : 'low';
+      this.autoDowngradeUsed = true;
+
+      // Clear expensive effects on downgrade
+      if (this.qualityTier === 'low') {
+        for (const id of this.playerBoostTrails.keys()) this.clearBoostTrails(id);
+        for (const id of this.playerCloneSprites.keys()) this.clearShadowClones(id);
+      }
+
+      // Update the visible quality button label so the user sees the change
+      if (this.qualityBtn) {
+        const tr = this.translations;
+        const label = this.qualityTier === 'low' ? (tr?.qualityLow || '◐ LOW')
+          : this.qualityTier === 'mid' ? (tr?.qualityMid || '◑ MID')
+          : (tr?.qualityHigh || '◉ HIGH');
+        this.qualityBtn.setText(label);
+      }
+
+      // eslint-disable-next-line no-console
+      console.info(`[GameScene] FPS watchdog: auto-downgraded ${before} → ${this.qualityTier} (p20=${p20.toFixed(1)}fps)`);
+      this.fpsSamples = [];
+    }
   }
 
   /** Cache half-extents of the visible camera viewport in WORLD coordinates.
@@ -729,6 +817,9 @@ export class GameScene extends Phaser.Scene {
 
   update(_time: number, delta: number) {
     this.frameCount++;
+
+    // FPS watchdog: auto-downgrade quality if frames are dropping badly
+    this.monitorFps(performance.now(), delta);
 
     // Animated arena overlay — vivid theme particles. Throttled aggressively
     // so low-end devices never waste cycles on decorative effects.
@@ -1661,19 +1752,28 @@ export class GameScene extends Phaser.Scene {
       this.handleSkinEffects(p, skin);
     }
 
-    // Labels: score above username above head
-    const scoreStr = `$${p.score.toFixed(2)}`;
-    if (scoreLabel.text !== scoreStr) {
-      scoreLabel.setText(scoreStr);
-    }
-    scoreLabel.setPosition(head.x, head.y - 38);
-    label.setPosition(head.x, head.y - 26);
-    // On mobile hide other players' name labels — too much text clutter on small screens.
-    // Show only our own label so we can identify ourselves; hide names of others.
-    if (this.isMobile && !isMe) {
-      label.setVisible(false);
+    // Labels: score above username above head.
+    // Cull offscreen labels entirely — no point positioning/rendering text
+    // that isn't visible. This saves a lot on crowded lobbies.
+    const labelVisible = isMe || this.isOnScreen(head.x, head.y, 80);
+    if (labelVisible) {
+      const scoreStr = `$${p.score.toFixed(2)}`;
+      if (scoreLabel.text !== scoreStr) {
+        scoreLabel.setText(scoreStr);
+      }
+      scoreLabel.setPosition(head.x, head.y - 38);
+      label.setPosition(head.x, head.y - 26);
+      scoreLabel.setVisible(true);
+      // Hide other players' name labels on mobile OR low tier — text clutter + perf cost.
+      // Always show our own label.
+      if (!isMe && (this.isMobile || this.qualityTier === 'low')) {
+        label.setVisible(false);
+      } else {
+        label.setVisible(true);
+      }
     } else {
-      label.setVisible(true);
+      scoreLabel.setVisible(false);
+      label.setVisible(false);
     }
   }
 

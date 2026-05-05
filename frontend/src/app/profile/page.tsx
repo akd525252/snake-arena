@@ -7,7 +7,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useI18n } from '../../contexts/I18nContext';
 import LanguageSwitcher from '../../components/LanguageSwitcher';
 import { api } from '../../lib/api';
-import { countryCodeToEmoji, COUNTRY_LIST } from '../../lib/countryFlag';
+import { COUNTRY_LIST } from '../../lib/countryFlag';
+import CountryFlag from '../../components/CountryFlag';
 import Loader from '../../components/Loader';
 
 const COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
@@ -330,7 +331,7 @@ export default function ProfilePage() {
 
           {user.country_flag && (
             <div className="flex items-center gap-2 mb-4">
-              <span className="text-2xl">{countryCodeToEmoji(user.country_flag)}</span>
+              <CountryFlag code={user.country_flag} size="lg" />
               <span className="text-sm rpg-text-muted">{t.countryFlag.currentFlag}: {COUNTRY_LIST.find(([c]) => c === user.country_flag)?.[1] || user.country_flag}</span>
             </div>
           )}
@@ -380,7 +381,7 @@ export default function ProfilePage() {
                         user.country_flag === code ? 'bg-[#3a2c1f]/30 rpg-gold-bright' : 'rpg-text'
                       }`}
                     >
-                      <span className="text-lg">{countryCodeToEmoji(code)}</span>
+                      <CountryFlag code={code} size="md" />
                       <span>{name}</span>
                       {user.country_flag === code && <span className="ml-auto text-xs rpg-gold-bright">✓</span>}
                     </button>
