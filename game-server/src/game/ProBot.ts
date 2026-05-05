@@ -94,6 +94,9 @@ export function createProBot(room: GameRoom, betAmount: number): Player {
       coinsCollected: 0,
       outOfZoneSince: null,
       lastZonePenaltyAt: null,
+      speedBoostEndTime: 0,
+      magnetEndTime: 0,
+      ghostEndTime: 0,
     },
   };
 

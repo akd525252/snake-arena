@@ -264,6 +264,11 @@ const es: Translations = {
     qualityLow: '◐ BAJO',
     qualityMid: '◑ MED',
     qualityHigh: '◉ ALTO',
+    bubbleSpeedLabel: 'Súper Velocidad',
+    bubbleMagnetLabel: 'Imán',
+    bubbleExplosionLabel: 'Explosión Masiva',
+    bubbleGhostLabel: 'Fantasma',
+    activated: '¡Activado!',
   },
   wallet: {
     deposit: 'Depositar',

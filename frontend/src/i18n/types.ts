@@ -271,6 +271,12 @@ export interface Translations {
     qualityLow: string;
     qualityMid: string;
     qualityHigh: string;
+    // Bubble power-up labels (also used as in-game notifications)
+    bubbleSpeedLabel: string;
+    bubbleMagnetLabel: string;
+    bubbleExplosionLabel: string;
+    bubbleGhostLabel: string;
+    activated: string;
   };
   wallet: {
     deposit: string;

@@ -264,6 +264,11 @@ const ar: Translations = {
     qualityLow: '◐ منخفض',
     qualityMid: '◑ متوسط',
     qualityHigh: '◉ مرتفع',
+    bubbleSpeedLabel: 'تعزيز السرعة',
+    bubbleMagnetLabel: 'مغناطيس',
+    bubbleExplosionLabel: 'انفجار ضخم',
+    bubbleGhostLabel: 'شبح',
+    activated: 'تم التفعيل!',
   },
   wallet: {
     deposit: 'إيداع',

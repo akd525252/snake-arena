@@ -264,6 +264,11 @@ const zh: Translations = {
     qualityLow: '◐ 低',
     qualityMid: '◑ 中',
     qualityHigh: '◉ 高',
+    bubbleSpeedLabel: '加速泡泡',
+    bubbleMagnetLabel: '磁铁泡泡',
+    bubbleExplosionLabel: '爆炸泡泡',
+    bubbleGhostLabel: '幽灵泡泡',
+    activated: '已激活！',
   },
   wallet: {
     deposit: '充值',

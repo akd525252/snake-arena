@@ -583,6 +583,9 @@ async function createMatch(entries: QueueEntry[]): Promise<void> {
         coinsCollected: 0,
         outOfZoneSince: null,
         lastZonePenaltyAt: null,
+        speedBoostEndTime: 0,
+        magnetEndTime: 0,
+        ghostEndTime: 0,
       },
     };
 

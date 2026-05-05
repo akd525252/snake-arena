@@ -44,6 +44,9 @@ export function createBot(room: GameRoom, betAmount: number = 1): Player {
       coinsCollected: 0,
       outOfZoneSince: null,
       lastZonePenaltyAt: null,
+      speedBoostEndTime: 0,
+      magnetEndTime: 0,
+      ghostEndTime: 0,
     },
   };
 

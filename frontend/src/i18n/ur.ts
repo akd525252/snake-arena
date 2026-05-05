@@ -264,6 +264,11 @@ const ur: Translations = {
     qualityLow: '◐ کم',
     qualityMid: '◑ درمیانہ',
     qualityHigh: '◉ زیادہ',
+    bubbleSpeedLabel: 'تیز رفتاری',
+    bubbleMagnetLabel: 'مقناطیس',
+    bubbleExplosionLabel: 'دھماکہ',
+    bubbleGhostLabel: 'بھوت',
+    activated: 'فعال!',
   },
   wallet: {
     deposit: 'ڈپازٹ',

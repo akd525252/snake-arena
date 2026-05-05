@@ -18,6 +18,10 @@ interface RemotePlayer {
   slowed: boolean;
   skinId?: string | null;
   inZone?: boolean;
+  // Bubble power-up effect remaining durations (ms). Undefined = inactive.
+  speedBoostMs?: number;
+  magnetMs?: number;
+  ghostMs?: number;
 }
 
 interface FoodItem {
@@ -27,12 +31,22 @@ interface FoodItem {
   colorIndex: number;
 }
 
+// ─── Bubble power-up system (client) ───────────────────────────────────────
+type BubbleType = 'speed' | 'magnet' | 'explosion' | 'ghost';
+
+interface BubbleItem {
+  id: string;
+  type: BubbleType;
+  position: Position;
+}
+
 interface GameStateMessage {
   type: 'game_state';
   state: {
     players: RemotePlayer[];
     coins: { id: string; position: Position; isTrap: boolean }[];
     food: FoodItem[];
+    bubble: BubbleItem | null;
     arena: { centerX: number; centerY: number; radius: number };
     timeRemaining: number;
   };
@@ -126,7 +140,22 @@ export class GameScene extends Phaser.Scene {
     skinId?: string | null;
     inZone?: boolean;
     username: string;
+    // Bubble effect remaining ms (0 if inactive) — used to drive render visuals
+    speedBoostMs?: number;
+    magnetMs?: number;
+    ghostMs?: number;
   }>();
+
+  // ── Bubble power-up system (client) ──────────────────────────────
+  // Currently-active bubble on the map (max 1 at a time, server-authoritative).
+  private currentBubble: BubbleItem | null = null;
+  // Visual elements for the active bubble (recreated when it changes).
+  private bubbleContainer: Phaser.GameObjects.Container | null = null;
+  // Bubble spawn time (performance.now) for floating animation
+  private bubbleSpawnAt = 0;
+  // Center text banner shown when a bubble is consumed (auto-hides).
+  private bubbleNotificationText!: Phaser.GameObjects.Text;
+  private bubbleNotificationTween: Phaser.Tweens.Tween | null = null;
 
   // Zone danger overlay
   private zoneOverlay!: Phaser.GameObjects.Graphics;
@@ -363,6 +392,18 @@ export class GameScene extends Phaser.Scene {
       strokeThickness: 4,
       align: 'center',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(102).setAlpha(0);
+
+    // Bubble power-up notification — appears a bit higher than kill notification
+    // so both can show simultaneously without overlapping.
+    this.bubbleNotificationText = this.add.text(this.scale.width / 2, this.scale.height * 0.18, '', {
+      fontFamily: 'monospace',
+      fontSize: this.isMobile ? '22px' : '32px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+      stroke: '#000000',
+      strokeThickness: 5,
+      align: 'center',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(103).setAlpha(0);
 
     // Sound mute toggle button (top right, under leaderboard)
     const savedMute = typeof localStorage !== 'undefined' && localStorage.getItem('snake_muted') === '1';
@@ -831,6 +872,13 @@ export class GameScene extends Phaser.Scene {
     }
     // low tier: intentionally skipped — decorative particles are a luxury
 
+    // Bubble float animation: tiny vertical bob (cheap — single sin() per frame)
+    if (this.bubbleContainer && this.currentBubble) {
+      const t = (performance.now() - this.bubbleSpawnAt) / 1000;
+      const bob = Math.sin(t * 2.8) * 3; // ~±3px bob, 0.45Hz
+      this.bubbleContainer.setY(this.currentBubble.position.y + bob);
+    }
+
     // Mouse steering (desktop only — mobile uses joystick)
     if (!this.isMobile && this.cameraTarget && this.input.activePointer) {
       const pointer = this.input.activePointer;
@@ -908,6 +956,9 @@ export class GameScene extends Phaser.Scene {
         slowed: data.slowed,
         skinId: data.skinId,
         inZone: data.inZone,
+        speedBoostMs: data.speedBoostMs,
+        magnetMs: data.magnetMs,
+        ghostMs: data.ghostMs,
       };
 
       // Frustum culling: skip drawing snakes that are fully off-screen.
@@ -1168,6 +1219,22 @@ export class GameScene extends Phaser.Scene {
         this.renderGameState((msg as unknown as GameStateMessage).state);
         break;
 
+      case 'bubble_consumed': {
+        // Server says someone ate the bubble. Play the burst at the LAST known
+        // position (currentBubble, before renderGameState clears it).
+        const data = msg as unknown as {
+          bubbleId: string;
+          bubbleType: BubbleType;
+          playerId: string;
+          username: string;
+        };
+        const lastBubble = this.currentBubble;
+        if (lastBubble && lastBubble.id === data.bubbleId) {
+          this.onBubbleConsumed(lastBubble, data.playerId, data.username);
+        }
+        break;
+      }
+
       case 'player_death':
         if (msg.playerId === this.myPlayerId) {
           this.statusText.setText('');
@@ -1281,6 +1348,9 @@ export class GameScene extends Phaser.Scene {
         existing.skinId = p.skinId;
         existing.inZone = p.inZone;
         existing.username = p.username;
+        existing.speedBoostMs = p.speedBoostMs;
+        existing.magnetMs = p.magnetMs;
+        existing.ghostMs = p.ghostMs;
       } else {
         // First snapshot — duplicate so prev=curr (no jump)
         const segCopy = p.segments.map(s => ({ x: s.x, y: s.y }));
@@ -1296,6 +1366,9 @@ export class GameScene extends Phaser.Scene {
           skinId: p.skinId,
           inZone: p.inZone,
           username: p.username,
+          speedBoostMs: p.speedBoostMs,
+          magnetMs: p.magnetMs,
+          ghostMs: p.ghostMs,
         });
       }
     }
@@ -1519,6 +1592,163 @@ export class GameScene extends Phaser.Scene {
         }
       }
     }
+
+    // ── Bubble power-up: sync with server state ────────────────────
+    this.syncBubble(state.bubble);
+  }
+
+  // ─── Bubble power-up rendering ─────────────────────────────────────────
+  /** Sync the active bubble with the server state. Called each game_state. */
+  private syncBubble(next: BubbleItem | null): void {
+    const curr = this.currentBubble;
+    // Same bubble still active — just refresh position (server may have moved it)
+    if (curr && next && curr.id === next.id) {
+      if (this.bubbleContainer) {
+        this.bubbleContainer.setPosition(next.position.x, next.position.y);
+      }
+      return;
+    }
+    // Bubble changed or disappeared — tear down old visuals
+    if (this.bubbleContainer) {
+      this.bubbleContainer.destroy();
+      this.bubbleContainer = null;
+    }
+    this.currentBubble = next;
+    if (next) {
+      this.createBubbleVisuals(next);
+      this.bubbleSpawnAt = performance.now();
+    }
+  }
+
+  /** Build the Phaser container with glow + body + icon for the bubble. */
+  private createBubbleVisuals(bubble: BubbleItem): void {
+    const style = this.bubbleStyle(bubble.type);
+    const container = this.add.container(bubble.position.x, bubble.position.y).setDepth(7);
+
+    // Outer glow halo (large, translucent)
+    const outerGlow = this.add.graphics();
+    outerGlow.fillStyle(style.color, 0.22);
+    outerGlow.fillCircle(0, 0, 30);
+    outerGlow.fillStyle(style.color, 0.12);
+    outerGlow.fillCircle(0, 0, 44);
+    container.add(outerGlow);
+
+    // Bubble body — filled circle with a slightly lighter inner highlight
+    const body = this.add.graphics();
+    body.fillStyle(style.color, 0.85);
+    body.fillCircle(0, 0, 16);
+    body.lineStyle(2, style.ring, 1);
+    body.strokeCircle(0, 0, 16);
+    // Inner gloss highlight (upper-left) for a 3D bubble feel
+    body.fillStyle(0xffffff, 0.35);
+    body.fillCircle(-5, -5, 5);
+    container.add(body);
+
+    // Icon character centered inside the bubble
+    const icon = this.add.text(0, 0, style.icon, {
+      fontFamily: 'monospace',
+      fontSize: '18px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+    }).setOrigin(0.5);
+    container.add(icon);
+
+    this.bubbleContainer = container;
+
+    // Gentle pulsing tween: scale between 0.9 and 1.08
+    this.tweens.add({
+      targets: container,
+      scale: { from: 0.92, to: 1.08 },
+      duration: 600,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.inOut',
+    });
+  }
+
+  /** Color + ring + icon for each bubble type per spec. */
+  private bubbleStyle(type: BubbleType): { color: number; ring: number; icon: string } {
+    switch (type) {
+      case 'speed':     return { color: 0xff2e4d, ring: 0xffffff, icon: '⚡' }; // red + lightning
+      case 'magnet':    return { color: 0x3b82f6, ring: 0xbfdbfe, icon: '🧲' }; // blue + magnet
+      case 'explosion': return { color: 0xf97316, ring: 0xffedd5, icon: '💥' }; // orange + explosion
+      case 'ghost':     return { color: 0x8b5cf6, ring: 0xddd6fe, icon: '👻' }; // purple + ghost
+    }
+  }
+
+  /** Kick off a short celebratory burst + banner when a bubble is consumed. */
+  private onBubbleConsumed(bubble: BubbleItem, playerId: string, username: string): void {
+    const style = this.bubbleStyle(bubble.type);
+    const isMe = playerId === this.myPlayerId;
+
+    // Particle-like burst: 12 radial dots expanding + fading
+    const burst = this.add.graphics().setDepth(9);
+    const cx = bubble.position.x;
+    const cy = bubble.position.y;
+    const steps = 12;
+    const state = { t: 0 };
+    this.tweens.add({
+      targets: state,
+      t: 1,
+      duration: 550,
+      ease: 'Cubic.out',
+      onUpdate: () => {
+        burst.clear();
+        const radius = 10 + state.t * 60;
+        const alpha = 1 - state.t;
+        burst.fillStyle(style.color, alpha);
+        for (let i = 0; i < steps; i++) {
+          const a = (i / steps) * Math.PI * 2;
+          const px = cx + Math.cos(a) * radius;
+          const py = cy + Math.sin(a) * radius;
+          burst.fillCircle(px, py, 4 * (1 - state.t) + 1);
+        }
+      },
+      onComplete: () => burst.destroy(),
+    });
+
+    // Screen banner
+    const label = this.bubbleLabel(bubble.type);
+    const msg = isMe
+      ? `${style.icon} ${label} ${this.translations.activated || 'Activated!'}`
+      : `${style.icon} ${username}: ${label}`;
+
+    this.bubbleNotificationText.setText(msg);
+    this.bubbleNotificationText.setAlpha(1);
+    this.bubbleNotificationText.setScale(0.85);
+    // Colour the banner to match the bubble so the message feels cohesive
+    const hex = '#' + style.color.toString(16).padStart(6, '0');
+    this.bubbleNotificationText.setColor(hex);
+
+    if (this.bubbleNotificationTween) this.bubbleNotificationTween.stop();
+    this.bubbleNotificationTween = this.tweens.add({
+      targets: this.bubbleNotificationText,
+      scale: { from: 1.2, to: 1 },
+      duration: 280,
+      ease: 'Back.out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: this.bubbleNotificationText,
+          alpha: 0,
+          duration: 700,
+          delay: 1400,
+        });
+      },
+    });
+
+    // SFX: reuse coin pickup for a "ding" — cheap but readable feedback
+    if (isMe) this.sfx.coinPickup();
+  }
+
+  /** Translated display label for each bubble type. */
+  private bubbleLabel(type: BubbleType): string {
+    const tr = this.translations;
+    switch (type) {
+      case 'speed':     return tr?.bubbleSpeedLabel     || 'Speed Boost';
+      case 'magnet':    return tr?.bubbleMagnetLabel    || 'Magnet';
+      case 'explosion': return tr?.bubbleExplosionLabel || 'Mass Explosion';
+      case 'ghost':     return tr?.bubbleGhostLabel     || 'Ghost';
+    }
   }
 
   private renderSnake(p: RemotePlayer) {
@@ -1553,6 +1783,7 @@ export class GameScene extends Phaser.Scene {
     if (!p.alive) {
       label.setAlpha(0.3);
       scoreLabel.setAlpha(0);
+      g.setAlpha(1); // reset in case ghost was active
       // Clear all skin effects (trails, clones) when dead so they don't linger
       this.clearBoostTrails(p.id);
       this.clearShadowClones(p.id);
@@ -1566,6 +1797,23 @@ export class GameScene extends Phaser.Scene {
 
     const isMe = p.id === this.myPlayerId;
     const skin = p.skinId ? this.SKIN_COLORS[p.skinId] : null;
+
+    // ── Bubble power-up visual state ──────────────────────────────────
+    // Ghost: snake renders semi-transparent (can pass through bodies).
+    // Speed boost: we draw an extra outer ring at the head (later below).
+    // Magnet: we draw a pulsing halo at the head (later below).
+    const hasGhost = (p.ghostMs || 0) > 0;
+    const hasSpeedBubble = (p.speedBoostMs || 0) > 0;
+    const hasMagnet = (p.magnetMs || 0) > 0;
+    // Blink the snake at ~4Hz during the last 1.5s of ghost to warn of expiry
+    let ghostAlpha = 1;
+    if (hasGhost) {
+      const ms = p.ghostMs || 0;
+      ghostAlpha = ms < 1500
+        ? 0.45 + 0.25 * Math.sin(performance.now() / 80)
+        : 0.55;
+    }
+    g.setAlpha(ghostAlpha);
 
     // Resolve body & outline colors (skin overrides default)
     let bodyColor: number;
@@ -1683,6 +1931,35 @@ export class GameScene extends Phaser.Scene {
       // Subtle skin glow always
       g.lineStyle(2, glowColor, 0.3);
       g.strokeCircle(head.x, head.y, HEAD_RADIUS + 2);
+    }
+
+    // ── Bubble power-up head effects ──────────────────────────────────
+    // Speed bubble (red lightning ring, pulsing strongly)
+    if (hasSpeedBubble) {
+      const t = performance.now() / 250;
+      const pulse = 0.7 + 0.3 * Math.sin(t);
+      g.lineStyle(3, 0xff2e4d, pulse);
+      g.strokeCircle(head.x, head.y, HEAD_RADIUS + 8);
+      g.lineStyle(2, 0xffffff, pulse * 0.7);
+      g.strokeCircle(head.x, head.y, HEAD_RADIUS + 12);
+    }
+    // Magnet bubble (blue halo with rotating arc sparkles)
+    if (hasMagnet) {
+      const t = performance.now() / 400;
+      const pulse = 0.5 + 0.3 * Math.sin(t * 2);
+      g.lineStyle(2, 0x3b82f6, pulse);
+      g.strokeCircle(head.x, head.y, HEAD_RADIUS + 14);
+      // Rotating orbital dots to sell the "attraction" metaphor
+      g.fillStyle(0x93c5fd, 0.85);
+      for (let i = 0; i < 4; i++) {
+        const a = t + (i / 4) * Math.PI * 2;
+        g.fillCircle(head.x + Math.cos(a) * 22, head.y + Math.sin(a) * 22, 2.2);
+      }
+    }
+    // Ghost bubble: faint purple aura so others can see the ghost state
+    if (hasGhost) {
+      g.lineStyle(2, 0x8b5cf6, 0.55);
+      g.strokeCircle(head.x, head.y, HEAD_RADIUS + 5);
     }
 
     // ── Eyes ──

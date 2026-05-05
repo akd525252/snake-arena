@@ -63,4 +63,23 @@ export const CONFIG = {
   // Pro bot rake: when a pro bot dies, 50% goes to platform, 50% drops as coins.
   // (Bots make money for the platform; humans get a better drop rate.)
   BOT_RAKE_RATE: 0.50,
+
+  // ─── Bubble power-up system ──────────────────────────────────────────
+  // Spec: exactly 3 bubbles spawn per match at 1/6, 3/6, 5/6 of match
+  // duration. One bubble alive at a time; self-expires if not eaten.
+  BUBBLE_SPAWN_COUNT: 3,                    // total bubbles per match
+  BUBBLE_LIFETIME_MS: 8000,                 // auto-despawn if un-eaten (spec: 8s)
+  BUBBLE_MIN_SAFE_DIST: 180,                // min px from any player at spawn
+  BUBBLE_PICKUP_RADIUS: 22,                 // head-to-bubble collision distance
+  BUBBLE_RADIUS: 16,                        // visual radius (for render hints)
+  // Effect durations & magnitudes (per spec)
+  BUBBLE_SPEED_MULTIPLIER: 3,               // 3x base speed
+  BUBBLE_SPEED_DURATION_MS: 20000,          // 20 seconds
+  BUBBLE_MAGNET_RADIUS: 250,                // px — pulls food within this range
+  BUBBLE_MAGNET_DURATION_MS: 15000,         // 15 seconds
+  BUBBLE_MAGNET_PULL_RATE: 0.12,            // lerp factor per tick inside radius
+  BUBBLE_EXPLOSION_MIN_FOOD: 30,            // spec: 30–50 food particles
+  BUBBLE_EXPLOSION_MAX_FOOD: 50,
+  BUBBLE_EXPLOSION_RADIUS: 150,             // scatter radius
+  BUBBLE_GHOST_DURATION_MS: 8000,           // 8 seconds
 };

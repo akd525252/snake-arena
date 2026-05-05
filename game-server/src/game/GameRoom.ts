@@ -11,6 +11,8 @@ import {
   GameStatePayload,
   GameResult,
   ServerMessage,
+  Bubble,
+  BubbleType,
 } from '../types';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -54,6 +56,9 @@ export function createGameRoom(matchId: string, betAmount: number, totalSpawnSlo
     coinSpawnInterval: null,
     foodSpawnInterval: null,
     shrinkInterval: null,
+    bubble: null,
+    bubbleSpawnTimers: [],
+    bubbleExpireTimer: null,
     platformRakeAccrued: 0,
   };
 }
@@ -110,6 +115,9 @@ export function addPlayerToRoom(room: GameRoom, player: Player): void {
     coinsCollected: 0,
     outOfZoneSince: null,
     lastZonePenaltyAt: null,
+    speedBoostEndTime: 0,
+    magnetEndTime: 0,
+    ghostEndTime: 0,
   };
 
   room.players.set(player.id, player);
@@ -214,6 +222,9 @@ export function startGame(room: GameRoom): void {
 
   room.shrinkInterval = setInterval(() => shrinkArena(room), CONFIG.ARENA_SHRINK_INTERVAL);
 
+  // Bubble power-up system — schedule 3 spawns across the match
+  scheduleBubbleSpawns(room);
+
   setTimeout(() => endGame(room), CONFIG.GAME_DURATION);
 }
 
@@ -229,8 +240,14 @@ function gameLoop(room: GameRoom): void {
   // when within range. This gives the satisfying snake.io-style "vacuum" pickup.
   applyMagneticPull(room);
 
+  // Bubble magnet effect: larger-radius food pull for players with active magnet
+  applyMagnetBubblePull(room, now);
+
   for (const [, player] of room.players) {
     if (!player.snake.alive) continue;
+
+    // Expire bubble effects (speed boost timer, etc.)
+    updateBubbleEffects(player, now);
 
     // ─── Boost cost: $0.01 per second while held ─────────────────────────
     if (player.snake.boosted) {
@@ -302,13 +319,28 @@ function gameLoop(room: GameRoom): void {
 
     if (inGrace) continue;
 
-    // Collision with other snakes (head vs body)
+    // Bubble pickup — check before body collisions so a ghost bubble can
+    // activate in the same tick a player would otherwise die passing through.
+    tryConsumeBubble(room, player);
+
+    // Collision with other snakes — ghost bubble lets player pass through
+    // bodies but head-to-head still kills (per spec).
+    const isGhost = player.snake.ghostEndTime > now;
     for (const [otherId, other] of room.players) {
       if (otherId === player.id || !other.snake.alive) continue;
-      for (const seg of other.snake.segments) {
-        if (distance(head, seg) < CONFIG.SNAKE_SEGMENT_SIZE) {
+      if (isGhost) {
+        // Head-to-head check only: small radius around both heads
+        const otherHead = other.snake.segments[0];
+        if (otherHead && distance(head, otherHead) < CONFIG.SNAKE_SEGMENT_SIZE) {
           killPlayer(room, player, otherId);
           break;
+        }
+      } else {
+        for (const seg of other.snake.segments) {
+          if (distance(head, seg) < CONFIG.SNAKE_SEGMENT_SIZE) {
+            killPlayer(room, player, otherId);
+            break;
+          }
         }
       }
       if (!player.snake.alive) break;
@@ -644,6 +676,252 @@ function shrinkArena(room: GameRoom): void {
   room.food = room.food.filter(f =>
     distance(f.position, { x: room.arenaCenterX, y: room.arenaCenterY }) < room.arenaRadius
   );
+  // If the active bubble is now outside the arena, remove it early so players
+  // aren't forced to leave the safe zone to chase it.
+  if (room.bubble) {
+    const d = distance(room.bubble.position, { x: room.arenaCenterX, y: room.arenaCenterY });
+    if (d > room.arenaRadius - 20) {
+      removeBubble(room, 'expired');
+    }
+  }
+}
+
+// ─── Bubble power-up system ─────────────────────────────────────────────────
+//
+// Spec (server-authoritative):
+//   - Exactly 3 bubbles per match, scheduled at 1/6, 3/6, 5/6 of match duration.
+//   - Bubble auto-despawns after BUBBLE_LIFETIME_MS if nobody eats it.
+//   - Only one bubble alive at a time. If a previous one is still alive when
+//     the next spawn fires, we skip the new spawn (avoids stacking).
+//   - Server picks a safe random position at least BUBBLE_MIN_SAFE_DIST px
+//     from every alive player's head and inside the current arena.
+//   - Collision & effect application happen on the server; clients only render.
+
+/** Schedule the 3 match-long bubble spawns. Called once from startGame(). */
+function scheduleBubbleSpawns(room: GameRoom): void {
+  const total = CONFIG.BUBBLE_SPAWN_COUNT;
+  const matchMs = CONFIG.GAME_DURATION;
+  // Even distribution: 1/(2N), 3/(2N), 5/(2N), ... — for N=3 → 1/6, 3/6, 5/6
+  for (let i = 0; i < total; i++) {
+    const fraction = (2 * i + 1) / (2 * total);
+    const delay = Math.round(matchMs * fraction);
+    const timer = setTimeout(() => {
+      if (room.status !== 'active') return;
+      // Respect single-bubble rule: skip if one is already on the map
+      if (room.bubble) return;
+      spawnBubble(room);
+    }, delay);
+    room.bubbleSpawnTimers.push(timer);
+  }
+}
+
+function spawnBubble(room: GameRoom): void {
+  const position = findSafeBubblePosition(room);
+  if (!position) return; // map too crowded right now — skip this spawn
+
+  const types: BubbleType[] = ['speed', 'magnet', 'explosion', 'ghost'];
+  const type = types[Math.floor(Math.random() * types.length)];
+  const now = Date.now();
+
+  const bubble: Bubble = {
+    id: uuidv4(),
+    type,
+    position,
+    spawnTime: now,
+    expirationTime: now + CONFIG.BUBBLE_LIFETIME_MS,
+  };
+  room.bubble = bubble;
+
+  // Schedule auto-expiry if nobody eats it
+  room.bubbleExpireTimer = setTimeout(() => {
+    if (room.bubble && room.bubble.id === bubble.id) {
+      removeBubble(room, 'expired');
+    }
+  }, CONFIG.BUBBLE_LIFETIME_MS);
+
+  broadcastToRoom(room, {
+    type: 'bubble_spawn',
+    bubble: {
+      id: bubble.id,
+      type: bubble.type,
+      position: { x: Math.round(bubble.position.x), y: Math.round(bubble.position.y) },
+      expiresInMs: CONFIG.BUBBLE_LIFETIME_MS,
+    },
+  });
+}
+
+function removeBubble(room: GameRoom, reason: 'expired' | 'consumed'): void {
+  if (!room.bubble) return;
+  const id = room.bubble.id;
+  room.bubble = null;
+  if (room.bubbleExpireTimer) {
+    clearTimeout(room.bubbleExpireTimer);
+    room.bubbleExpireTimer = null;
+  }
+  broadcastToRoom(room, { type: 'bubble_remove', bubbleId: id, reason });
+}
+
+/**
+ * Randomly sample points inside the arena until one is found that is at least
+ * BUBBLE_MIN_SAFE_DIST from every alive player's head. Returns null after a
+ * bounded number of attempts (extremely rare — only in very crowded matches).
+ */
+function findSafeBubblePosition(room: GameRoom): Position | null {
+  const heads: Position[] = [];
+  for (const [, p] of room.players) {
+    if (!p.snake.alive) continue;
+    const h = p.snake.segments[0];
+    if (h) heads.push(h);
+  }
+  // Keep spawns slightly inside the zone so they aren't immediately culled
+  const maxR = Math.max(40, room.arenaRadius - 40);
+  const minSafe = CONFIG.BUBBLE_MIN_SAFE_DIST;
+
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const r = Math.sqrt(Math.random()) * maxR;
+    const a = Math.random() * Math.PI * 2;
+    const candidate: Position = {
+      x: room.arenaCenterX + Math.cos(a) * r,
+      y: room.arenaCenterY + Math.sin(a) * r,
+    };
+    let ok = true;
+    for (const h of heads) {
+      if (distance(candidate, h) < minSafe) { ok = false; break; }
+    }
+    if (ok) return candidate;
+  }
+  return null;
+}
+
+/**
+ * Called every tick for each alive snake. If its head touches the active
+ * bubble, remove the bubble and apply the effect to THIS player only.
+ * Returns true if the bubble was consumed.
+ */
+function tryConsumeBubble(room: GameRoom, player: Player): boolean {
+  if (!room.bubble) return false;
+  const head = player.snake.segments[0];
+  if (!head) return false;
+  if (distance(head, room.bubble.position) > CONFIG.BUBBLE_PICKUP_RADIUS) return false;
+
+  const bubble = room.bubble;
+  // Apply the effect FIRST so the player already has it when the broadcast lands
+  applyBubbleEffect(room, player, bubble.type);
+
+  // Notify everyone that this player got the bubble (big UI moment)
+  broadcastToRoom(room, {
+    type: 'bubble_consumed',
+    bubbleId: bubble.id,
+    bubbleType: bubble.type,
+    playerId: player.id,
+    username: player.username,
+  });
+
+  removeBubble(room, 'consumed');
+  return true;
+}
+
+/** Apply one of the four bubble effects to a player. Server-authoritative. */
+function applyBubbleEffect(room: GameRoom, player: Player, type: BubbleType): void {
+  const now = Date.now();
+  const snake = player.snake;
+
+  switch (type) {
+    case 'speed': {
+      // Boost doesn't stack — eating another speed bubble resets the timer.
+      snake.speedBoostEndTime = now + CONFIG.BUBBLE_SPEED_DURATION_MS;
+      // Apply multiplier to current speed immediately. We use base speed as the
+      // reference (hold-to-boost doubling stacks multiplicatively via this path).
+      snake.speed = CONFIG.SNAKE_SPEED * CONFIG.BUBBLE_SPEED_MULTIPLIER;
+      break;
+    }
+    case 'magnet': {
+      snake.magnetEndTime = now + CONFIG.BUBBLE_MAGNET_DURATION_MS;
+      break;
+    }
+    case 'ghost': {
+      snake.ghostEndTime = now + CONFIG.BUBBLE_GHOST_DURATION_MS;
+      break;
+    }
+    case 'explosion': {
+      // Scatter 30–50 food pellets around the player's head. These count as
+      // regular food (small pellets, standard colors) so the existing pickup
+      // logic handles them automatically. Broadcast each one so clients render.
+      const head = snake.segments[0];
+      if (!head) return;
+      const count = CONFIG.BUBBLE_EXPLOSION_MIN_FOOD +
+        Math.floor(Math.random() * (CONFIG.BUBBLE_EXPLOSION_MAX_FOOD - CONFIG.BUBBLE_EXPLOSION_MIN_FOOD + 1));
+      for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const r = Math.sqrt(Math.random()) * CONFIG.BUBBLE_EXPLOSION_RADIUS;
+        const fx = head.x + Math.cos(a) * r;
+        const fy = head.y + Math.sin(a) * r;
+        // Most pellets small, ~20% large — the high count is the reward.
+        const size: Food['size'] = Math.random() < 0.8 ? 'small' : 'large';
+        const food: Food = {
+          id: uuidv4(),
+          position: { x: fx, y: fy },
+          size,
+          colorIndex: Math.floor(Math.random() * 6),
+        };
+        room.food.push(food);
+        broadcastToRoom(room, {
+          type: 'food_spawn',
+          food: { id: food.id, position: food.position, size: food.size, colorIndex: food.colorIndex },
+        });
+      }
+      break;
+    }
+  }
+}
+
+/**
+ * Per-tick effect maintenance. Called from gameLoop for each alive snake.
+ * Expires speed boost (restores normal/boost speed) when timer runs out.
+ */
+function updateBubbleEffects(player: Player, now: number): void {
+  const s = player.snake;
+  // Speed boost expires — snap back to boosted speed if held, else base.
+  if (s.speedBoostEndTime > 0 && now >= s.speedBoostEndTime) {
+    s.speedBoostEndTime = 0;
+    s.speed = s.boosted ? CONFIG.SNAKE_BOOST_SPEED : CONFIG.SNAKE_SPEED;
+  }
+  // Magnet and ghost are checked passively by reading endTime > now, no action needed here.
+  // We just leave the timestamp; read-sites compare against `now`.
+  if (s.magnetEndTime > 0 && now >= s.magnetEndTime) s.magnetEndTime = 0;
+  if (s.ghostEndTime > 0 && now >= s.ghostEndTime) s.ghostEndTime = 0;
+}
+
+/** Apply strong magnet pull for players with an active magnet bubble effect. */
+function applyMagnetBubblePull(room: GameRoom, now: number): void {
+  for (const [, p] of room.players) {
+    if (!p.snake.alive) continue;
+    if (p.snake.magnetEndTime <= now) continue;
+    const head = p.snake.segments[0];
+    if (!head) continue;
+    const range = CONFIG.BUBBLE_MAGNET_RADIUS;
+    const pull = CONFIG.BUBBLE_MAGNET_PULL_RATE;
+    // Pull food only (coins already auto-magnet on short range; spec targets food).
+    for (const f of room.food) {
+      const dx = head.x - f.position.x;
+      const dy = head.y - f.position.y;
+      const d = Math.hypot(dx, dy);
+      if (d < range && d > 1) {
+        f.position.x += dx * pull;
+        f.position.y += dy * pull;
+      }
+    }
+  }
+}
+
+/** Cleanup bubble timers when the match ends or room is destroyed. */
+function clearBubbleTimers(room: GameRoom): void {
+  for (const t of room.bubbleSpawnTimers) clearTimeout(t);
+  room.bubbleSpawnTimers = [];
+  if (room.bubbleExpireTimer) {
+    clearTimeout(room.bubbleExpireTimer);
+    room.bubbleExpireTimer = null;
+  }
 }
 
 // ─── End game ───────────────────────────────────────────────────────────────
@@ -663,6 +941,7 @@ export function endGame(room: GameRoom): void {
   if (room.coinSpawnInterval) clearInterval(room.coinSpawnInterval);
   if (room.foodSpawnInterval) clearInterval(room.foodSpawnInterval);
   if (room.shrinkInterval) clearInterval(room.shrinkInterval);
+  clearBubbleTimers(room);
 
   const results: GameResult[] = Array.from(room.players.values())
     .map(p => ({
@@ -733,20 +1012,32 @@ function broadcastGameState(room: GameRoom): void {
   const round2 = (n: number) => Math.round(n * 100) / 100;
   const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
+  const now = Date.now();
   const state: GameStatePayload = {
-    players: Array.from(room.players.values()).map(p => ({
-      id: p.id,
-      username: p.username,
-      avatar: p.avatar,
-      segments: p.snake.segments.map(s => ({ x: round1(s.x), y: round1(s.y) })),
-      angle: round3(p.snake.angle),
-      alive: p.snake.alive,
-      score: round2(p.snake.score),
-      boosted: p.snake.boosted,
-      slowed: p.snake.slowed,
-      skinId: p.skinId,
-      inZone: p.snake.outOfZoneSince === null,
-    })),
+    players: Array.from(room.players.values()).map(p => {
+      // Remaining ms on each active effect (0 if inactive). Clients use these
+      // to render visual state (ghost transparency, speed stripes, magnet particles).
+      const speedBoostMs = Math.max(0, p.snake.speedBoostEndTime - now);
+      const magnetMs = Math.max(0, p.snake.magnetEndTime - now);
+      const ghostMs = Math.max(0, p.snake.ghostEndTime - now);
+      return {
+        id: p.id,
+        username: p.username,
+        avatar: p.avatar,
+        segments: p.snake.segments.map(s => ({ x: round1(s.x), y: round1(s.y) })),
+        angle: round3(p.snake.angle),
+        alive: p.snake.alive,
+        score: round2(p.snake.score),
+        boosted: p.snake.boosted,
+        slowed: p.snake.slowed,
+        skinId: p.skinId,
+        inZone: p.snake.outOfZoneSince === null,
+        // Only include when active to keep payload lean
+        ...(speedBoostMs > 0 ? { speedBoostMs } : {}),
+        ...(magnetMs > 0 ? { magnetMs } : {}),
+        ...(ghostMs > 0 ? { ghostMs } : {}),
+      };
+    }),
     coins: room.coins.map(c => ({
       id: c.id,
       position: { x: round1(c.position.x), y: round1(c.position.y) },
@@ -763,6 +1054,11 @@ function broadcastGameState(room: GameRoom): void {
       centerY: round1(room.arenaCenterY),
       radius: round1(room.arenaRadius),
     },
+    bubble: room.bubble ? {
+      id: room.bubble.id,
+      type: room.bubble.type,
+      position: { x: round1(room.bubble.position.x), y: round1(room.bubble.position.y) },
+    } : null,
     timeRemaining,
   };
 

@@ -264,6 +264,11 @@ const hi: Translations = {
     qualityLow: '◐ कम',
     qualityMid: '◑ मध्यम',
     qualityHigh: '◉ उच्च',
+    bubbleSpeedLabel: 'स्पीड बूस्ट',
+    bubbleMagnetLabel: 'मैग्नेट',
+    bubbleExplosionLabel: 'मास विस्फोट',
+    bubbleGhostLabel: 'भूत',
+    activated: 'सक्रिय!',
   },
   wallet: {
     deposit: 'जमा करें',

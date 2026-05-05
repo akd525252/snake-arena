@@ -23,6 +23,15 @@ export interface Snake {
   outOfZoneSince: number | null; // timestamp when player went outside arena (null if inside)
   /** When zone penalty was last applied — used to deduct only the delta each tick. */
   lastZonePenaltyAt: number | null;
+  // ─── Bubble power-up effects ─────────────────────────────────────────
+  // Each effect has an expiry timestamp (ms). null/0 = inactive.
+  // Stored on the snake (not the player) so they clear automatically on death.
+  /** Speed boost from a speed bubble: multiplies base speed by 3x until endTime. */
+  speedBoostEndTime: number;
+  /** Magnet bubble: attracts nearby food toward head with increased range until endTime. */
+  magnetEndTime: number;
+  /** Ghost bubble: can pass through other snake bodies (but head-to-head still kills). */
+  ghostEndTime: number;
 }
 
 // Legacy 4-direction type kept for backward compatibility in a few helpers.
@@ -46,6 +55,17 @@ export interface Food {
   position: Position;
   size: 'small' | 'large'; // small = 1 growth, large = 3 growth
   colorIndex: number;       // 0..n — client picks color from a palette
+}
+
+/** Power-up bubble spawned during the match. Only one can be active at a time. */
+export type BubbleType = 'speed' | 'magnet' | 'explosion' | 'ghost';
+
+export interface Bubble {
+  id: string;
+  type: BubbleType;
+  position: Position;
+  spawnTime: number;       // ms since epoch when the bubble appeared
+  expirationTime: number;  // ms since epoch — after this, auto-removed
 }
 
 export interface Player {
@@ -78,6 +98,10 @@ export interface GameRoom {
   coinSpawnInterval: NodeJS.Timeout | null;
   foodSpawnInterval: NodeJS.Timeout | null;
   shrinkInterval: NodeJS.Timeout | null;
+  // Bubble power-up system — spec: 3 bubbles per match, one active at a time.
+  bubble: Bubble | null;                    // currently active bubble (null = none)
+  bubbleSpawnTimers: NodeJS.Timeout[];      // scheduled spawn timers
+  bubbleExpireTimer: NodeJS.Timeout | null; // removes the active bubble after lifetime
   platformRakeAccrued: number; // running total of rake recorded during the match (USD)
 }
 
@@ -85,6 +109,8 @@ export interface GameRoom {
 export type ClientMessage =
   | { type: 'turn'; angle: number }
   | { type: 'boost' }
+  | { type: 'boost_start' }
+  | { type: 'boost_end' }
   | { type: 'skill_use'; skill: 'trap' }
   | { type: 'ping' };
 
@@ -103,7 +129,11 @@ export type ServerMessage =
   | { type: 'error'; message: string }
   | { type: 'pong' }
   | { type: 'queue_status'; position: number; playerCount: number }
-  | { type: 'waiting'; matchId: string; playerCount: number; minPlayers: number };
+  | { type: 'waiting'; matchId: string; playerCount: number; minPlayers: number }
+  // ─── Bubble power-up events ──────────────────────────────────────────
+  | { type: 'bubble_spawn'; bubble: { id: string; type: BubbleType; position: Position; expiresInMs: number } }
+  | { type: 'bubble_remove'; bubbleId: string; reason: 'expired' | 'consumed' }
+  | { type: 'bubble_consumed'; bubbleId: string; bubbleType: BubbleType; playerId: string; username: string };
 
 export interface GameStatePayload {
   players: {
@@ -118,9 +148,16 @@ export interface GameStatePayload {
     slowed: boolean;
     skinId?: string | null;
     inZone?: boolean;
+    // Power-up effects — clients render visuals based on these.
+    // Values are remaining duration in ms (0 = inactive).
+    speedBoostMs?: number;
+    magnetMs?: number;
+    ghostMs?: number;
   }[];
   coins: { id: string; position: Position; isTrap: boolean }[];
   food: { id: string; position: Position; size: 'small' | 'large'; colorIndex: number }[];
+  // Active bubble (max one at a time). null = none currently on the map.
+  bubble: { id: string; type: BubbleType; position: Position } | null;
   arena: {
     centerX: number;
     centerY: number;
