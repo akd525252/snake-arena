@@ -639,7 +639,21 @@ async function createMatch(entries: QueueEntry[]): Promise<void> {
       const bot = createProBot(room, proBotBet);
       addPlayerToRoom(room, bot);
       playerRooms.set(bot.id, matchId);
-      console.log(`[createMatch] pro bot joined: ${bot.username} (${bot.id.slice(0, 8)}) skin=${bot.skinId}`);
+
+      // Grow pro bots to 3× the default starting length so their BODY is a
+      // real obstacle, not a token 75px segment. With default 5 segments the
+      // bot was barely a hazard — players just curved around it. At 15
+      // segments (~225px) the bot is an actual wall that punishes a head-on
+      // charge: even if the player turns away from the head, the body sweeps
+      // across their path. This is THE single biggest factor in why pro bots
+      // couldn't kill — they had nothing to kill WITH.
+      const PRO_BONUS_SEGMENTS = 10;
+      const tail = bot.snake.segments[bot.snake.segments.length - 1];
+      for (let g = 0; g < PRO_BONUS_SEGMENTS; g++) {
+        bot.snake.segments.push({ ...tail });
+      }
+
+      console.log(`[createMatch] pro bot joined: ${bot.username} (${bot.id.slice(0, 8)}) skin=${bot.skinId} segments=${bot.snake.segments.length}`);
     }
   }
 

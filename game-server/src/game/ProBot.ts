@@ -553,49 +553,72 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
     const distToHuman = dist(head, oh);
     const risk = humanRiskTier(human);
 
-    // ── HEAD-ON DEFENCE ──────────────────────────────────────────────
-    // If a human is charging directly at our head from the front, going
-    // straight at them is a coin-flip (head-to-head = both die at the
-    // same tick). A real pro player ALWAYS dodges sideways to put their
-    // BODY between them and the attacker — turning a 50/50 into a free
-    // kill. Detect "human is close + facing roughly toward us + I'm
-    // facing roughly toward them" and pre-empt with a perpendicular jink.
-    if (!iHaveGhost && distToHuman < 220) {
-      const angBotToHuman = angleToward(head, oh);
+    // ── SIDE-CUT TACTIC (replaces naive head-on charge) ─────────────────
+    // The kill mechanic in this game: whoever's HEAD touches the OTHER's
+    // BODY dies. So going straight at a player's head is a coin-flip
+    // head-to-head — half the time the BOT dies, not the player.
+    //
+    // Real pro-tier kills work by SIDE-CUTTING: approach from the side,
+    // then boost ACROSS the player's heading vector so your body forms a
+    // wall across their path. The player runs into your tail, you don't
+    // run into theirs. It's how slither.io top players score every kill.
+    //
+    // Trigger: player is closing on us within ~360px AND roughly facing us
+    // (their head is heading toward our head). Action: aim at a point 90°
+    // off the player's facing line, ~120px ahead of them — this is where
+    // their predicted path will be in ~1 second. Boost across.
+    if (!iHaveGhost && distToHuman < 360) {
       const angHumanToBot = angleToward(oh, head);
-      const myFacingDelta = Math.abs(angleDiffNormalized(bot.snake.angle, angBotToHuman));
       const theirFacingDelta = Math.abs(angleDiffNormalized(human.snake.angle, angHumanToBot));
-      // Both heading roughly at each other (within ~45°) → head-on collision course
-      const headOn = myFacingDelta < Math.PI / 4 && theirFacingDelta < Math.PI / 4;
-      if (headOn) {
-        // Jink perpendicular: pick the side that keeps us inside the arena
-        // and doesn't have a body in the way. We aim for a point ~80px
-        // perpendicular to the human's approach vector — close enough that
-        // our tail crosses their path before they can re-aim.
-        const perpLeft = bot.snake.angle - Math.PI / 2;
-        const perpRight = bot.snake.angle + Math.PI / 2;
-        const leftSafe = pathSafe(bot, perpLeft, room, 5);
-        const rightSafe = pathSafe(bot, perpRight, room, 5);
-        let jinkAngle: number;
-        if (leftSafe && !rightSafe) jinkAngle = perpLeft;
-        else if (rightSafe && !leftSafe) jinkAngle = perpRight;
-        else {
-          // Both safe (or both unsafe) → pick the side closer to center to
-          // avoid drifting into the wall during the dodge.
-          const leftPt = { x: head.x + Math.cos(perpLeft) * 60, y: head.y + Math.sin(perpLeft) * 60 };
-          const rightPt = { x: head.x + Math.cos(perpRight) * 60, y: head.y + Math.sin(perpRight) * 60 };
-          const distLeft = dist(leftPt, { x: cx, y: cy });
-          const distRight = dist(rightPt, { x: cx, y: cy });
-          jinkAngle = distLeft < distRight ? perpLeft : perpRight;
+      // Player is heading ROUGHLY at us (within 50°) → they're attacking
+      const playerCharging = theirFacingDelta < (Math.PI * 50) / 180;
+
+      if (playerCharging) {
+        // Pick the side to cut to — whichever side is INWARD from the wall
+        // (so we don't pin ourselves) and has a clear path.
+        const playerFacing = human.snake.angle;
+        const sideA = playerFacing - Math.PI / 2;     // human's left
+        const sideB = playerFacing + Math.PI / 2;     // human's right
+        const cutDist = 130;                           // ~1s of player travel
+
+        // Two candidate cut targets — points perpendicular to player's heading
+        const cutA = {
+          x: oh.x + Math.cos(playerFacing) * 90 + Math.cos(sideA) * cutDist,
+          y: oh.y + Math.sin(playerFacing) * 90 + Math.sin(sideA) * cutDist,
+        };
+        const cutB = {
+          x: oh.x + Math.cos(playerFacing) * 90 + Math.cos(sideB) * cutDist,
+          y: oh.y + Math.sin(playerFacing) * 90 + Math.sin(sideB) * cutDist,
+        };
+
+        // Score each cut target: prefer the one that's (a) inside arena,
+        // (b) closer to us (faster to reach), (c) doesn't path-collide.
+        const scoreCut = (pt: Position) => {
+          const distFromCenter = dist(pt, { x: cx, y: cy });
+          if (distFromCenter > room.arenaRadius - PRO_WALL_MARGIN) return -Infinity;
+          const myDist = dist(head, pt);
+          const ang = angleToward(head, pt);
+          const safe = pathSafe(bot, ang, room, 5);
+          if (!safe) return -Infinity;
+          return 1000 - myDist; // prefer closer
+        };
+
+        const sA = scoreCut(cutA);
+        const sB = scoreCut(cutB);
+        const bestCut = sA >= sB ? cutA : cutB;
+        const bestScore = Math.max(sA, sB);
+
+        // Only commit to the side-cut if at least one option scored well.
+        // Otherwise fall through to standard hunt (might be wall-pinned).
+        if (bestScore > 0) {
+          bot.snake.targetAngle = angleToward(head, bestCut);
+          // Boost hard — must clear into the cut position BEFORE player adjusts.
+          // 800ms cooldown lets us re-trigger if they keep coming.
+          tryBoost(bot, state, 800);
+          state.currentGoal = 'hunt';
+          state.goalCooldown = 4;
+          return;
         }
-        // Blend jink with a slight forward bias so the bot's BODY sweeps
-        // across the human's path — the human runs into our tail and dies.
-        bot.snake.targetAngle = jinkAngle;
-        // Hard boost: we want to clear past the human BEFORE they can match.
-        tryBoost(bot, state, 600);
-        state.currentGoal = 'hunt';
-        state.goalCooldown = 4;
-        return;
       }
     }
 
