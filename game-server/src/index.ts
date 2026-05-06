@@ -15,8 +15,8 @@ import {
   setBoostHeld,
   placeTrap,
 } from './game/GameRoom';
-import { createBot, updateBotDirection } from './game/BotAI';
-import { createProBot, updateProBotDirection, clearProBotState, generateUsername, generateAvatarUrl } from './game/ProBot';
+import { createBot } from './game/BotAI';
+import { createProBot, generateUsername, generateAvatarUrl } from './game/ProBot';
 import { supabase, chargeBet } from './db';
 
 // ============================================
@@ -601,6 +601,17 @@ async function createMatch(entries: QueueEntry[]): Promise<void> {
   }
 
   // For demo mode: fill with bots (spec: 10 total = 1 player + 9 NPCs)
+  //
+  // IMPORTANT: bots are NO LONGER driven by per-bot setInterval timers.
+  // Previously the demo branch leaked one setInterval per bot per match
+  // because the timers were never captured / cleared, so they kept firing
+  // (no-op but still scheduled) for the lifetime of the process. Across
+  // hundreds of matches this added measurable CPU + GC pressure.
+  //
+  // Now each bot is just added to the room. The central gameLoop() in
+  // GameRoom.ts ticks every bot's AI every Nth tick (faster cadence for
+  // pro bots, slower for demo bots) so all timing lives in one place and
+  // is automatically cleaned up by endGame().
   const isDemo = entries.some(e => e.isDemo);
   if (isDemo) {
     const playerBet = entries.find(e => e.isDemo)?.betAmount || avgBet;
@@ -613,13 +624,6 @@ async function createMatch(entries: QueueEntry[]): Promise<void> {
       const bot = createBot(room, botBet);
       addPlayerToRoom(room, bot);
       playerRooms.set(bot.id, matchId);
-
-      // Bot AI update interval
-      setInterval(() => {
-        if (room.status === 'active') {
-          updateBotDirection(bot, room);
-        }
-      }, 200);
     }
   } else {
     // PRO MATCH: inject 1-2 advanced "pro" bots disguised as real players.
@@ -636,18 +640,6 @@ async function createMatch(entries: QueueEntry[]): Promise<void> {
       addPlayerToRoom(room, bot);
       playerRooms.set(bot.id, matchId);
       console.log(`[createMatch] pro bot joined: ${bot.username} (${bot.id.slice(0, 8)}) skin=${bot.skinId}`);
-
-      // Faster, more aggressive update tick than demo bots (150ms vs 200ms)
-      const intervalId = setInterval(() => {
-        if (room.status === 'completed') {
-          clearInterval(intervalId);
-          clearProBotState(bot.id);
-          return;
-        }
-        if (room.status === 'active') {
-          updateProBotDirection(bot, room);
-        }
-      }, 150);
     }
   }
 

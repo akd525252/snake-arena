@@ -100,6 +100,10 @@ export function createProBot(room: GameRoom, betAmount: number): Player {
     },
   };
 
+  // Pre-register state so `isProBot(botId)` works from the moment of creation
+  // (the game loop uses it to route AI updates before the first tick runs).
+  getState(botId);
+
   return bot;
 }
 
@@ -183,6 +187,16 @@ function getState(botId: string): ProBotState {
 
 export function clearProBotState(botId: string): void {
   proBotStates.delete(botId);
+}
+
+/**
+ * Is this bot id a pro bot (the smart, aggressive one) vs a basic demo bot?
+ * Pro bots register state in `proBotStates` when they're first created via
+ * `createProBot`; demo bots from BotAI.ts never touch this map. This is the
+ * cleanest way the game loop can route AI updates to the right module.
+ */
+export function isProBot(botId: string): boolean {
+  return proBotStates.has(botId);
 }
 
 function dist(a: Position, b: Position): number {
@@ -457,6 +471,18 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
   const iHaveGhost = botHasEffect(bot, 'ghost');
   const iHaveSpeedBubble = botHasEffect(bot, 'speed');
 
+  // ─── Per-tick room snapshot ──────────────────────────────────────────
+  // Build the alive-humans + alive-teammates lists ONCE up-front. The hunt
+  // logic used to call findNearestHuman / bodyDirectlyAhead / etc. which
+  // each re-iterated room.players, so a single tick did 5–6 full passes
+  // over the player map. Now everything below shares these arrays.
+  const aliveHumans: Player[] = [];
+  for (const [, p] of room.players) {
+    if (p.id === bot.id || !p.snake.alive) continue;
+    if (!p.isBot) aliveHumans.push(p);
+  }
+  const teammates = getProBotTeammates(bot, room);
+
   // ──────────────────────────────────────────────────────────────────────────
   // PRIORITY 0: Wall / zone avoidance — always runs first
   // ──────────────────────────────────────────────────────────────────────────
@@ -473,12 +499,12 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
   // ── OR if I'm already committed to a kill. A pro player doesn't back
   //    off when the victim's head is 100px away; they ram through.
   // ──────────────────────────────────────────────────────────────────────────
-  // Peek the nearest human now so the kill-commit override can skip body
+  // Peek the best victim now so the kill-commit override can skip body
   // avoidance when we're in guaranteed-kill range.
-  const nearestHumanForCommit = findNearestHuman(bot, room);
+  const bestVictim = findBestVictim(bot, aliveHumans, room);
   const commitToKill =
-    nearestHumanForCommit &&
-    dist(head, nearestHumanForCommit.snake.segments[0]) < PRO_BOOST_COMMIT_RANGE;
+    bestVictim &&
+    dist(head, bestVictim.snake.segments[0]) < PRO_BOOST_COMMIT_RANGE;
 
   if (!iHaveGhost && !commitToKill) {
     const threat = bodyDirectlyAhead(bot, room);
@@ -509,15 +535,15 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // PRIORITY 3: Hunt humans — effect-aware, ruthlessly aggressive
-  // Key upgrades over previous version:
-  //   - Pre-emptive boost at 300px (not 120) — closes the gap before human reacts
-  //   - Kill-commit zone at 140px: ignore body threats, ram through for the kill
-  //   - Speed-aware lead: boosted humans get a proportionally longer cutoff
-  //   - Removed the "I'm ahead so play safe" branch — user wants kills, period
-  //   - Hunt boost cooldown is a tight 1200ms (was 2200ms) — near-continuous pressure
+  // PRIORITY 3: Hunt humans — effect-aware, tactically advanced
+  // Upgrades over the previous "nearest target + cutoff" approach:
+  //   - findBestVictim picks the easiest kill, not just the closest player
+  //   - wallPinAim drives humans into the boundary when they're near it
+  //   - flankOffset coordinates 2+ pro bots into a pincer (no overlap)
+  //   - pathSafe rejects suicidal angles (would hit a body / wall in 4 ticks)
+  //   - boost cadence is goal-aware: tight while committing, off when waiting
   // ──────────────────────────────────────────────────────────────────────────
-  const human = nearestHumanForCommit; // reuse the one we already computed above
+  const human = bestVictim;
   if (human) {
     const oh = human.snake.segments[0];
     const distToHuman = dist(head, oh);
@@ -538,28 +564,58 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
     state.targetCoolDown--;
 
     if (distToHuman < PRO_HUNT_RANGE && !tooDangerousToHunt) {
-      // Predict cutoff. Lookahead scales with distance so short-range hunts
-      // don't wildly overshoot past the target's head.
-      const lookahead = Math.min(PRO_BLOCK_LOOKAHEAD, Math.max(40, distToHuman * 0.9));
-      const cutoff = predictPosition(human, lookahead);
-      const cutoffSafe = dist(cutoff, { x: cx, y: cy }) < room.arenaRadius - PRO_WALL_MARGIN;
-
-      // Aim selection
+      // ── 1. Decide WHERE to aim ────────────────────────────────────────
+      // Priority of aim sources:
+      //   a) commit-to-kill / ghost → straight at the head (assassination)
+      //   b) wall-pin opportunity → drive them into the boundary
+      //   c) standard cutoff (predicted intercept) with optional flank offset
+      let aim: Position;
       if (commitToKill || iHaveGhost) {
-        // Inside kill zone or ghost: go straight at the head for a head-on KO.
-        // This is the classic slither.io assassination angle.
-        bot.snake.targetAngle = angleToward(head, oh);
-      } else if (cutoffSafe) {
-        bot.snake.targetAngle = angleToward(head, cutoff);
+        aim = oh;
       } else {
-        // Cutoff point is near the wall — just chase the head directly.
-        bot.snake.targetAngle = angleToward(head, oh);
+        const pin = wallPinAim(bot, human, room);
+        if (pin) {
+          aim = pin;
+        } else {
+          // Standard cutoff. Lookahead scales with distance so short-range
+          // hunts don't wildly overshoot past the target's head.
+          const lookahead = Math.min(PRO_BLOCK_LOOKAHEAD, Math.max(40, distToHuman * 0.9));
+          const cutoff = predictPosition(human, lookahead);
+          const flank = flankOffset(bot, human, teammates);
+          aim = flank
+            ? { x: cutoff.x + flank.x, y: cutoff.y + flank.y }
+            : cutoff;
+        }
       }
 
-      // BOOST decision — much more aggressive than before
-      // 1. Inside kill-commit range → always boost (chase cooldown reset allowed)
-      // 2. Inside pre-emptive boost range → boost if cutoff is safe
-      // 3. Speed-bubble active → extend boost range by 40% (3x speed covers more ground)
+      // Clamp aim inside the arena so we never chase into the zone
+      const aimDistFromCenter = dist(aim, { x: cx, y: cy });
+      if (aimDistFromCenter > room.arenaRadius - PRO_WALL_MARGIN) {
+        const ang = Math.atan2(aim.y - cy, aim.x - cx);
+        aim = {
+          x: cx + Math.cos(ang) * (room.arenaRadius - PRO_WALL_MARGIN),
+          y: cy + Math.sin(ang) * (room.arenaRadius - PRO_WALL_MARGIN),
+        };
+      }
+
+      // ── 2. Self-preservation: refuse suicidal angles ─────────────────
+      // If the proposed aim would lead us straight into a body in the next
+      // few ticks, search ±20° / ±40° / ±60° for a safe alternative. This
+      // is what stops "smart" cutoffs from ramming our own coiled body
+      // when we're chasing through a tight space.
+      let proposedAngle = angleToward(head, aim);
+      if (!iHaveGhost && !pathSafe(bot, proposedAngle, room, 4)) {
+        const offsets = [Math.PI / 9, -Math.PI / 9, Math.PI / 4.5, -Math.PI / 4.5, Math.PI / 3, -Math.PI / 3];
+        for (const off of offsets) {
+          if (pathSafe(bot, proposedAngle + off, room, 4)) {
+            proposedAngle = proposedAngle + off;
+            break;
+          }
+        }
+      }
+      bot.snake.targetAngle = proposedAngle;
+
+      // ── 3. Boost decision — same aggression, gated on path safety ────
       const effectiveBoostRange = iHaveSpeedBubble
         ? PRO_BOOST_KILL_RANGE * 1.4
         : PRO_BOOST_KILL_RANGE;
@@ -567,9 +623,13 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
       const wantsBoost =
         (commitToKill) ||
         (iHaveGhost && distToHuman < PRO_HUNT_RANGE * 0.7) ||
-        (distToHuman < effectiveBoostRange && cutoffSafe);
+        (distToHuman < effectiveBoostRange);
 
-      if (wantsBoost) {
+      // Don't boost if path is unsafe — that's how a "smart" bot wastes its
+      // boost budget into its own tail. Ghost ignores this gate.
+      const safeToBoost = iHaveGhost || pathSafe(bot, proposedAngle, room, 5);
+
+      if (wantsBoost && safeToBoost) {
         // Tight 1.2s cooldown during hunts — near-continuous boost pressure.
         // Ghost mode → even tighter (0.8s) so the bot chains kills.
         const cd = iHaveGhost ? 800 : 1200;
@@ -657,4 +717,217 @@ function isHumanNearCoin(coin: Coin, room: GameRoom): boolean {
     if (dist(h, coin.position) < PRO_COIN_DENY_RANGE) return true;
   }
   return false;
+}
+
+// ============================================================================
+// ADVANCED TACTICS — added to make pro bots feel like real top-tier players
+// ============================================================================
+
+/**
+ * Score how attractive a human target is to the bot. Higher = easier kill.
+ * The kill-priority calculation favours humans that are:
+ *   - close (always)
+ *   - near the arena wall (we can pin them)
+ *   - slowed (already half-dead)
+ *   - boosted but moving AWAY from us (they're committing into a flank)
+ *   - low score (cheap losses for them, but still earns rake for the platform)
+ *
+ * Crucially we *de-prioritise* humans who have ghost mode — they can pass
+ * through us, so chasing them is a waste of boost budget.
+ */
+function scoreVictim(bot: Player, human: Player, room: GameRoom): number {
+  const head = bot.snake.segments[0];
+  const oh = human.snake.segments[0];
+  if (!head || !oh) return -Infinity;
+
+  const distToHuman = dist(head, oh);
+  if (distToHuman > PRO_HUNT_RANGE) return -Infinity;
+
+  // Base score is inverse-distance — closer is better
+  let score = 1000 / Math.max(40, distToHuman);
+
+  // Wall pressure — humans near the boundary are MUCH easier to trap
+  const cx = room.arenaCenterX, cy = room.arenaCenterY;
+  const distFromCenter = dist(oh, { x: cx, y: cy });
+  const wallProximity = distFromCenter / room.arenaRadius; // 0=center, 1=wall
+  if (wallProximity > 0.7) score *= 1.6;
+  else if (wallProximity > 0.55) score *= 1.25;
+
+  // Slowed humans are sitting ducks
+  if (human.snake.slowed) score *= 1.4;
+
+  // Risk modifiers
+  const risk = humanRiskTier(human);
+  if (risk === 'ghost') score *= 0.25;   // can phase through us — bad target
+  if (risk === 'speed') {
+    // Speed-boosted human moving toward us = dangerous. Moving away = chasable.
+    const angToBot = angleToward(oh, head);
+    const facing = human.snake.angle;
+    const facingDelta = Math.abs(angleDiffNormalized(angToBot, facing));
+    if (facingDelta < Math.PI / 2) score *= 0.5;  // facing us → don't engage
+    else score *= 1.2;                            // facing away → easier flank
+  }
+
+  return score;
+}
+
+/** Pick the BEST human to hunt out of all alive humans, not just the nearest. */
+function findBestVictim(bot: Player, humans: Player[], room: GameRoom): Player | null {
+  let best: Player | null = null;
+  let bestScore = -Infinity;
+  for (const h of humans) {
+    const s = scoreVictim(bot, h, room);
+    if (s > bestScore) {
+      bestScore = s;
+      best = h;
+    }
+  }
+  return best;
+}
+
+/** Shortest signed angle delta in [-PI, PI]. */
+function angleDiffNormalized(a: number, b: number): number {
+  let d = b - a;
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d < -Math.PI) d += 2 * Math.PI;
+  return d;
+}
+
+/**
+ * WALL-PIN AIM — the signature top-player kill move.
+ *
+ * If the human is near the boundary AND we're closer to the center than they
+ * are, return the aim point that PUSHES them into the wall. The cutoff is
+ * placed slightly outside (toward the wall from) the predicted-position so
+ * the human has nowhere to turn except into the zone-bleed danger area.
+ *
+ * Returns null when wall-pin doesn't apply — fall back to normal cutoff.
+ */
+function wallPinAim(bot: Player, human: Player, room: GameRoom): Position | null {
+  const botHead = bot.snake.segments[0];
+  const oh = human.snake.segments[0];
+  if (!botHead || !oh) return null;
+
+  const cx = room.arenaCenterX, cy = room.arenaCenterY;
+  const humanWallDist = room.arenaRadius - dist(oh, { x: cx, y: cy });
+  // Only pin when the human is genuinely close to the boundary
+  if (humanWallDist > 110) return null;
+
+  // We must be on the CENTER side of the human (= closer to center than they are)
+  const botCenterDist = dist(botHead, { x: cx, y: cy });
+  const humanCenterDist = dist(oh, { x: cx, y: cy });
+  if (botCenterDist > humanCenterDist - 30) return null;
+
+  // Direction vector from center → human (= toward the wall they're near)
+  const towardWallX = (oh.x - cx) / Math.max(1, humanCenterDist);
+  const towardWallY = (oh.y - cy) / Math.max(1, humanCenterDist);
+
+  // Predict the human's near-future position, then bias the cutoff slightly
+  // outward (toward the wall). This forces them to either turn back into us
+  // or skim the boundary — both are losing positions.
+  const lookahead = Math.max(60, dist(botHead, oh) * 0.6);
+  const predicted = predictPosition(human, lookahead);
+  const wallBias = 70; // px nudge toward the wall
+  return {
+    x: predicted.x + towardWallX * wallBias,
+    y: predicted.y + towardWallY * wallBias,
+  };
+}
+
+/**
+ * Multi-bot pincer coordination. When 2+ pro bots are alive and hunting the
+ * same victim, each bot picks a DIFFERENT flank side so they don't both pile
+ * into the same point and waste their kill setup. Uses bot id ordering for a
+ * deterministic, communication-free split — bot with the alphabetically
+ * smaller id goes left, the other goes right.
+ *
+ * Returns a perpendicular offset to add to the cutoff aim, or null if there's
+ * only one pro bot (no coordination needed).
+ */
+function flankOffset(bot: Player, human: Player, otherProBots: Player[]): Position | null {
+  // Filter teammates that are also targeting this victim (i.e. close to them)
+  const teammatesOnTarget: Player[] = [];
+  const oh = human.snake.segments[0];
+  if (!oh) return null;
+  for (const t of otherProBots) {
+    const th = t.snake.segments[0];
+    if (!th) continue;
+    if (dist(th, oh) < PRO_HUNT_RANGE) teammatesOnTarget.push(t);
+  }
+  if (teammatesOnTarget.length === 0) return null;
+
+  // Deterministic side: smaller id → left, larger → right
+  const allIds = [bot.id, ...teammatesOnTarget.map(t => t.id)].sort();
+  const myRank = allIds.indexOf(bot.id);
+
+  // Perpendicular to the human's facing direction
+  const facing = human.snake.angle;
+  const perp = facing + Math.PI / 2;
+  // Alternate sides: rank 0 → left, rank 1 → right, rank 2 → far-left, ...
+  const side = myRank % 2 === 0 ? 1 : -1;
+  const magnitude = 90 + Math.floor(myRank / 2) * 40;
+
+  return {
+    x: Math.cos(perp) * magnitude * side,
+    y: Math.sin(perp) * magnitude * side,
+  };
+}
+
+/**
+ * Self-preservation: simulate the bot's next N positions along its proposed
+ * targetAngle. Returns false if any of them would land inside another snake's
+ * body (or outside the arena). The hunt logic uses this to refuse a suicidal
+ * cutoff and pick a safer angle instead.
+ *
+ * We sample at the SNAKE's current speed × tick count, so the prediction
+ * automatically accounts for whether the bot is boosted.
+ */
+function pathSafe(
+  bot: Player,
+  proposedAngle: number,
+  room: GameRoom,
+  steps = 4,
+): boolean {
+  const head = bot.snake.segments[0];
+  if (!head) return true;
+  const speed = bot.snake.speed;
+  const cx = room.arenaCenterX, cy = room.arenaCenterY;
+  const safeRadius = room.arenaRadius - 20; // small buffer
+
+  for (let i = 1; i <= steps; i++) {
+    const px = head.x + Math.cos(proposedAngle) * speed * i;
+    const py = head.y + Math.sin(proposedAngle) * speed * i;
+
+    // Out of arena? Refuse.
+    if (Math.hypot(px - cx, py - cy) > safeRadius) return false;
+
+    // Hit any other snake's body? Refuse. (Skip our own first 3 segments —
+    // those are the head/neck and would always be "hit".)
+    for (const [, other] of room.players) {
+      if (!other.snake.alive) continue;
+      const skipFirst = other.id === bot.id ? 3 : 0;
+      const segs = other.snake.segments;
+      // Sample every 2nd segment to keep this cheap — body is dense enough
+      // that a 30px skip can't slip past a real collision.
+      for (let s = skipFirst; s < segs.length; s += 2) {
+        const seg = segs[s];
+        if ((px - seg.x) * (px - seg.x) + (py - seg.y) * (py - seg.y) < 18 * 18) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+/** Get all alive pro-bot teammates EXCEPT this bot. Used for coordination. */
+function getProBotTeammates(bot: Player, room: GameRoom): Player[] {
+  const out: Player[] = [];
+  for (const [, p] of room.players) {
+    if (p.id === bot.id) continue;
+    if (!p.isBot || !p.snake.alive) continue;
+    if (!proBotStates.has(p.id)) continue; // only count pro bots
+    out.push(p);
+  }
+  return out;
 }

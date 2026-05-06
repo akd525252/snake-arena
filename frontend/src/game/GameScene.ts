@@ -1615,17 +1615,16 @@ export class GameScene extends Phaser.Scene {
         this.glowGfx.fillCircle(c.position.x, c.position.y, 22);
       }
 
-      // Food glow — subtle colored halo (only large food to save perf)
+      // Food glow — only large food gets a halo. Small food halos were
+      // drawn at 0.15 alpha which is essentially invisible on top of the
+      // arena texture, but the per-pellet fillCircle still adds up to
+      // 30–50 ops/frame in dense lobbies. Cheaper to skip them entirely.
       for (const f of state.food) {
+        if (f.size !== 'large') continue;
         if (!this.isOnScreen(f.position.x, f.position.y, 20)) continue;
         const fColor = foodColors[f.colorIndex % foodColors.length];
-        if (f.size === 'large') {
-          this.glowGfx.fillStyle(fColor, pulse2 * 0.3);
-          this.glowGfx.fillCircle(f.position.x, f.position.y, 10);
-        } else {
-          this.glowGfx.fillStyle(fColor, pulse2 * 0.15);
-          this.glowGfx.fillCircle(f.position.x, f.position.y, 6);
-        }
+        this.glowGfx.fillStyle(fColor, pulse2 * 0.3);
+        this.glowGfx.fillCircle(f.position.x, f.position.y, 10);
       }
     }
 

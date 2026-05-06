@@ -103,6 +103,9 @@ export interface GameRoom {
   bubbleSpawnTimers: NodeJS.Timeout[];      // scheduled spawn timers
   bubbleExpireTimer: NodeJS.Timeout | null; // removes the active bubble after lifetime
   platformRakeAccrued: number; // running total of rake recorded during the match (USD)
+  // Tick counter incremented by gameLoop, used to schedule bot AI updates
+  // at lower-than-tick-rate cadences without per-bot timers.
+  tickCounter?: number;
 }
 
 // Client → Server messages

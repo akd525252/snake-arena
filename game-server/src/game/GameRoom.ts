@@ -14,6 +14,26 @@ import {
   Bubble,
   BubbleType,
 } from '../types';
+import { updateBotDirection } from './BotAI';
+import { updateProBotDirection, clearProBotState, isProBot } from './ProBot';
+
+// ─── Bot AI tick cadence ────────────────────────────────────────────────────
+// Bot AI used to run on per-bot setInterval timers. That had two problems:
+// (1) the demo branch leaked timers (no clearInterval ever called), so over
+// many matches the process accumulated dead intervals; (2) the bots ticked
+// on a separate clock from the game state, sometimes acting on stale data.
+//
+// Now bot AI is driven from gameLoop(). Each room owns one tick counter; on
+// each tick we decide which bots run their AI based on their type:
+//
+//   pro bot   → every 2 game ticks (~100ms / 10Hz)  — sharp reactions
+//   demo bot  → every 4 game ticks (~200ms / 5Hz)   — casual NPC pace
+//
+// The faster pro-bot cadence (was 6.7Hz from a 150ms setInterval) makes them
+// noticeably harder to outmanoeuvre. Demo bots stay slow on purpose so they
+// remain beatable for new players.
+const PRO_BOT_TICK_EVERY = 2;
+const DEMO_BOT_TICK_EVERY = 4;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -235,6 +255,30 @@ function gameLoop(room: GameRoom): void {
 
   const now = Date.now();
   const inGrace = now - room.startTime < CONFIG.SPAWN_GRACE_MS;
+
+  // ─── Bot AI dispatch (replaces per-bot setIntervals) ───────────────────
+  // Bump the tick counter and run AI for the bots whose turn it is. We split
+  // pro vs demo bots so the more expensive pro AI runs at a higher cadence
+  // (10Hz) while demo bots stay at 5Hz. The modulo offset by index spreads
+  // multiple bots across different ticks so the work isn't all bunched up.
+  room.tickCounter = (room.tickCounter || 0) + 1;
+  let botIndex = 0;
+  for (const [, p] of room.players) {
+    if (!p.isBot || !p.snake.alive) {
+      botIndex++;
+      continue;
+    }
+    if (isProBot(p.id)) {
+      if ((room.tickCounter + botIndex) % PRO_BOT_TICK_EVERY === 0) {
+        updateProBotDirection(p, room);
+      }
+    } else {
+      if ((room.tickCounter + botIndex) % DEMO_BOT_TICK_EVERY === 0) {
+        updateBotDirection(p, room);
+      }
+    }
+    botIndex++;
+  }
 
   // Magnetic pull: coins and food drift toward nearest alive player head
   // when within range. This gives the satisfying snake.io-style "vacuum" pickup.
@@ -942,6 +986,12 @@ export function endGame(room: GameRoom): void {
   if (room.foodSpawnInterval) clearInterval(room.foodSpawnInterval);
   if (room.shrinkInterval) clearInterval(room.shrinkInterval);
   clearBubbleTimers(room);
+
+  // Drop per-pro-bot AI state so the proBotStates Map doesn't leak across
+  // matches (this used to be done by the bot's own setInterval handler).
+  for (const p of room.players.values()) {
+    if (p.isBot && isProBot(p.id)) clearProBotState(p.id);
+  }
 
   const results: GameResult[] = Array.from(room.players.values())
     .map(p => ({
