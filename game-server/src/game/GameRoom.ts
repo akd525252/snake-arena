@@ -32,7 +32,14 @@ import { updateProBotDirection, clearProBotState, isProBot } from './ProBot';
 // The faster pro-bot cadence (was 6.7Hz from a 150ms setInterval) makes them
 // noticeably harder to outmanoeuvre. Demo bots stay slow on purpose so they
 // remain beatable for new players.
-const PRO_BOT_TICK_EVERY = 2;
+//
+// PRO_BOT_TICK_EVERY=1 means pro bots re-evaluate aim & boost EVERY server
+// tick (30Hz / 33ms). This is what real top-tier players approach with low-
+// latency mice and is the difference between a bot that "feels smart" vs
+// one that telegraphs its turns. AI cost is tiny (one priority pass per bot
+// per 33ms with O(players + coins + bodies)) so 1-2 pro bots have negligible
+// CPU impact on the loop.
+const PRO_BOT_TICK_EVERY = 1;
 const DEMO_BOT_TICK_EVERY = 4;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

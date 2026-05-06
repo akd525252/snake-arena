@@ -135,13 +135,13 @@ export function createProBot(room: GameRoom, betAmount: number): Player {
 // Pro bots NEVER make intentional mistakes. They are fast, accurate, and lethal.
 // ============================================================================
 
-const PRO_HUNT_RANGE = 600;          // scan distance for humans (wider — be aware of threats earlier)
-const PRO_BOOST_KILL_RANGE = 300;    // pre-emptively boost to close the gap (was 120 — way too passive)
-const PRO_BOOST_COMMIT_RANGE = 140;  // guaranteed-kill range: boost through anything, no back-off
-const PRO_BLOCK_LOOKAHEAD = 180;     // cutoff prediction distance — ~3s of movement
-const PRO_FORWARD_THREAT_RANGE = 65; // tighter — bot should only avoid imminent collisions
-const PRO_WALL_MARGIN = 70;          // smaller margin — willing to get closer to wall for kills
-const PRO_BODY_AVOID_RANGE = 40;     // tighter — commit harder to attacks
+const PRO_HUNT_RANGE = 700;          // even wider scan — bots act like top players who track threats early
+const PRO_BOOST_KILL_RANGE = 360;    // boost from further out (was 300) — gives them dominant initiation
+const PRO_BOOST_COMMIT_RANGE = 170;  // larger guaranteed-kill bubble — once close, ALWAYS commit
+const PRO_BLOCK_LOOKAHEAD = 220;     // longer cutoff prediction — they meet humans where humans are HEADED
+const PRO_FORWARD_THREAT_RANGE = 55; // even tighter — only the truest collision triggers a dodge
+const PRO_WALL_MARGIN = 60;          // closer to wall — willing to skim boundary for a wall pin
+const PRO_BODY_AVOID_RANGE = 32;     // tighter still — they bull through near misses to land kills
 
 // Bubble AI tuning
 const PRO_BUBBLE_SEEK_RANGE = 700;   // notice bubbles anywhere reasonably close
@@ -423,7 +423,12 @@ function botHasEffect(bot: Player, effect: 'speed' | 'magnet' | 'ghost'): boolea
  */
 function tryBoost(bot: Player, state: ProBotState, cooldownMs = 2500): boolean {
   const now = Date.now();
-  const canAfford = bot.snake.score >= bot.betAmount + 0.25;
+  // NOTE: pro bots don't pay boost cost (see GameRoom.ts boost handler — only
+  // humans get charged). The previous `score >= betAmount + 0.25` gate was a
+  // copy-paste from the human balance check and made bots UNABLE to boost at
+  // match start (they spawn with score = betAmount exactly), which is exactly
+  // when players were killing them easily. Boost is now free-fire for bots,
+  // gated only by tactical cooldown.
   if (now - state.lastBoostTime < cooldownMs) {
     // If we're already boosting mid-attack, refresh the end time so we don't drop mid-tick
     if (bot.snake.boosted) {
@@ -432,7 +437,6 @@ function tryBoost(bot: Player, state: ProBotState, cooldownMs = 2500): boolean {
     }
     return false;
   }
-  if (!canAfford) return false;
   if (!bot.snake.boosted) {
     bot.snake.boosted = true;
     bot.snake.speed = CONFIG.SNAKE_BOOST_SPEED;
@@ -548,6 +552,52 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
     const oh = human.snake.segments[0];
     const distToHuman = dist(head, oh);
     const risk = humanRiskTier(human);
+
+    // ── HEAD-ON DEFENCE ──────────────────────────────────────────────
+    // If a human is charging directly at our head from the front, going
+    // straight at them is a coin-flip (head-to-head = both die at the
+    // same tick). A real pro player ALWAYS dodges sideways to put their
+    // BODY between them and the attacker — turning a 50/50 into a free
+    // kill. Detect "human is close + facing roughly toward us + I'm
+    // facing roughly toward them" and pre-empt with a perpendicular jink.
+    if (!iHaveGhost && distToHuman < 220) {
+      const angBotToHuman = angleToward(head, oh);
+      const angHumanToBot = angleToward(oh, head);
+      const myFacingDelta = Math.abs(angleDiffNormalized(bot.snake.angle, angBotToHuman));
+      const theirFacingDelta = Math.abs(angleDiffNormalized(human.snake.angle, angHumanToBot));
+      // Both heading roughly at each other (within ~45°) → head-on collision course
+      const headOn = myFacingDelta < Math.PI / 4 && theirFacingDelta < Math.PI / 4;
+      if (headOn) {
+        // Jink perpendicular: pick the side that keeps us inside the arena
+        // and doesn't have a body in the way. We aim for a point ~80px
+        // perpendicular to the human's approach vector — close enough that
+        // our tail crosses their path before they can re-aim.
+        const perpLeft = bot.snake.angle - Math.PI / 2;
+        const perpRight = bot.snake.angle + Math.PI / 2;
+        const leftSafe = pathSafe(bot, perpLeft, room, 5);
+        const rightSafe = pathSafe(bot, perpRight, room, 5);
+        let jinkAngle: number;
+        if (leftSafe && !rightSafe) jinkAngle = perpLeft;
+        else if (rightSafe && !leftSafe) jinkAngle = perpRight;
+        else {
+          // Both safe (or both unsafe) → pick the side closer to center to
+          // avoid drifting into the wall during the dodge.
+          const leftPt = { x: head.x + Math.cos(perpLeft) * 60, y: head.y + Math.sin(perpLeft) * 60 };
+          const rightPt = { x: head.x + Math.cos(perpRight) * 60, y: head.y + Math.sin(perpRight) * 60 };
+          const distLeft = dist(leftPt, { x: cx, y: cy });
+          const distRight = dist(rightPt, { x: cx, y: cy });
+          jinkAngle = distLeft < distRight ? perpLeft : perpRight;
+        }
+        // Blend jink with a slight forward bias so the bot's BODY sweeps
+        // across the human's path — the human runs into our tail and dies.
+        bot.snake.targetAngle = jinkAngle;
+        // Hard boost: we want to clear past the human BEFORE they can match.
+        tryBoost(bot, state, 600);
+        state.currentGoal = 'hunt';
+        state.goalCooldown = 4;
+        return;
+      }
+    }
 
     // Only back off from speed-boosted humans if I have neither speed nor ghost
     // AND I'm already outside committed-kill range. Inside commit range the
