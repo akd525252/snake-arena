@@ -9,12 +9,17 @@ export const CONFIG = {
   BACKEND_URL: process.env.BACKEND_URL || 'http://localhost:4000',
 
   // Game settings
-  TICK_RATE: 50, // ms per game loop tick (20 ticks/sec)
+  // Tick rate bumped from 20Hz (50ms) to 30Hz (33ms) for smoother visible motion.
+  // Per-tick movement (SNAKE_SPEED) and rotation (TURN_SPEED) are scaled by 2/3
+  // so the snake's pixels-per-second velocity stays IDENTICAL — this is purely
+  // a smoothness change, not a balance change. Network bandwidth grows ~50%
+  // (10 players × 30Hz vs 20Hz) which is well within budget.
+  TICK_RATE: 33, // ms per game loop tick (30 ticks/sec)
   ARENA_RADIUS: 500,   // initial circular arena radius (px)
   ARENA_SHRINK_INTERVAL: 2000, // ms between shrink steps
   ARENA_SHRINK_AMOUNT: 8, // pixels per shrink (radius decrease)
   MIN_ARENA_RADIUS: 150, // floor so the arena never fully closes before time runs out
-  TURN_SPEED: 0.18, // radians per tick (~206°/sec at 20 tps) — snappy responsive turning
+  TURN_SPEED: 0.12, // radians per tick (~218°/sec at 30 tps) — preserves prev turning speed
 
   // Coin values (USDT). Field coins are picked up from the arena floor;
   // death coins drop when a snake dies. Field is the lower-value currency,
@@ -35,8 +40,11 @@ export const CONFIG = {
   MAX_FOOD: 150,             // many food pellets on the map
   INITIAL_FOOD: 80,
 
-  SNAKE_SPEED: 3,
-  SNAKE_BOOST_SPEED: 6,
+  // Speed values are PER-TICK. With TICK_RATE=33ms (30 ticks/sec):
+  //   SNAKE_SPEED 2 × 30 = 60 px/sec  (unchanged from old 3 × 20)
+  //   SNAKE_BOOST_SPEED 4 × 30 = 120 px/sec  (unchanged from old 6 × 20)
+  SNAKE_SPEED: 2,
+  SNAKE_BOOST_SPEED: 4,
   SNAKE_INITIAL_LENGTH: 5,
   SNAKE_SEGMENT_SIZE: 15,
 

@@ -604,10 +604,12 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
       // is what stops "smart" cutoffs from ramming our own coiled body
       // when we're chasing through a tight space.
       let proposedAngle = angleToward(head, aim);
-      if (!iHaveGhost && !pathSafe(bot, proposedAngle, room, 4)) {
+      // Lookahead 6 ticks at 30Hz ≈ 200ms — roughly preserves the original
+      // time horizon from when the server ticked at 20Hz.
+      if (!iHaveGhost && !pathSafe(bot, proposedAngle, room, 6)) {
         const offsets = [Math.PI / 9, -Math.PI / 9, Math.PI / 4.5, -Math.PI / 4.5, Math.PI / 3, -Math.PI / 3];
         for (const off of offsets) {
-          if (pathSafe(bot, proposedAngle + off, room, 4)) {
+          if (pathSafe(bot, proposedAngle + off, room, 6)) {
             proposedAngle = proposedAngle + off;
             break;
           }
@@ -626,8 +628,10 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
         (distToHuman < effectiveBoostRange);
 
       // Don't boost if path is unsafe — that's how a "smart" bot wastes its
-      // boost budget into its own tail. Ghost ignores this gate.
-      const safeToBoost = iHaveGhost || pathSafe(bot, proposedAngle, room, 5);
+      // boost budget into its own tail. Ghost ignores this gate. 7 ticks at
+      // 30Hz ≈ 230ms which is roughly the time it takes to complete a boost
+      // commit at the new speed.
+      const safeToBoost = iHaveGhost || pathSafe(bot, proposedAngle, room, 7);
 
       if (wantsBoost && safeToBoost) {
         // Tight 1.2s cooldown during hunts — near-continuous boost pressure.

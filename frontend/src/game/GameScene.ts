@@ -122,9 +122,10 @@ export class GameScene extends Phaser.Scene {
   // Frozen final position at the moment the local player died (camera locks here)
   private deathCameraLock: Position | null = null;
 
-  // Snake interpolation: server ticks at 50ms (20Hz) but we render at 60fps.
+  // Snake interpolation: server ticks at 33ms (30Hz) but we render at 60fps.
   // To avoid jitter we keep prev+curr positions per player and lerp each frame.
-  private readonly SERVER_TICK_MS = 50;
+  // The actual interp duration auto-adapts to the real tick delta (see below).
+  private readonly SERVER_TICK_MS = 33;
   private lastServerStateTime = 0;
   private serverInterval = this.SERVER_TICK_MS;
   // For each player: previous server snapshot + latest server snapshot
@@ -1342,12 +1343,15 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Track real server tick interval — adapt interp duration if server lags
+    // Track real server tick interval — adapt interp duration if server lags.
+    // Clamp lower bound to 25ms so the client supports server tick rates up to
+    // 40Hz without artificially holding the interp window open. The previous
+    // 40ms floor was fine for 20Hz servers but caused permanent ~7ms staleness
+    // when we bumped the server to 30Hz (33ms ticks).
     const now = performance.now();
     if (this.lastServerStateTime > 0) {
       const delta = now - this.lastServerStateTime;
-      // Smooth between bursts; clamp to a sane range
-      this.serverInterval = Math.max(40, Math.min(120, delta));
+      this.serverInterval = Math.max(25, Math.min(120, delta));
     }
     this.lastServerStateTime = now;
 
