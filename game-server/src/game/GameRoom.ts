@@ -582,11 +582,13 @@ function killPlayer(room: GameRoom, player: Player, killerId?: string): void {
   const totalValue = Math.max(0, player.snake.score);
 
   // Rake & drop split per actor type:
-  //   Pro human: 10% of total → platform, 90% drops as coins
-  //   Pro bot:   bet is virtual platform money (never dropped). Only EARNINGS above
-  //              the bet are split: 50% → platform revenue, 50% drops as coins.
-  //              This means a bot dying with no earnings drops nothing — platform
-  //              never loses money on a bot death.
+  //   Pro human: 10% of score → platform, 90% drops as coins
+  //   Pro bot:   50% of score → platform rake, 50% drops as coins
+  //              (bot bet is virtual platform money, but we drop a portion
+  //              anyway so players actually feel rewarded for kills — without
+  //              this, bot deaths dropped $0 in 90%+ of cases because pro
+  //              bots rarely accumulate score above their starting bet, and
+  //              the game loop felt completely unrewarding)
   //   Demo (any): 0% rake (no real money in play); full drop for player feedback.
   let rakeRate = 0;
   let platformRake = 0;
@@ -597,11 +599,12 @@ function killPlayer(room: GameRoom, player: Player, killerId?: string): void {
     platformRake = 0;
     dropValue = totalValue;
   } else if (player.isBot) {
+    // Bot deaths drop on FULL score (not just earnings above bet) so players
+    // get a meaningful reward for kills. Tune BOT_RAKE_RATE in config.ts to
+    // adjust the platform/player split — higher rate = less to players.
     rakeRate = CONFIG.BOT_RAKE_RATE;
-    const earnings = Math.max(0, totalValue - player.betAmount);
-    platformRake = +(earnings * rakeRate).toFixed(4);
-    dropValue = +(earnings - platformRake).toFixed(4);
-    // The bet (player.betAmount) stays with the platform — virtual, no drop
+    platformRake = +(totalValue * rakeRate).toFixed(4);
+    dropValue = +(totalValue - platformRake).toFixed(4);
   } else {
     rakeRate = CONFIG.MATCH_RAKE_RATE;
     platformRake = +(totalValue * rakeRate).toFixed(4);
