@@ -591,26 +591,34 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
           y: oh.y + Math.sin(playerFacing) * 90 + Math.sin(sideB) * cutDist,
         };
 
-        // Score each cut target: prefer the one that's (a) inside arena,
-        // (b) closer to us (faster to reach), (c) doesn't path-collide.
-        const scoreCut = (pt: Position) => {
-          const distFromCenter = dist(pt, { x: cx, y: cy });
-          if (distFromCenter > room.arenaRadius - PRO_WALL_MARGIN) return -Infinity;
-          const myDist = dist(head, pt);
-          const ang = angleToward(head, pt);
-          const safe = pathSafe(bot, ang, room, 5);
-          if (!safe) return -Infinity;
-          return 1000 - myDist; // prefer closer
-        };
+        // Score each cut target. To keep the AI tick cheap we do a TWO-PASS
+        // selection: first cull by arena bounds + distance (no pathSafe),
+        // then run pathSafe on the cheaper candidate ONLY. pathSafe is the
+        // single most expensive helper in this AI (it scans every player's
+        // body) so calling it twice per cut decision was doubling the cost
+        // of the side-cut tactic.
+        const inArenaA = dist(cutA, { x: cx, y: cy }) <= room.arenaRadius - PRO_WALL_MARGIN;
+        const inArenaB = dist(cutB, { x: cx, y: cy }) <= room.arenaRadius - PRO_WALL_MARGIN;
+        const distA = inArenaA ? dist(head, cutA) : Infinity;
+        const distB = inArenaB ? dist(head, cutB) : Infinity;
+        const firstChoice = distA <= distB ? cutA : cutB;
+        const fallback = distA <= distB ? cutB : cutA;
+        const fallbackInArena = distA <= distB ? inArenaB : inArenaA;
 
-        const sA = scoreCut(cutA);
-        const sB = scoreCut(cutB);
-        const bestCut = sA >= sB ? cutA : cutB;
-        const bestScore = Math.max(sA, sB);
+        let bestCut: Position | null = null;
+        if (distA !== Infinity || distB !== Infinity) {
+          const ang1 = angleToward(head, firstChoice);
+          if (pathSafe(bot, ang1, room, 5)) {
+            bestCut = firstChoice;
+          } else if (fallbackInArena) {
+            const ang2 = angleToward(head, fallback);
+            if (pathSafe(bot, ang2, room, 5)) {
+              bestCut = fallback;
+            }
+          }
+        }
 
-        // Only commit to the side-cut if at least one option scored well.
-        // Otherwise fall through to standard hunt (might be wall-pinned).
-        if (bestScore > 0) {
+        if (bestCut) {
           bot.snake.targetAngle = angleToward(head, bestCut);
           // Boost hard — must clear into the cut position BEFORE player adjusts.
           // 800ms cooldown lets us re-trigger if they keep coming.
@@ -969,28 +977,47 @@ function pathSafe(
   if (!head) return true;
   const speed = bot.snake.speed;
   const cx = room.arenaCenterX, cy = room.arenaCenterY;
-  const safeRadius = room.arenaRadius - 20; // small buffer
+  const safeRadius = room.arenaRadius - 20;
+  const safeRadius2 = safeRadius * safeRadius;
+  const cosA = Math.cos(proposedAngle);
+  const sinA = Math.sin(proposedAngle);
+  const COLLISION_R2 = 18 * 18;
+  // Bound the search around the bot — segments outside this radius can't
+  // possibly intersect the path within `steps` ticks. This is the single
+  // biggest perf win because mid-match snakes are 30+ segments and 95% of
+  // them are far away from the bot's near-future trajectory.
+  const maxReach = speed * steps + 20;
 
   for (let i = 1; i <= steps; i++) {
-    const px = head.x + Math.cos(proposedAngle) * speed * i;
-    const py = head.y + Math.sin(proposedAngle) * speed * i;
+    const px = head.x + cosA * speed * i;
+    const py = head.y + sinA * speed * i;
 
-    // Out of arena? Refuse.
-    if (Math.hypot(px - cx, py - cy) > safeRadius) return false;
+    // Out of arena?
+    const dxc = px - cx, dyc = py - cy;
+    if (dxc * dxc + dyc * dyc > safeRadius2) return false;
 
-    // Hit any other snake's body? Refuse. (Skip our own first 3 segments —
-    // those are the head/neck and would always be "hit".)
     for (const [, other] of room.players) {
       if (!other.snake.alive) continue;
+      // Cheap broad-phase: skip the whole snake if its head is far enough
+      // away that even its tail couldn't reach our path window.
+      const otherHead = other.snake.segments[0];
+      if (!otherHead) continue;
+      const dxh = otherHead.x - head.x;
+      const dyh = otherHead.y - head.y;
+      // 200px broad-phase buffer on top of maxReach covers the body length.
+      const broadR2 = (maxReach + 200) * (maxReach + 200);
+      if (other.id !== bot.id && dxh * dxh + dyh * dyh > broadR2) continue;
+
       const skipFirst = other.id === bot.id ? 3 : 0;
       const segs = other.snake.segments;
-      // Sample every 2nd segment to keep this cheap — body is dense enough
-      // that a 30px skip can't slip past a real collision.
-      for (let s = skipFirst; s < segs.length; s += 2) {
+      // Sample every 3rd segment (was every 2nd). Snake bodies are spaced
+      // ~5px apart so a 3-step skip still can't slip past an 18px collision
+      // radius. Saves ~33% of segment iterations.
+      for (let s = skipFirst; s < segs.length; s += 3) {
         const seg = segs[s];
-        if ((px - seg.x) * (px - seg.x) + (py - seg.y) * (py - seg.y) < 18 * 18) {
-          return false;
-        }
+        const dx = px - seg.x;
+        const dy = py - seg.y;
+        if (dx * dx + dy * dy < COLLISION_R2) return false;
       }
     }
   }

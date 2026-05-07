@@ -33,13 +33,13 @@ import { updateProBotDirection, clearProBotState, isProBot } from './ProBot';
 // noticeably harder to outmanoeuvre. Demo bots stay slow on purpose so they
 // remain beatable for new players.
 //
-// PRO_BOT_TICK_EVERY=1 means pro bots re-evaluate aim & boost EVERY server
-// tick (30Hz / 33ms). This is what real top-tier players approach with low-
-// latency mice and is the difference between a bot that "feels smart" vs
-// one that telegraphs its turns. AI cost is tiny (one priority pass per bot
-// per 33ms with O(players + coins + bodies)) so 1-2 pro bots have negligible
-// CPU impact on the loop.
-const PRO_BOT_TICK_EVERY = 1;
+// PRO_BOT_TICK_EVERY=2 → pro AI runs at 15Hz (every 66ms). Originally I tried
+// 1 (full 30Hz) but at 30Hz with longer pro-bot bodies and pathSafe checks,
+// the gameLoop tick was overrunning the 33ms budget on Railway. The result
+// was visible to players as "snake responds 500ms after my mouse" because
+// each missed tick delayed the broadcast that informs the client interp
+// buffer. 15Hz AI is plenty for kills — humans react around 200ms anyway.
+const PRO_BOT_TICK_EVERY = 2;
 const DEMO_BOT_TICK_EVERY = 4;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

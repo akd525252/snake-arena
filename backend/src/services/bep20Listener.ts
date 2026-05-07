@@ -63,6 +63,46 @@ const CACHE_REFRESH_MS = 60_000;
 // Track last scanned block per address
 const lastScannedBlock = new Map<string, number>();
 
+// ─── Per-address failure tracking (BSCScan timeout backoff) ─────────────────
+// When a specific address keeps timing out (commonly because BSCScan API key
+// is missing/exhausted, or the address has too many transactions to page
+// through within the timeout) we DON'T want to keep hammering it every poll
+// cycle and spamming the logs. Track consecutive failures per address and:
+//   - apply exponential backoff (skip the address for 1, 2, 4, 8 ... cycles)
+//   - log the error only once when it starts, and once every 10 failures
+//   - reset to zero on the first successful fetch
+const addressFailures = new Map<string, { count: number; nextRetryAt: number }>();
+const MAX_FAILURE_BACKOFF_MS = 10 * 60_000; // cap at 10 minutes
+
+function recordFailure(address: string, errMsg: string): void {
+  const cur = addressFailures.get(address) ?? { count: 0, nextRetryAt: 0 };
+  cur.count++;
+  // Exponential backoff: 30s, 60s, 2m, 4m, ... capped at 10m
+  const backoffMs = Math.min(30_000 * Math.pow(2, cur.count - 1), MAX_FAILURE_BACKOFF_MS);
+  cur.nextRetryAt = Date.now() + backoffMs;
+  addressFailures.set(address, cur);
+  // Throttle logging: log every 10th failure (1, 11, 21, ...)
+  if (cur.count === 1 || cur.count % 10 === 0) {
+    console.error(
+      `[bep20-listener] fetch error for ${address.slice(0, 10)} (#${cur.count}, next retry in ${Math.round(backoffMs / 1000)}s):`,
+      errMsg,
+    );
+  }
+}
+
+function recordSuccess(address: string): void {
+  const cur = addressFailures.get(address);
+  if (cur && cur.count > 0) {
+    console.log(`[bep20-listener] address ${address.slice(0, 10)} recovered after ${cur.count} failures`);
+    addressFailures.delete(address);
+  }
+}
+
+function isInBackoff(address: string): boolean {
+  const cur = addressFailures.get(address);
+  return !!cur && Date.now() < cur.nextRetryAt;
+}
+
 // ---------------------------------------------------------------------------
 // API calls
 // ---------------------------------------------------------------------------
@@ -102,13 +142,16 @@ async function fetchTokenTransfers(
       return [];
     }
 
+    // Success — reset failure counter for this address
+    recordSuccess(address);
+
     // Filter: only incoming transfers to our address
     return resp.data.result.filter(
       (tx) => tx.to.toLowerCase() === address.toLowerCase()
     );
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[bep20-listener] fetch error for ${address.slice(0, 10)}:`, msg);
+    recordFailure(address, msg);
     return [];
   }
 }
@@ -248,6 +291,11 @@ async function scanAllWallets(): Promise<void> {
   if (walletCache.size === 0) return;
 
   for (const [address, userId] of walletCache.entries()) {
+    // Skip addresses currently in backoff window. This is what stops the
+    // log spam — instead of hitting two unreachable wallets every 10s and
+    // logging 2 errors each cycle, we wait the backoff out silently.
+    if (isInBackoff(address)) continue;
+
     try {
       const startBlock = lastScannedBlock.get(address);
       const transfers = await fetchTokenTransfers(address, startBlock);

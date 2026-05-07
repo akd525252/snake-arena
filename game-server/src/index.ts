@@ -640,14 +640,14 @@ async function createMatch(entries: QueueEntry[]): Promise<void> {
       addPlayerToRoom(room, bot);
       playerRooms.set(bot.id, matchId);
 
-      // Grow pro bots to 3× the default starting length so their BODY is a
-      // real obstacle, not a token 75px segment. With default 5 segments the
-      // bot was barely a hazard — players just curved around it. At 15
-      // segments (~225px) the bot is an actual wall that punishes a head-on
-      // charge: even if the player turns away from the head, the body sweeps
-      // across their path. This is THE single biggest factor in why pro bots
-      // couldn't kill — they had nothing to kill WITH.
-      const PRO_BONUS_SEGMENTS = 10;
+      // Grow pro bots to ~2× the default starting length so their body is a
+      // real obstacle. Originally tried +10 (15 total) but combined with the
+      // O(players² × segments) per-tick collision check it pushed gameLoop
+      // over its 33ms budget on Railway, causing the "500ms input lag" feel.
+      // +4 segments (9 total, ~135px body) is plenty to be a kill obstacle
+      // without blowing up the collision budget. Bots also grow naturally
+      // from coin pickup so this is just the FLOOR.
+      const PRO_BONUS_SEGMENTS = 4;
       const tail = bot.snake.segments[bot.snake.segments.length - 1];
       for (let g = 0; g < PRO_BONUS_SEGMENTS; g++) {
         bot.snake.segments.push({ ...tail });
