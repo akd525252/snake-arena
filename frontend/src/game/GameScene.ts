@@ -128,6 +128,36 @@ export class GameScene extends Phaser.Scene {
   private readonly SERVER_TICK_MS = 33;
   private lastServerStateTime = 0;
   private serverInterval = this.SERVER_TICK_MS;
+
+  // ── Client-side prediction (LOCAL PLAYER ONLY) ──────────────────────────
+  // Without prediction, every input → render path goes through a full network
+  // round-trip + interpolation buffer (~250-400ms perceived lag for far-away
+  // players). With prediction, we run a copy of the server's deterministic
+  // movement model on the client so the local snake starts turning the
+  // INSTANT the cursor moves. Server stays authoritative for kills, scores,
+  // collisions; client just runs the same maths between server snapshots.
+  //
+  // These constants MUST match the server's @/game-server/src/config.ts
+  // values exactly. Drift here = predicted state drifts from authoritative
+  // state = visible rubber-banding.
+  private readonly PRED_TURN_SPEED = 0.12;       // rad per server tick
+  private readonly PRED_SNAKE_SPEED = 2;         // px per server tick (idle)
+  private readonly PRED_BOOST_SPEED = 4;         // px per server tick (boost)
+  private readonly PRED_SEGMENT_SPACING = 15;    // px between segment centers
+  // If predicted head drifts MORE than this from server head we snap (death,
+  // collision, teleport). Below this we ignore server head — predicted is
+  // king for visual smoothness.
+  private readonly PRED_SNAP_THRESHOLD = 80;
+
+  /** Predicted state for the LOCAL player. Null until first server state. */
+  private predictedSelf: {
+    segments: Position[];   // index 0 = head, then chain-followed body
+    angle: number;          // current heading (radians)
+    targetAngle: number;    // input target the snake is steering toward
+    speed: number;          // px/tick (PRED_SNAKE_SPEED or PRED_BOOST_SPEED)
+    alive: boolean;
+    lastTickTime: number;   // performance.now() of last simulation step
+  } | null = null;
   // For each player: previous server snapshot + latest server snapshot
   private playerInterp = new Map<string, {
     prevSegments: Position[];
@@ -761,6 +791,9 @@ export class GameScene extends Phaser.Scene {
       const dx = pointer.x - this.joystickOrigin!.x;
       const dy = pointer.y - this.joystickOrigin!.y;
       const angle = Math.atan2(dy, dx);
+      // Update predicted target IMMEDIATELY (no network roundtrip needed).
+      // This is the whole point of client-side prediction.
+      if (this.predictedSelf) this.predictedSelf.targetAngle = angle;
       if (this.lastSentAngle === null || Math.abs(angle - this.lastSentAngle) > 0.035) {
         this.send({ type: 'turn', angle });
         this.lastSentAngle = angle;
@@ -905,7 +938,13 @@ export class GameScene extends Phaser.Scene {
       const dy = worldPoint.y - this.cameraTarget.y;
       const angle = Math.atan2(dy, dx);
 
-      // Only send if angle changed meaningfully (> ~2 degrees)
+      // Update predicted target IMMEDIATELY so the local snake starts turning
+      // this frame, before the server even hears about the input. THIS IS THE
+      // WHOLE POINT — without this line, every input still goes through the
+      // network roundtrip and the snake feels delayed.
+      if (this.predictedSelf) this.predictedSelf.targetAngle = angle;
+
+      // Only send to server if angle changed meaningfully (> ~2 degrees)
       if (this.lastSentAngle === null || Math.abs(angle - this.lastSentAngle) > 0.035) {
         this.send({ type: 'turn', angle });
         this.lastSentAngle = angle;
@@ -944,13 +983,20 @@ export class GameScene extends Phaser.Scene {
       t = clamped * clamped * (3 - 2 * clamped);
     }
 
+    // ── Advance local-player prediction one render-frame's worth ────────
+    // This is what makes our own snake feel instant. Other players still
+    // come from playerInterp (server-driven), since we don't know their
+    // intended targetAngle.
+    const nowMs = performance.now();
+    this.tickPrediction(nowMs);
+
     let myInterpHead: Position | null = null;
     let myAlive = false;
     let myInZone = true;
 
     for (const [id, data] of this.playerInterp) {
       // Build interpolated snapshot
-      const interpSegments: Position[] = [];
+      let interpSegments: Position[] = [];
       const segCount = Math.min(data.prevSegments.length, data.currSegments.length);
       for (let i = 0; i < segCount; i++) {
         const a = data.prevSegments[i];
@@ -965,7 +1011,17 @@ export class GameScene extends Phaser.Scene {
         interpSegments.push({ ...data.currSegments[i] });
       }
 
-      const interpAngle = data.prevAngle + this.shortestAngleDelta(data.prevAngle, data.currAngle) * t;
+      let interpAngle = data.prevAngle + this.shortestAngleDelta(data.prevAngle, data.currAngle) * t;
+
+      // ── Override with predicted state for the LOCAL player ────────────
+      // We render OUR snake from prediction (instant, no network lag) and
+      // every OTHER snake from server-interpolation (correct authoritative
+      // motion). Death/divergence is already reconciled in reconcileSelf so
+      // the predicted state is safe to render directly.
+      if (id === this.myPlayerId && this.predictedSelf && data.alive) {
+        interpSegments = this.predictedSelf.segments.map(s => ({ x: s.x, y: s.y }));
+        interpAngle = this.predictedSelf.angle;
+      }
 
       const interpPlayer: RemotePlayer = {
         id,
@@ -1076,6 +1132,139 @@ export class GameScene extends Phaser.Scene {
       tile: '#0a1828',   // dark navy with hint of cyan
     };
     this.cameras.main.setBackgroundColor(themeBgs[this.mapTheme]);
+  }
+
+  // ============================================
+  // Client-side prediction helpers
+  // ============================================
+
+  /**
+   * Run one or more server-equivalent simulation ticks on the local player's
+   * predicted state. Called every render frame using elapsed real time, so it
+   * supports any frame rate (60Hz, 144Hz, vsync-off, throttled bg tab) while
+   * keeping the SAME physics output the server would have produced for the
+   * same time interval.
+   *
+   * Each "tick" applies:
+   *   1. Steer current angle toward targetAngle by at most PRED_TURN_SPEED rad
+   *   2. Move head by speed * (cos, sin)
+   *   3. Chain-follow body: pull each segment toward the one in front,
+   *      clamping the gap to PRED_SEGMENT_SPACING.
+   *
+   * This is a 1:1 port of @/game-server/src/game/GameRoom.ts moveSnake +
+   * steerToward — keep them in sync if you change either side.
+   */
+  private tickPrediction(now: number): void {
+    const ps = this.predictedSelf;
+    if (!ps || !ps.alive || ps.segments.length === 0) {
+      if (ps) ps.lastTickTime = now;
+      return;
+    }
+    const dt = now - ps.lastTickTime;
+    if (dt <= 0) return;
+
+    // Convert real elapsed ms into a fractional number of server ticks. We
+    // simulate the delta as a single sub-tick step (continuous integration)
+    // rather than discrete ticks — this avoids stutter at framerates that
+    // aren't an integer multiple of 30Hz.
+    const tickFrac = dt / this.SERVER_TICK_MS;
+
+    // 1. Steer angle toward targetAngle
+    const angDiff = this.shortestAngleDelta(ps.angle, ps.targetAngle);
+    const maxTurn = this.PRED_TURN_SPEED * tickFrac;
+    if (Math.abs(angDiff) <= maxTurn) {
+      ps.angle = ps.targetAngle;
+    } else {
+      ps.angle += Math.sign(angDiff) * maxTurn;
+    }
+
+    // 2. Move head along current heading
+    const moveDist = ps.speed * tickFrac;
+    const head = ps.segments[0];
+    head.x += Math.cos(ps.angle) * moveDist;
+    head.y += Math.sin(ps.angle) * moveDist;
+
+    // 3. Chain-follow body
+    const spacing = this.PRED_SEGMENT_SPACING;
+    for (let i = 1; i < ps.segments.length; i++) {
+      const lead = ps.segments[i - 1];
+      const cur = ps.segments[i];
+      const dx = lead.x - cur.x;
+      const dy = lead.y - cur.y;
+      const d = Math.sqrt(dx * dx + dy * dy) || 1;
+      if (d > spacing) {
+        const t = (d - spacing) / d;
+        cur.x += dx * t;
+        cur.y += dy * t;
+      }
+    }
+
+    ps.lastTickTime = now;
+  }
+
+  /**
+   * Reconcile predicted state with authoritative server state. Called from
+   * renderGameState whenever a state for the local player arrives.
+   *
+   * Strategy: predicted head is KING for visual feel (it's where the player
+   * "sees" their snake). Server head is only used to:
+   *   - Detect big divergence (>PRED_SNAP_THRESHOLD) → snap (death,
+   *     collision-bounce, push-out-of-zone, teleport spawn).
+   *   - Provide segment count + tail positions (server is authoritative on
+   *     length when the snake grew/shrank from coins/food).
+   *
+   * Angle is similarly predicted-king. Speed is taken from server because
+   * boost state is server-authoritative (we may have requested boost but
+   * server denied due to insufficient balance).
+   */
+  private reconcileSelf(serverPlayer: RemotePlayer): void {
+    const srvHead = serverPlayer.segments[0];
+    if (!srvHead) return;
+
+    // First-time init or respawn → snap to server.
+    if (!this.predictedSelf || !this.predictedSelf.alive || this.predictedSelf.segments.length === 0) {
+      this.predictedSelf = {
+        segments: serverPlayer.segments.map(s => ({ x: s.x, y: s.y })),
+        angle: serverPlayer.angle,
+        targetAngle: serverPlayer.angle,
+        speed: serverPlayer.boosted ? this.PRED_BOOST_SPEED : this.PRED_SNAKE_SPEED,
+        alive: serverPlayer.alive,
+        lastTickTime: performance.now(),
+      };
+      return;
+    }
+
+    // Death → freeze prediction at server's death position so the death
+    // animation lines up with where the body actually is.
+    if (!serverPlayer.alive) {
+      this.predictedSelf.segments = serverPlayer.segments.map(s => ({ x: s.x, y: s.y }));
+      this.predictedSelf.angle = serverPlayer.angle;
+      this.predictedSelf.alive = false;
+      return;
+    }
+
+    const ps = this.predictedSelf;
+    const predHead = ps.segments[0];
+    const gap = Math.hypot(srvHead.x - predHead.x, srvHead.y - predHead.y);
+
+    // Big divergence → snap (push out of zone, bounce, etc.)
+    if (gap > this.PRED_SNAP_THRESHOLD) {
+      ps.segments = serverPlayer.segments.map(s => ({ x: s.x, y: s.y }));
+      ps.angle = serverPlayer.angle;
+      ps.lastTickTime = performance.now();
+    } else {
+      // Small divergence → keep predicted head, but adopt server's body
+      // layout (tail/length). The body chain will re-pull into spacing on
+      // the next tickPrediction call. This way length-changes from coin
+      // pickup are reflected without disturbing the head.
+      const oldHead = { x: predHead.x, y: predHead.y };
+      ps.segments = serverPlayer.segments.map(s => ({ x: s.x, y: s.y }));
+      ps.segments[0] = oldHead; // keep predicted head
+    }
+
+    // Speed comes from server (boost may have been denied).
+    ps.speed = serverPlayer.boosted ? this.PRED_BOOST_SPEED : this.PRED_SNAKE_SPEED;
+    ps.alive = serverPlayer.alive;
   }
 
   /** Returns shortest signed delta between two angles, handling wrap-around. */
@@ -1406,6 +1595,14 @@ export class GameScene extends Phaser.Scene {
           magnetMs: p.magnetMs,
           ghostMs: p.ghostMs,
         });
+      }
+
+      // ── Reconcile local player's predicted state with server truth ────
+      // Done HERE (per-player) instead of after the loop so we don't have to
+      // re-find ourselves later. reconcileSelf handles first-init, death,
+      // big-divergence snap, and small-divergence body-length update.
+      if (p.id === this.myPlayerId) {
+        this.reconcileSelf(p as unknown as RemotePlayer);
       }
     }
 
