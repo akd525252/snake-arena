@@ -247,6 +247,14 @@ function bodyDirectlyAhead(bot: Player, room: GameRoom): { angleAway: number } |
   const head = bot.snake.segments[0];
   const fwdX = Math.cos(bot.snake.angle);
   const fwdY = Math.sin(bot.snake.angle);
+  // Scale threat detection range with the bot's current speed: at boost
+  // speed (4 px/tick) we cover twice as much ground per reaction-tick, so a
+  // fixed 55px range gave the AI only ~7 ticks (230ms) to dodge — usually
+  // not enough. Scaled threat range gives consistent ~14-tick reaction
+  // window across idle and boost. This is the second-biggest cause of pro
+  // bot suicides during boosted hunts.
+  const speedRatio = bot.snake.speed / CONFIG.SNAKE_SPEED; // 1 idle, 2 boost
+  const threatRange = PRO_FORWARD_THREAT_RANGE * speedRatio;
   let closest: { seg: Position; dist: number } | null = null;
 
   for (const [, other] of room.players) {
@@ -256,7 +264,7 @@ function bodyDirectlyAhead(bot: Player, room: GameRoom): { angleAway: number } |
       const dx = seg.x - head.x;
       const dy = seg.y - head.y;
       const d = Math.hypot(dx, dy);
-      if (d > PRO_FORWARD_THREAT_RANGE) continue;
+      if (d > threatRange) continue;
       // Is segment in front of the bot? (dot product > 0)
       const fwdDot = dx * fwdX + dy * fwdY;
       if (fwdDot <= 0) continue;
@@ -505,10 +513,28 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
   // ──────────────────────────────────────────────────────────────────────────
   // Peek the best victim now so the kill-commit override can skip body
   // avoidance when we're in guaranteed-kill range.
+  //
+  // CRITICAL: distance alone is NOT enough to commit. Previously we would
+  // ram through bodies any time the victim's head was <170px away — and
+  // half the time the victim's OWN BODY was between us and their head, so
+  // we crashed into the body and died, leaving the victim alive and ahead.
+  // Now we additionally require pathSafe AT BOOST SPEED — i.e. our head
+  // can reach the victim's head without intersecting any body along the
+  // way. This is the single biggest survivability win for pro bots.
   const bestVictim = findBestVictim(bot, aliveHumans, room);
+  const commitPathSafe = bestVictim
+    ? pathSafe(
+        bot,
+        angleToward(head, bestVictim.snake.segments[0]),
+        room,
+        8,
+        CONFIG.SNAKE_BOOST_SPEED,
+      )
+    : false;
   const commitToKill =
     bestVictim &&
-    dist(head, bestVictim.snake.segments[0]) < PRO_BOOST_COMMIT_RANGE;
+    dist(head, bestVictim.snake.segments[0]) < PRO_BOOST_COMMIT_RANGE &&
+    commitPathSafe;
 
   if (!iHaveGhost && !commitToKill) {
     const threat = bodyDirectlyAhead(bot, room);
@@ -605,14 +631,21 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
         const fallback = distA <= distB ? cutB : cutA;
         const fallbackInArena = distA <= distB ? inArenaB : inArenaA;
 
+        // pathSafe horizon = 12 ticks at BOOST SPEED. The cut takes ~12-15
+        // ticks to complete (cutDist 130px ÷ boost 4 px/tick = 32 ticks of
+        // travel, but most of the kill happens in the first 12 — that's
+        // when we cross in front of the player). Checking at boost speed
+        // is essential because we ARE about to boost. Previously we used
+        // 5-tick idle-speed checks which let bots commit to cuts that
+        // crashed into bodies the check never sampled.
         let bestCut: Position | null = null;
         if (distA !== Infinity || distB !== Infinity) {
           const ang1 = angleToward(head, firstChoice);
-          if (pathSafe(bot, ang1, room, 5)) {
+          if (pathSafe(bot, ang1, room, 12, CONFIG.SNAKE_BOOST_SPEED)) {
             bestCut = firstChoice;
           } else if (fallbackInArena) {
             const ang2 = angleToward(head, fallback);
-            if (pathSafe(bot, ang2, room, 5)) {
+            if (pathSafe(bot, ang2, room, 12, CONFIG.SNAKE_BOOST_SPEED)) {
               bestCut = fallback;
             }
           }
@@ -709,10 +742,16 @@ export function updateProBotDirection(bot: Player, room: GameRoom): void {
         (distToHuman < effectiveBoostRange);
 
       // Don't boost if path is unsafe — that's how a "smart" bot wastes its
-      // boost budget into its own tail. Ghost ignores this gate. 7 ticks at
-      // 30Hz ≈ 230ms which is roughly the time it takes to complete a boost
-      // commit at the new speed.
-      const safeToBoost = iHaveGhost || pathSafe(bot, proposedAngle, room, 7);
+      // boost budget into its own tail. Ghost ignores this gate.
+      //
+      // CRITICAL: evaluate at BOOST SPEED, not idle speed. A 7-tick idle
+      // path covers 14px but the actual boost path covers 28px — twice as
+      // far. Without this override, bots routinely committed to boosts
+      // that crashed into bodies the idle-speed check never sampled.
+      // 12 ticks @ boost ≈ 400ms — covers a typical boost-to-kill window.
+      const safeToBoost =
+        iHaveGhost ||
+        pathSafe(bot, proposedAngle, room, 12, CONFIG.SNAKE_BOOST_SPEED);
 
       if (wantsBoost && safeToBoost) {
         // Tight 1.2s cooldown during hunts — near-continuous boost pressure.
@@ -972,10 +1011,16 @@ function pathSafe(
   proposedAngle: number,
   room: GameRoom,
   steps = 4,
+  overrideSpeed?: number,
 ): boolean {
   const head = bot.snake.segments[0];
   if (!head) return true;
-  const speed = bot.snake.speed;
+  // Allow caller to evaluate the path AT BOOST SPEED before actually
+  // initiating the boost. Without this, a bot decides to boost based on
+  // an idle-speed path safety check, then doubles its travel distance and
+  // crashes into something the idle check didn't see. This is the single
+  // biggest cause of pro-bot suicides during chase/commit phases.
+  const speed = overrideSpeed ?? bot.snake.speed;
   const cx = room.arenaCenterX, cy = room.arenaCenterY;
   const safeRadius = room.arenaRadius - 20;
   const safeRadius2 = safeRadius * safeRadius;
