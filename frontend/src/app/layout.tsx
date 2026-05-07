@@ -4,6 +4,7 @@ import "./globals.css";
 import { AuthProvider } from "../contexts/AuthContext";
 import { I18nProvider } from "../contexts/I18nContext";
 import FirstVisitLanguageModal from "../components/FirstVisitLanguageModal";
+import LatencyIndicator from "../components/LatencyIndicator";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -108,6 +109,7 @@ export default function RootLayout({
           <AuthProvider>
             {children}
             <FirstVisitLanguageModal />
+            <LatencyIndicator />
           </AuthProvider>
         </I18nProvider>
       </body>

@@ -24,7 +24,15 @@ import { supabase, chargeBet } from './db';
 // ============================================
 const server = http.createServer((req, res) => {
   if (req.url === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+    // CORS: the latency indicator on the frontend pings this endpoint
+    // cross-origin (frontend on Vercel/etc, game-server on Railway). Health
+    // data is non-sensitive — wildcard is fine. Without these headers the
+    // browser drops the response and the indicator shows "—" forever.
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-store',
+    });
     res.end(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }));
     return;
   }
