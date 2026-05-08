@@ -501,8 +501,8 @@ export class GameScene extends Phaser.Scene {
     const baseZoom = this.isMobile ? 0.9 : 1.6;
     const zoomScale = this.qualityTier === 'low' ? 0.85 : this.qualityTier === 'mid' ? 0.95 : 1;
     this.cameras.main.setZoom(baseZoom * zoomScale);
-    // Pixel-perfect rendering kills sub-pixel shimmer when camera moves
-    this.cameras.main.setRoundPixels(true);
+    // Sub-pixel rendering keeps interpolated movement smooth while the camera lerps
+    this.cameras.main.setRoundPixels(false);
     // Pre-position camera at arena center so the first frame doesn't snap from (0,0)
     this.cameras.main.centerOn(this.arenaCenterX, this.arenaCenterY);
     this.cameraSmooth = { x: this.arenaCenterX, y: this.arenaCenterY };
@@ -1045,10 +1045,10 @@ export class GameScene extends Phaser.Scene {
         this.cameraSmooth.x += (camTarget.x - this.cameraSmooth.x) * factor;
         this.cameraSmooth.y += (camTarget.y - this.cameraSmooth.y) * factor;
       }
-      // DO NOT Math.round() — setRoundPixels(true) on the camera already snaps
-      // rendering to integer pixels. Manual rounding here causes double-rounding
-      // which makes the camera oscillate between integer values when moving
-      // slowly, producing visible 1-pixel shake. Trust Phaser's renderer.
+      // DO NOT Math.round() — sub-pixel camera centers preserve interpolation
+      // smoothness. Manual rounding here makes the camera oscillate between
+      // integer values when moving slowly, producing visible 1-pixel shake.
+      // Trust Phaser's renderer.
       this.cameras.main.centerOn(this.cameraSmooth.x, this.cameraSmooth.y);
     }
   }
@@ -1919,8 +1919,8 @@ export class GameScene extends Phaser.Scene {
     //
     // `spacing` must be < 2 * TAIL_RADIUS for the body to read as solid.
     // `maxPoints` caps total fillCircle calls per snake for performance.
-    const spacing = this.qualityTier === 'low' ? 6 : this.qualityTier === 'mid' ? 5 : 4;
-    const maxPoints = this.qualityTier === 'low' ? 70 : this.qualityTier === 'mid' ? 110 : 160;
+    const spacing = this.qualityTier === 'low' ? 6 : this.qualityTier === 'mid' ? 4.5 : 3.5;
+    const maxPoints = this.qualityTier === 'low' ? 70 : this.qualityTier === 'mid' ? 130 : 190;
     const dense = this.resamplePath(p.segments, spacing, maxPoints);
     const len = dense.length;
 
@@ -2404,6 +2404,67 @@ export class GameScene extends Phaser.Scene {
     return (h >>> 0) / 4294967296;
   }
 
+  private drawArenaHexGround(
+    g: Phaser.GameObjects.Graphics,
+    pal: { bgDark: number; bgLight: number; detail: number },
+    cx: number,
+    cy: number,
+    r: number,
+  ): void {
+    const hexR = this.qualityTier === 'low' ? 30 : this.qualityTier === 'mid' ? 26 : 23;
+    const xStep = Math.sqrt(3) * hexR;
+    const yStep = hexR * 1.5;
+    const safeR = r - hexR * 0.9;
+    const safeRSq = safeR * safeR;
+    const lineAlpha = this.qualityTier === 'low' ? 0.22 : 0.34;
+
+    g.lineStyle(1, pal.bgDark, lineAlpha);
+
+    let row = 0;
+    for (let y = cy - r - hexR; y <= cy + r + hexR; y += yStep) {
+      const offsetX = (row & 1) ? xStep / 2 : 0;
+      let col = 0;
+      for (let x = cx - r - xStep; x <= cx + r + xStep; x += xStep) {
+        const hx = x + offsetX;
+        const hy = y;
+        const dx = hx - cx;
+        const dy = hy - cy;
+        if (dx * dx + dy * dy > safeRSq) {
+          col++;
+          continue;
+        }
+
+        const shade = this.seededRand(row + 401, col + 709);
+        const fillColor = shade > 0.56 ? pal.bgLight : pal.bgDark;
+        const fillAlpha = shade > 0.56 ? 0.075 : 0.055;
+
+        g.fillStyle(fillColor, fillAlpha);
+        g.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const a = Math.PI / 6 + i * Math.PI / 3;
+          const vx = hx + Math.cos(a) * hexR;
+          const vy = hy + Math.sin(a) * hexR;
+          if (i === 0) {
+            g.moveTo(vx, vy);
+          } else {
+            g.lineTo(vx, vy);
+          }
+        }
+        g.closePath();
+        g.fillPath();
+        g.strokePath();
+
+        if (this.qualityTier !== 'low' && shade > 0.72) {
+          g.fillStyle(pal.detail, 0.12);
+          g.fillCircle(hx, hy, 1.6);
+        }
+
+        col++;
+      }
+      row++;
+    }
+  }
+
   private drawArena() {
     this.arenaGfx.clear();
 
@@ -2457,6 +2518,7 @@ export class GameScene extends Phaser.Scene {
     // ── Layer 0: Base fill ──────────────────────────────────────────
     g.fillStyle(pal.bg, 1);
     g.fillCircle(cx, cy, r);
+    this.drawArenaHexGround(g, pal, cx, cy, r);
 
     // ── Layer 1: Large terrain patches (darker/lighter zones) ──────
     // Creates natural-looking variation across the ground
