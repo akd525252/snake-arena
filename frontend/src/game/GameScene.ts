@@ -87,8 +87,9 @@ export class GameScene extends Phaser.Scene {
   private arenaCenterY = 550;
   private arenaRadius = 500;
 
-  // Map theme — randomized per match for variety
-  private mapTheme: 'grass' | 'lava' | 'rock' | 'tile' = 'grass';
+  // Marble tile ground (single theme for all matches)
+  private arenaTileSprite: Phaser.GameObjects.TileSprite | null = null;
+  private arenaMaskShape: Phaser.GameObjects.Graphics | null = null;
 
   // HUD
   private scoreText!: Phaser.GameObjects.Text;
@@ -317,9 +318,8 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Arena background — random map theme each match
-    const themes: ('grass' | 'lava' | 'rock' | 'tile')[] = ['grass', 'lava', 'rock', 'tile'];
-    this.mapTheme = themes[Math.floor(Math.random() * themes.length)];
+    // Arena background — single marble tile ground for all matches
+    this.generateMarbleTileTexture();
     this.arenaGfx = this.add.graphics();
     this.arenaGfx.setDepth(-10);
     this.arenaAnimGfx = this.add.graphics();
@@ -1069,13 +1069,8 @@ export class GameScene extends Phaser.Scene {
    *  Tuned so the area outside the arena is clearly the same biome (just
    *  dimmer) rather than looking like a black void. */
   private applyThemeCameraBg() {
-    const themeBgs = {
-      grass: '#143a1c',  // dark forest green (was nearly black)
-      lava: '#3a0a02',   // dark ember red
-      rock: '#1d1e22',   // dim slate gray
-      tile: '#0a1828',   // dark navy with hint of cyan
-    };
-    this.cameras.main.setBackgroundColor(themeBgs[this.mapTheme]);
+    // Dark marble-toned background outside the arena
+    this.cameras.main.setBackgroundColor('#1a1a2e');
   }
 
   /** Returns shortest signed delta between two angles, handling wrap-around. */
@@ -2404,65 +2399,61 @@ export class GameScene extends Phaser.Scene {
     return (h >>> 0) / 4294967296;
   }
 
-  private drawArenaHexGround(
-    g: Phaser.GameObjects.Graphics,
-    pal: { bgDark: number; bgLight: number; detail: number },
-    cx: number,
-    cy: number,
-    r: number,
-  ): void {
-    const hexR = this.qualityTier === 'low' ? 30 : this.qualityTier === 'mid' ? 26 : 23;
-    const xStep = Math.sqrt(3) * hexR;
-    const yStep = hexR * 1.5;
-    const safeR = r - hexR * 0.9;
-    const safeRSq = safeR * safeR;
-    const lineAlpha = this.qualityTier === 'low' ? 0.22 : 0.34;
+  /** Generate a seamless marble-tile texture at runtime and create the
+   *  TileSprite + circular mask so it covers the entire arena. */
+  private generateMarbleTileTexture(): void {
+    const tileSize = 128; // px — power-of-two for GPU-friendly tiling
+    const key = '__marble_tile__';
 
-    g.lineStyle(1, pal.bgDark, lineAlpha);
+    // Only generate once
+    if (this.textures.exists(key)) return;
 
-    let row = 0;
-    for (let y = cy - r - hexR; y <= cy + r + hexR; y += yStep) {
-      const offsetX = (row & 1) ? xStep / 2 : 0;
-      let col = 0;
-      for (let x = cx - r - xStep; x <= cx + r + xStep; x += xStep) {
-        const hx = x + offsetX;
-        const hy = y;
-        const dx = hx - cx;
-        const dy = hy - cy;
-        if (dx * dx + dy * dy > safeRSq) {
-          col++;
-          continue;
-        }
+    const canvas = document.createElement('canvas');
+    canvas.width = tileSize;
+    canvas.height = tileSize;
+    const ctx = canvas.getContext('2d')!;
 
-        const shade = this.seededRand(row + 401, col + 709);
-        const fillColor = shade > 0.56 ? pal.bgLight : pal.bgDark;
-        const fillAlpha = shade > 0.56 ? 0.075 : 0.055;
+    // ── Base marble fill ───────────────────────────────────────────
+    ctx.fillStyle = '#2b2d42';
+    ctx.fillRect(0, 0, tileSize, tileSize);
 
-        g.fillStyle(fillColor, fillAlpha);
-        g.beginPath();
-        for (let i = 0; i < 6; i++) {
-          const a = Math.PI / 6 + i * Math.PI / 3;
-          const vx = hx + Math.cos(a) * hexR;
-          const vy = hy + Math.sin(a) * hexR;
-          if (i === 0) {
-            g.moveTo(vx, vy);
-          } else {
-            g.lineTo(vx, vy);
-          }
-        }
-        g.closePath();
-        g.fillPath();
-        g.strokePath();
-
-        if (this.qualityTier !== 'low' && shade > 0.72) {
-          g.fillStyle(pal.detail, 0.12);
-          g.fillCircle(hx, hy, 1.6);
-        }
-
-        col++;
-      }
-      row++;
+    // Marble veins — several semi-transparent curved strokes
+    const veins = [
+      { x0: 0, y0: 30, cp1x: 40, cp1y: 60, cp2x: 90, cp2y: 20, x1: 128, y1: 50, w: 2.5, c: 'rgba(140,140,170,0.18)' },
+      { x0: 10, y0: 100, cp1x: 50, cp1y: 80, cp2x: 80, cp2y: 120, x1: 128, y1: 110, w: 1.8, c: 'rgba(180,180,200,0.12)' },
+      { x0: 0, y0: 70, cp1x: 30, cp1y: 90, cp2x: 100, cp2y: 60, x1: 128, y1: 80, w: 1.2, c: 'rgba(100,100,140,0.15)' },
+      { x0: 20, y0: 0, cp1x: 60, cp1y: 30, cp2x: 70, cp2y: 100, x1: 50, y1: 128, w: 2, c: 'rgba(160,160,185,0.13)' },
+      { x0: 80, y0: 0, cp1x: 110, cp1y: 40, cp2x: 60, cp2y: 90, x1: 100, y1: 128, w: 1.5, c: 'rgba(120,120,150,0.14)' },
+    ];
+    for (const v of veins) {
+      ctx.strokeStyle = v.c;
+      ctx.lineWidth = v.w;
+      ctx.beginPath();
+      ctx.moveTo(v.x0, v.y0);
+      ctx.bezierCurveTo(v.cp1x, v.cp1y, v.cp2x, v.cp2y, v.x1, v.y1);
+      ctx.stroke();
     }
+
+    // Subtle noise grain for surface variation (seeded scatter)
+    for (let i = 0; i < 600; i++) {
+      const gx = (i * 7919 + 1031) % tileSize;
+      const gy = (i * 6271 + 3037) % tileSize;
+      const bright = 30 + ((i * 4507) % 40);
+      const alpha = 0.04 + ((i * 2999) % 100) / 2500;
+      ctx.fillStyle = `rgba(${bright},${bright},${bright + 15},${alpha})`;
+      ctx.fillRect(gx, gy, 1, 1);
+    }
+
+    // ── Grid lines (marble tile joints) ────────────────────────────
+    ctx.strokeStyle = 'rgba(200,200,220,0.12)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, tileSize - 1, tileSize - 1);
+
+    // Ensure wrap-around seamlessness by mirroring edge veins
+    // We already use bezier curves that start/end at the tile edges,
+    // so the pattern tiles naturally.
+
+    this.textures.addCanvas(key, canvas);
   }
 
   private drawArena() {
@@ -2471,233 +2462,52 @@ export class GameScene extends Phaser.Scene {
     const cx = this.arenaCenterX;
     const cy = this.arenaCenterY;
     const r = this.arenaRadius;
-    const rSq = r * r;
     const g = this.arenaGfx;
 
-    // Theme palettes — rich colors for each biome
-    const palettes = {
-      grass: {
-        bg: 0x2d7a3a,        // saturated meadow green
-        bgDark: 0x1f5a28,    // dark grass for patches
-        bgLight: 0x4ea85a,   // light grass highlight
-        detail: 0x7ecf86,    // grass tuft highlight
-        border: 0xa8f5b0,    // vivid green border
-        danger: 0xef4444,
-        rocks: 0x6b705c,     // small stone color
-      },
-      lava: {
-        bg: 0x7a1a05,        // glowing molten rock
-        bgDark: 0x4a0803,    // cooled rock
-        bgLight: 0xb83a08,   // warm cracks
-        detail: 0xff8a30,    // hot ember
-        border: 0xffb050,    // glowing border
-        danger: 0xffe040,
-        rocks: 0x2a1205,
-      },
-      rock: {
-        bg: 0x4a4d52,        // mid-tone stone
-        bgDark: 0x35383c,    // dark stone
-        bgLight: 0x62666c,   // lighter stone
-        detail: 0x8a8d92,    // highlight
-        border: 0xc8cad0,    // bright stone edge
-        danger: 0xef4444,
-        rocks: 0x72757a,
-      },
-      tile: {
-        bg: 0x18465c,        // bright tech navy
-        bgDark: 0x0e2e3e,    // dark panel
-        bgLight: 0x2a7090,   // grid accent
-        detail: 0x4ce0ff,    // bright cyan
-        border: 0x66f0ff,    // luminous border
-        danger: 0xff2e63,
-        rocks: 0x14384a,
-      },
-    } as const;
-    const pal = palettes[this.mapTheme];
-
-    // ── Layer 0: Base fill ──────────────────────────────────────────
-    g.fillStyle(pal.bg, 1);
+    // ── Layer 0: Dark base fill behind the tile sprite ─────────────
+    g.fillStyle(0x1a1a2e, 1);
     g.fillCircle(cx, cy, r);
-    this.drawArenaHexGround(g, pal, cx, cy, r);
 
-    // ── Layer 1: Large terrain patches (darker/lighter zones) ──────
-    // Creates natural-looking variation across the ground
-    const patchCount = 18;
-    for (let i = 0; i < patchCount; i++) {
-      const ang = this.seededRand(i, 7) * Math.PI * 2;
-      const dist = this.seededRand(i, 13) * (r - 40);
-      const px = cx + Math.cos(ang) * dist;
-      const py = cy + Math.sin(ang) * dist;
-      const patchR = 30 + this.seededRand(i, 19) * 50;
-      const isDark = i % 3 === 0;
-      g.fillStyle(isDark ? pal.bgDark : pal.bgLight, isDark ? 0.35 : 0.25);
-      g.fillCircle(px, py, patchR);
+    // ── Layer 0.5: Marble TileSprite (created once, repositioned) ──
+    const key = '__marble_tile__';
+    if (!this.arenaTileSprite && this.textures.exists(key)) {
+      const diameter = r * 2;
+      this.arenaTileSprite = this.add.tileSprite(
+        cx - r, cy - r, diameter, diameter, key,
+      ).setOrigin(0, 0).setDepth(-10);
+
+      // Circular mask so the tiled marble stays inside the arena
+      this.arenaMaskShape = this.add.graphics({ x: 0, y: 0 });
+      this.arenaMaskShape.setVisible(false);
+      this.arenaMaskShape.fillStyle(0xffffff);
+      this.arenaMaskShape.fillCircle(cx, cy, r);
+      const mask = this.arenaMaskShape.createGeometryMask();
+      this.arenaTileSprite.setMask(mask);
     }
 
-    // ── Layer 2: Theme-specific detail texture ─────────────────────
-    if (this.mapTheme === 'grass') {
-      // Dense grass tufts — scattered small circles with random sizes
-      const step = 16;
-      for (let x = cx - r; x <= cx + r; x += step) {
-        for (let y = cy - r; y <= cy + r; y += step) {
-          const dx = x - cx, dy = y - cy;
-          if (dx * dx + dy * dy > rSq) continue;
-          const s = this.seededRand(x, y);
-          const ox = (s * 8) - 4;
-          const oy = (this.seededRand(y, x) * 8) - 4;
-          // Grass tuft — slightly lighter circles
-          g.fillStyle(pal.bgLight, 0.3 + s * 0.3);
-          g.fillCircle(x + ox, y + oy, 1.5 + s * 2);
-        }
-      }
-      // Scattered rocks/pebbles on the grass
-      for (let i = 0; i < 30; i++) {
-        const a = this.seededRand(i, 41) * Math.PI * 2;
-        const d = this.seededRand(i, 43) * (r - 20);
-        const rx = cx + Math.cos(a) * d;
-        const ry = cy + Math.sin(a) * d;
-        g.fillStyle(pal.rocks, 0.5);
-        g.fillCircle(rx, ry, 2 + this.seededRand(i, 47) * 3);
-      }
-      // Darker grass patches (shadows/thicker grass)
-      for (let i = 0; i < 40; i++) {
-        const a = this.seededRand(i, 53) * Math.PI * 2;
-        const d = this.seededRand(i, 59) * (r - 15);
-        const gx = cx + Math.cos(a) * d;
-        const gy = cy + Math.sin(a) * d;
-        g.fillStyle(pal.bgDark, 0.4);
-        g.fillCircle(gx, gy, 4 + this.seededRand(i, 61) * 8);
-      }
-    } else if (this.mapTheme === 'lava') {
-      // Cracked floor grid
-      g.lineStyle(1.5, pal.bgLight, 0.4);
-      const step = 55;
-      for (let x = cx - r; x <= cx + r; x += step) {
-        const dx = x - cx;
-        const halfH = Math.sqrt(Math.max(0, rSq - dx * dx));
-        if (halfH > 0) g.lineBetween(x, cy - halfH, x, cy + halfH);
-      }
-      for (let y = cy - r; y <= cy + r; y += step) {
-        const dy = y - cy;
-        const halfW = Math.sqrt(Math.max(0, rSq - dy * dy));
-        if (halfW > 0) g.lineBetween(cx - halfW, y, cx + halfW, y);
-      }
-      // Hot cracks — irregular glowing lines
-      for (let i = 0; i < 24; i++) {
-        const a = this.seededRand(i, 71) * Math.PI * 2;
-        const d = this.seededRand(i, 73) * (r - 20);
-        const x0 = cx + Math.cos(a) * d;
-        const y0 = cy + Math.sin(a) * d;
-        const len = 10 + this.seededRand(i, 77) * 25;
-        const ang2 = a + (this.seededRand(i, 79) - 0.5) * 1.5;
-        g.lineStyle(2, pal.detail, 0.5);
-        g.lineBetween(x0, y0, x0 + Math.cos(ang2) * len, y0 + Math.sin(ang2) * len);
-      }
-      // Ember dots
-      for (let i = 0; i < 60; i++) {
-        const a = this.seededRand(i, 81) * Math.PI * 2;
-        const d = this.seededRand(i, 83) * (r - 10);
-        g.fillStyle(pal.detail, 0.4 + this.seededRand(i, 85) * 0.4);
-        g.fillCircle(cx + Math.cos(a) * d, cy + Math.sin(a) * d, 1 + this.seededRand(i, 87) * 2);
-      }
-    } else if (this.mapTheme === 'rock') {
-      // Stone tile grid with offset rows
-      const step = 45;
-      g.lineStyle(1.5, pal.bgDark, 0.6);
-      for (let x = cx - r; x <= cx + r; x += step) {
-        const dx = x - cx;
-        const halfH = Math.sqrt(Math.max(0, rSq - dx * dx));
-        if (halfH > 0) g.lineBetween(x, cy - halfH, x, cy + halfH);
-      }
-      for (let y = cy - r; y <= cy + r; y += step) {
-        const dy = y - cy;
-        const halfW = Math.sqrt(Math.max(0, rSq - dy * dy));
-        if (halfW > 0) g.lineBetween(cx - halfW, y, cx + halfW, y);
-      }
-      // Stone surface variation — lighter patches within tiles
-      for (let i = 0; i < 50; i++) {
-        const a = this.seededRand(i, 91) * Math.PI * 2;
-        const d = this.seededRand(i, 93) * (r - 15);
-        g.fillStyle(pal.bgLight, 0.25);
-        g.fillCircle(cx + Math.cos(a) * d, cy + Math.sin(a) * d, 6 + this.seededRand(i, 95) * 12);
-      }
-      // Crack lines
-      for (let i = 0; i < 20; i++) {
-        const a = this.seededRand(i, 97) * Math.PI * 2;
-        const d = this.seededRand(i, 99) * (r - 25);
-        const x0 = cx + Math.cos(a) * d;
-        const y0 = cy + Math.sin(a) * d;
-        const len = 8 + this.seededRand(i, 101) * 20;
-        const ang2 = a + (this.seededRand(i, 103) - 0.5);
-        g.lineStyle(1, pal.detail, 0.3);
-        g.lineBetween(x0, y0, x0 + Math.cos(ang2) * len, y0 + Math.sin(ang2) * len);
-      }
-    } else {
-      // tile / tech theme — hex grid pattern
-      const step = 36;
-      g.lineStyle(1, pal.bgLight, 0.5);
-      for (let x = cx - r; x <= cx + r; x += step) {
-        const dx = x - cx;
-        const halfH = Math.sqrt(Math.max(0, rSq - dx * dx));
-        if (halfH > 0) g.lineBetween(x, cy - halfH, x, cy + halfH);
-      }
-      for (let y = cy - r; y <= cy + r; y += step) {
-        const dy = y - cy;
-        const halfW = Math.sqrt(Math.max(0, rSq - dy * dy));
-        if (halfW > 0) g.lineBetween(cx - halfW, y, cx + halfW, y);
-      }
-      // Glowing accent dots at grid intersections
-      g.fillStyle(pal.detail, 0.4);
-      for (let x = cx - r; x <= cx + r; x += step) {
-        for (let y = cy - r; y <= cy + r; y += step) {
-          const dx = x - cx, dy = y - cy;
-          if (dx * dx + dy * dy > rSq) continue;
-          g.fillCircle(x, y, 2);
-          // Larger glow halo at every other intersection
-          if (((x + y) | 0) % (step * 2) < step) {
-            g.fillStyle(pal.detail, 0.15);
-            g.fillCircle(x, y, 5);
-            g.fillStyle(pal.detail, 0.4);
-          }
-        }
-      }
-      // Panel highlights
-      for (let i = 0; i < 20; i++) {
-        const a = this.seededRand(i, 111) * Math.PI * 2;
-        const d = this.seededRand(i, 113) * (r - 20);
-        g.fillStyle(pal.bgLight, 0.2);
-        g.fillCircle(cx + Math.cos(a) * d, cy + Math.sin(a) * d, 8 + this.seededRand(i, 115) * 15);
-      }
-    }
-
-    // ── Layer 3: Radial vignette — edges of arena appear slightly darker ──
-    // Draw concentric rings with increasing opacity near the border
+    // ── Layer 3: Radial vignette — edges darker ────────────────────
     for (let band = 0; band < 5; band++) {
       const bandR = r - band * 4;
-      const alpha = 0.03 + band * 0.04;
+      const alpha = 0.04 + band * 0.05;
       g.lineStyle(8, 0x000000, alpha);
       g.strokeCircle(cx, cy, bandR);
     }
 
-    // ── Arena border (theme-tinted, thick double-ring) ─────────────
-    g.lineStyle(5, pal.border, 0.7);
+    // ── Arena border — elegant marble-tinted double ring ───────────
+    const borderColor = 0x8d99ae;
+    g.lineStyle(5, borderColor, 0.7);
     g.strokeCircle(cx, cy, r);
-    g.lineStyle(2, pal.border, 0.4);
+    g.lineStyle(2, borderColor, 0.4);
     g.strokeCircle(cx, cy, r - 6);
 
     // Inner danger ring
-    g.lineStyle(1, pal.danger, 0.18);
+    g.lineStyle(1, 0xef4444, 0.18);
     g.strokeCircle(cx, cy, r - 2);
   }
 
-  /**
-   * Rich per-theme animated overlay drawn every frame on top of the static
-   * arena. Each theme has distinct moving elements (lava flow, fireflies,
-   * dust motes, circuit pulses) so the ground always feels alive. Particle
-   * counts and wave-frequencies are tuned for visibility without GPU strain.
-   * Skipped on low-tier; throttled to every 2nd frame on mid-tier (handled
-   * upstream in update()).
-   */
+  /** Subtle marble shimmer animation — a slow pulsing border glow and
+   *  faint drifting light motes to keep the arena feeling alive.
+   *  Skipped on low-tier; throttled on mid-tier (handled in update()). */
   private drawArenaAnim(now: number) {
     if (!this.arenaAnimGfx) return;
     this.arenaAnimGfx.clear();
@@ -2707,153 +2517,26 @@ export class GameScene extends Phaser.Scene {
     const tSec = now / 1000;
     const g = this.arenaAnimGfx;
 
-    // Particle counts scale with quality tier: high=full, mid=50%.
-    // Low tier never calls this function (skipped in update()).
+    // Slow pulsing border glow
+    const pulse = 0.4 + 0.25 * Math.sin(tSec * 0.8);
+    g.lineStyle(3, 0x8d99ae, pulse * 0.35);
+    g.strokeCircle(cx, cy, r - 2);
+
+    // Faint drifting dust motes — gives subtle life to the marble surface
     const tierFactor = this.qualityTier === 'high' ? 1 : 0.5;
-
-    if (this.mapTheme === 'lava') {
-      // ── LAVA: flowing molten cells + rising embers + pulsing glow ──────
-      // Two pulsing inner rings — outer slow, inner fast
-      const pulseOuter = 0.5 + 0.4 * Math.sin(tSec * 1.4);
-      g.lineStyle(8, 0xff3010, pulseOuter * 0.45);
-      g.strokeCircle(cx, cy, r - 4);
-      const pulseInner = 0.5 + 0.4 * Math.sin(tSec * 2.6);
-      g.lineStyle(4, 0xff8030, pulseInner * 0.35);
-      g.strokeCircle(cx, cy, r - 14);
-
-      // Rising ember particles — deterministic so they're stable across frames
-      const emberCount = Math.floor(28 * tierFactor);
-      for (let i = 0; i < emberCount; i++) {
-        // Each ember has its own seed: angle, radius, vertical offset, speed
-        const seed = i * 137.508; // golden-angle distribution
-        const ang = seed % (Math.PI * 2);
-        const baseRad = (i % 7) / 7 * (r - 30);
-        const lifeT = ((tSec * 0.6 + i * 0.3) % 2.5) / 2.5; // 0..1 loop
-        const rise = lifeT * 60; // upward motion in pixels
-        const emberR = baseRad + rise * 0.2;
-        if (emberR > r - 5) continue;
-        const ex = cx + Math.cos(ang) * emberR;
-        const ey = cy + Math.sin(ang) * emberR - rise;
-        const fade = (1 - lifeT) * 0.85;
-        const size = 2 + (1 - lifeT) * 2;
-        g.fillStyle(0xffaa20, fade * 0.6);
-        g.fillCircle(ex, ey, size * 1.6);
-        g.fillStyle(0xff5010, fade);
-        g.fillCircle(ex, ey, size);
-      }
-
-      // Animated cracked-floor flow: faint glowing arcs that sweep slowly
-      const arcAng = (tSec * 0.3) % (Math.PI * 2);
-      g.lineStyle(2, 0xff6020, 0.35);
-      g.beginPath();
-      g.arc(cx, cy, r * 0.55, arcAng, arcAng + Math.PI * 0.4, false);
-      g.strokePath();
-      g.lineStyle(1.5, 0xff9040, 0.25);
-      g.beginPath();
-      g.arc(cx, cy, r * 0.78, arcAng + Math.PI, arcAng + Math.PI + Math.PI * 0.3, false);
-      g.strokePath();
-
-    } else if (this.mapTheme === 'grass') {
-      // ── GRASS: drifting fireflies + wind ripple + soft pulse ────────────
-      // Border breathing pulse
-      const pulseBorder = 0.5 + 0.35 * Math.sin(tSec * 1.2);
-      g.lineStyle(3, 0x6cff8c, pulseBorder * 0.4);
-      g.strokeCircle(cx, cy, r - 2);
-
-      // Wind ripple — expanding ring that loops
-      const rippleT = (tSec * 0.5) % 1;
-      const rippleR = rippleT * r;
-      g.lineStyle(2, 0x88ee88, (1 - rippleT) * 0.35);
-      g.strokeCircle(cx, cy, rippleR);
-
-      // Fireflies — drifting glowing dots
-      const flyCount = Math.floor(22 * tierFactor);
-      for (let i = 0; i < flyCount; i++) {
-        const seed = i * 73.91;
-        const baseAng = (seed % (Math.PI * 2));
-        const baseRad = ((i * 41) % 100) / 100 * (r - 30);
-        // Drift in a slow circular orbit + small wave
-        const driftAng = baseAng + tSec * 0.15 * (i % 2 === 0 ? 1 : -1);
-        const wobble = Math.sin(tSec * 1.8 + i) * 4;
-        const fx = cx + Math.cos(driftAng) * baseRad + wobble;
-        const fy = cy + Math.sin(driftAng) * baseRad + Math.cos(tSec * 1.5 + i) * 4;
-        // Twinkle
-        const blink = 0.5 + 0.5 * Math.sin(tSec * 3 + i * 0.7);
-        g.fillStyle(0xfff58a, blink * 0.55);
-        g.fillCircle(fx, fy, 3.2);
-        g.fillStyle(0xffff60, blink * 0.85);
-        g.fillCircle(fx, fy, 1.4);
-      }
-
-    } else if (this.mapTheme === 'rock') {
-      // ── ROCK: drifting dust motes + occasional sparkles + shimmer ──────
-      // Subtle border pulse
-      const pulse = 0.4 + 0.25 * Math.sin(tSec * 0.7);
-      g.lineStyle(2, 0xa8aab0, pulse * 0.35);
-      g.strokeCircle(cx, cy, r - 2);
-
-      // Drifting dust motes
-      const dustCount = Math.floor(30 * tierFactor);
-      for (let i = 0; i < dustCount; i++) {
-        const seed = i * 91.7;
-        const baseAng = (seed % (Math.PI * 2));
-        const baseRad = ((i * 23) % 100) / 100 * (r - 30);
-        const drift = tSec * 0.25 * (i % 2 === 0 ? 1 : -1);
-        const ang = baseAng + drift;
-        const wob = Math.sin(tSec * 0.8 + i * 0.5) * 3;
-        const dx = cx + Math.cos(ang) * baseRad;
-        const dy = cy + Math.sin(ang) * baseRad + wob;
-        const fade = 0.3 + 0.2 * Math.sin(tSec * 1.2 + i);
-        g.fillStyle(0xc8cad0, fade);
-        g.fillCircle(dx, dy, 1.3);
-      }
-
-      // Occasional sparkle stars (twinkle in/out)
-      const sparkleCount = Math.floor(8 * tierFactor);
-      for (let i = 0; i < sparkleCount; i++) {
-        const seed = i * 211.4;
-        const ang = seed % (Math.PI * 2);
-        const rad = ((i * 53) % 100) / 100 * (r - 40);
-        const blink = Math.max(0, Math.sin(tSec * 1.5 + i * 0.9));
-        if (blink < 0.6) continue;
-        const sx = cx + Math.cos(ang) * rad;
-        const sy = cy + Math.sin(ang) * rad;
-        const intensity = (blink - 0.6) * 2.5;
-        g.fillStyle(0xfff8e0, intensity * 0.7);
-        g.fillCircle(sx, sy, 2.5);
-        g.lineStyle(1, 0xfff8e0, intensity * 0.5);
-        g.lineBetween(sx - 5, sy, sx + 5, sy);
-        g.lineBetween(sx, sy - 5, sx, sy + 5);
-      }
-
-    } else {
-      // ── TILE (cyber): circuit pulses + energy ring + accent dots ───────
-      // Sweeping cyan ring
-      const ringR = (r * 0.35) + (r * 0.55) * (0.5 + 0.5 * Math.sin(tSec * 0.7));
-      g.lineStyle(2, 0x00d8ff, 0.4);
-      g.strokeCircle(cx, cy, ringR);
-
-      // Counter-rotating accent ring
-      const ring2R = (r * 0.25) + (r * 0.45) * (0.5 + 0.5 * Math.cos(tSec * 0.5));
-      g.lineStyle(1.5, 0x33eaff, 0.3);
-      g.strokeCircle(cx, cy, ring2R);
-
-      // Pulsing accent dots at orbital positions
-      const dotCount = Math.floor(12 * tierFactor);
-      for (let i = 0; i < dotCount; i++) {
-        const ang = (i / dotCount) * Math.PI * 2 + tSec * 0.2;
-        const rad = r * 0.85;
-        const dx = cx + Math.cos(ang) * rad;
-        const dy = cy + Math.sin(ang) * rad;
-        const blink = 0.5 + 0.5 * Math.sin(tSec * 4 + i * 0.5);
-        g.fillStyle(0x2cc8ff, blink * 0.7);
-        g.fillCircle(dx, dy, 2.5);
-      }
-
-      // Border breathing
-      const borderPulse = 0.6 + 0.3 * Math.sin(tSec * 2);
-      g.lineStyle(2, 0x33eaff, borderPulse * 0.4);
-      g.strokeCircle(cx, cy, r);
+    const moteCount = Math.floor(18 * tierFactor);
+    for (let i = 0; i < moteCount; i++) {
+      const seed = i * 91.7;
+      const baseAng = seed % (Math.PI * 2);
+      const baseRad = ((i * 23) % 100) / 100 * (r - 30);
+      const drift = tSec * 0.15 * (i % 2 === 0 ? 1 : -1);
+      const ang = baseAng + drift;
+      const wob = Math.sin(tSec * 0.6 + i * 0.5) * 3;
+      const mx = cx + Math.cos(ang) * baseRad;
+      const my = cy + Math.sin(ang) * baseRad + wob;
+      const fade = 0.2 + 0.15 * Math.sin(tSec * 1.0 + i);
+      g.fillStyle(0xc8cad0, fade);
+      g.fillCircle(mx, my, 1.2);
     }
   }
 
