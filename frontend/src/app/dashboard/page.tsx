@@ -350,6 +350,50 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
+
+          {/* Free Roam Mode */}
+          {!isDemo && (
+            <div className="rpg-panel p-6">
+              <div className="flex items-start justify-between gap-4 mb-5">
+                <div>
+                  <div className="rpg-subtitle text-xs">OPEN WORLD</div>
+                  <h2 className="rpg-title text-2xl mt-1">Free Roam</h2>
+                </div>
+                <span className="px-3 py-1 rounded-md text-xs font-black border font-rpg-heading tracking-widest border-purple-500/50 bg-purple-900/30 text-purple-300">
+                  NEW
+                </span>
+              </div>
+
+              <div className="rpg-parchment-inset p-4 mb-4">
+                <div className="grid grid-cols-2 gap-3 text-center">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.15em] rpg-text-muted">Players</div>
+                    <div className="mt-1 text-xl font-black rpg-text">Up to 30</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.15em] rpg-text-muted">Duration</div>
+                    <div className="mt-1 text-xl font-black rpg-text">∞</div>
+                  </div>
+                </div>
+                <p className="text-xs rpg-text-muted mt-3 leading-relaxed">
+                  Massive map, no timer. Eat, grow, kill for profit. Cash out anytime to secure your earnings — or die and lose your bet!
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <Link
+                  href={canStartMatch ? `/freeroam?bet=${activeBet}` : '#'}
+                  aria-disabled={!canStartMatch}
+                  tabIndex={canStartMatch ? undefined : -1}
+                  className={`btn-rpg btn-rpg-block btn-rpg-lg text-center ${
+                    canStartMatch ? 'bg-gradient-to-r from-purple-700 to-purple-600 hover:from-purple-600 hover:to-purple-500 text-white border-purple-400/50' : 'opacity-50 cursor-not-allowed pointer-events-none'
+                  }`}
+                >
+                  {canStartMatch ? `Enter Free Roam — $${activeBet}` : 'Insufficient Balance'}
+                </Link>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

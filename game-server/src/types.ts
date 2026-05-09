@@ -176,3 +176,30 @@ export interface GameResult {
   coinsCollected: number;
   placement: number;
 }
+
+// ─── Free-roam mode ─────────────────────────────────────────────────────────
+
+export interface FreeRoamRoom {
+  id: string;
+  players: Map<string, Player>;
+  coins: Coin[];
+  food: Food[];
+  // Circular arena (constant size, center drifts)
+  arenaCenterX: number;
+  arenaCenterY: number;
+  arenaRadius: number;
+  status: 'active' | 'stopped';
+  gameLoopInterval: NodeJS.Timeout | null;
+  coinSpawnInterval: NodeJS.Timeout | null;
+  foodSpawnInterval: NodeJS.Timeout | null;
+  // Map shifting — the arena center drifts over time
+  driftAngle: number;             // current drift direction (radians)
+  driftInterval: NodeJS.Timeout | null;
+  // Bubble system (periodic, not match-scheduled)
+  bubble: Bubble | null;
+  bubbleSpawnInterval: NodeJS.Timeout | null;
+  bubbleExpireTimer: NodeJS.Timeout | null;
+  // Economy
+  platformRakeAccrued: number;
+  tickCounter: number;
+}

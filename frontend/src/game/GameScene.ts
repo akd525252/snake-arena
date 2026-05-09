@@ -115,6 +115,7 @@ export class GameScene extends Phaser.Scene {
   private trapKey!: Phaser.Input.Keyboard.Key;
   private lastSentAngle: number | null = null;
   private isDemo = false;
+  private isFreeRoam = false;
 
   // Camera offset
   private cameraTarget: Position | null = null;
@@ -234,6 +235,8 @@ export class GameScene extends Phaser.Scene {
   private onMatchStart: ((data: { matchId: string; players: { id: string; username: string; avatar: string | null; skinId: string | null }[] }) => void) | null = null;
   private onGameBegin: (() => void) | null = null;
   private onError: ((data: { message: string; code?: string }) => void) | null = null;
+  private onCashOut: ((data: { score: number; payout: number }) => void) | null = null;
+  private onFreeRoamJoined: (() => void) | null = null;
   private translations: Record<string, string> = {};
 
   constructor() {
@@ -244,6 +247,7 @@ export class GameScene extends Phaser.Scene {
     wsUrl?: string;
     token?: string;
     isDemo?: boolean;
+    isFreeRoam?: boolean;
     betAmount?: number;
     onGameEnd?: (results: { username: string; score: number; placement: number }[]) => void;
     onConnectionStatus?: (status: string) => void;
@@ -254,6 +258,8 @@ export class GameScene extends Phaser.Scene {
     onMatchStart?: (data: { matchId: string; players: { id: string; username: string; avatar: string | null; skinId: string | null }[] }) => void;
     onGameBegin?: () => void;
     onError?: (data: { message: string; code?: string }) => void;
+    onCashOut?: (data: { score: number; payout: number }) => void;
+    onFreeRoamJoined?: () => void;
     translations?: Record<string, string>;
   }) {
     if (!data || !data.wsUrl) return;
@@ -268,6 +274,8 @@ export class GameScene extends Phaser.Scene {
     this.onMatchStart = data.onMatchStart || null;
     this.onGameBegin = data.onGameBegin || null;
     this.onError = data.onError || null;
+    this.onCashOut = data.onCashOut || null;
+    this.onFreeRoamJoined = data.onFreeRoamJoined || null;
 
     if (data.token) {
       try {
@@ -279,6 +287,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.isDemo = !!data.isDemo;
+    this.isFreeRoam = !!data.isFreeRoam;
     this.connectWebSocket(data.wsUrl, data.token, !!data.isDemo, data.betAmount ?? 0);
   }
 
@@ -321,9 +330,9 @@ export class GameScene extends Phaser.Scene {
     // Arena background — single marble tile ground for all matches
     this.generateMarbleTileTexture();
     this.arenaGfx = this.add.graphics();
-    this.arenaGfx.setDepth(-10);
+    this.arenaGfx.setDepth(-9);   // borders/vignette above tile sprite
     this.arenaAnimGfx = this.add.graphics();
-    this.arenaAnimGfx.setDepth(-9);
+    this.arenaAnimGfx.setDepth(-8);
     this.glowGfx = this.add.graphics();
     this.glowGfx.setDepth(3); // below coins (5) and food (4) for underglow
     this.drawArena();
@@ -1109,9 +1118,13 @@ export class GameScene extends Phaser.Scene {
       // Successful connection — reset backoff counter.
       this.wsReconnectAttempts = 0;
       this.onConnectionStatus?.('connected');
-      this.statusText.setText(this.translations.joiningQueue || 'Joining queue...');
-      // Re-join queue (works for first connect AND reconnect mid-queue)
-      this.send({ type: 'join_queue', betAmount: this.wsBetAmount });
+      if (this.isFreeRoam) {
+        this.statusText.setText(this.translations.joiningFreeRoam || 'Joining free-roam...');
+        this.send({ type: 'join_freeroam', betAmount: this.wsBetAmount });
+      } else {
+        this.statusText.setText(this.translations.joiningQueue || 'Joining queue...');
+        this.send({ type: 'join_queue', betAmount: this.wsBetAmount });
+      }
     };
 
     this.ws.onmessage = (event) => {
@@ -1290,6 +1303,22 @@ export class GameScene extends Phaser.Scene {
         break;
       }
 
+      // ── Free-roam messages ───────────────────────────────────────
+      case 'freeroam_joined': {
+        this.statusText.setText('');
+        this.wsHasJoinedMatch = true;
+        this.onFreeRoamJoined?.();
+        break;
+      }
+
+      case 'freeroam_cashout': {
+        const data = msg as unknown as { score: number; payout: number; rake: number };
+        this.statusText.setText(this.translations.cashedOut || 'Cashed Out!');
+        this.onCashOut?.({ score: data.score, payout: data.payout });
+        this.closeWebSocketCleanly();
+        break;
+      }
+
       case 'error': {
         const errMsg = (msg as { message?: string }).message || (this.translations.serverError || 'Server error');
         const errCode = (msg as { code?: string }).code;
@@ -1301,6 +1330,11 @@ export class GameScene extends Phaser.Scene {
         break;
       }
     }
+  }
+
+  /** Public: send cash_out to server (called from React UI). */
+  public sendCashOut(): void {
+    this.send({ type: 'cash_out' });
   }
 
   // ============================================
@@ -1351,14 +1385,22 @@ export class GameScene extends Phaser.Scene {
     this.lastServerStateTime = now;
 
     // Update timer — only rebuild texture when displayed value changes
-    const seconds = Math.ceil(state.timeRemaining / 1000);
-    const timeStr = `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}`;
-    if (this.timeText.text !== timeStr) {
-      this.timeText.setText(timeStr);
-    }
-    const timerColor = seconds <= 10 && seconds > 0 ? '#ef4444' : '#ffffff';
-    if (this.timeText.style.color !== timerColor) {
-      this.timeText.setColor(timerColor);
+    // Free-roam sends timeRemaining = -1 → hide timer entirely
+    if (state.timeRemaining < 0) {
+      this.timeText.setVisible(false);
+      this.timerCapsule.setVisible(false);
+    } else {
+      this.timeText.setVisible(true);
+      this.timerCapsule.setVisible(true);
+      const seconds = Math.ceil(state.timeRemaining / 1000);
+      const timeStr = `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}`;
+      if (this.timeText.text !== timeStr) {
+        this.timeText.setText(timeStr);
+      }
+      const timerColor = seconds <= 10 && seconds > 0 ? '#ef4444' : '#ffffff';
+      if (this.timeText.style.color !== timerColor) {
+        this.timeText.setColor(timerColor);
+      }
     }
 
     // Update interp buffer for each player (rotate curr → prev, set new curr)
@@ -2463,29 +2505,35 @@ export class GameScene extends Phaser.Scene {
     const cy = this.arenaCenterY;
     const r = this.arenaRadius;
     const g = this.arenaGfx;
-
-    // ── Layer 0: Dark base fill behind the tile sprite ─────────────
-    g.fillStyle(0x1a1a2e, 1);
-    g.fillCircle(cx, cy, r);
-
-    // ── Layer 0.5: Marble TileSprite (created once, repositioned) ──
+    const diameter = r * 2;
     const key = '__marble_tile__';
-    if (!this.arenaTileSprite && this.textures.exists(key)) {
-      const diameter = r * 2;
-      this.arenaTileSprite = this.add.tileSprite(
-        cx - r, cy - r, diameter, diameter, key,
-      ).setOrigin(0, 0).setDepth(-10);
 
-      // Circular mask so the tiled marble stays inside the arena
-      this.arenaMaskShape = this.add.graphics({ x: 0, y: 0 });
-      this.arenaMaskShape.setVisible(false);
-      this.arenaMaskShape.fillStyle(0xffffff);
-      this.arenaMaskShape.fillCircle(cx, cy, r);
-      const mask = this.arenaMaskShape.createGeometryMask();
-      this.arenaTileSprite.setMask(mask);
+    // ── Marble TileSprite — create or update to match arena ────────
+    if (this.textures.exists(key)) {
+      if (!this.arenaTileSprite) {
+        this.arenaTileSprite = this.add.tileSprite(
+          cx, cy, diameter, diameter, key,
+        ).setOrigin(0.5, 0.5).setDepth(-10);
+
+        // Circular mask so the tiled marble stays inside the arena
+        this.arenaMaskShape = this.add.graphics();
+        this.arenaMaskShape.setVisible(false);
+        this.arenaMaskShape.fillStyle(0xffffff);
+        this.arenaMaskShape.fillCircle(cx, cy, r);
+        this.arenaTileSprite.setMask(this.arenaMaskShape.createGeometryMask());
+      } else {
+        // Arena moved/resized — reposition tile sprite and update mask
+        this.arenaTileSprite.setPosition(cx, cy);
+        this.arenaTileSprite.setSize(diameter, diameter);
+        if (this.arenaMaskShape) {
+          this.arenaMaskShape.clear();
+          this.arenaMaskShape.fillStyle(0xffffff);
+          this.arenaMaskShape.fillCircle(cx, cy, r);
+        }
+      }
     }
 
-    // ── Layer 3: Radial vignette — edges darker ────────────────────
+    // ── Radial vignette — edges of arena appear slightly darker ────
     for (let band = 0; band < 5; band++) {
       const bandR = r - band * 4;
       const alpha = 0.04 + band * 0.05;

@@ -3,7 +3,7 @@ import http from 'http';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import { CONFIG } from './config';
-import { GameRoom, Player } from './types';
+import { GameRoom, FreeRoamRoom, Player } from './types';
 import {
   createGameRoom,
   addPlayerToRoom,
@@ -15,6 +15,14 @@ import {
   setBoostHeld,
   placeTrap,
 } from './game/GameRoom';
+import {
+  createFreeRoamRoom,
+  startFreeRoamRoom,
+  stopFreeRoamRoom,
+  addPlayerToFreeRoam,
+  removePlayerFromFreeRoam,
+  cashOutPlayer,
+} from './game/FreeRoamRoom';
 import { createBot } from './game/BotAI';
 import { createProBot, generateUsername, generateAvatarUrl } from './game/ProBot';
 import { supabase, chargeBet } from './db';
@@ -96,6 +104,13 @@ interface QueueEntry {
 
 const matchmakingQueue: QueueEntry[] = [];
 let proScanStartTime = 0; // timestamp when first pro player entered queue (resets on empty)
+
+// ── Free-roam mode ──────────────────────────────────────────────────────
+// Single persistent room that players join/leave dynamically.
+// Created lazily on first join, stopped when empty for 60s.
+let freeRoamRoom: FreeRoamRoom | null = null;
+const playerFreeRoam = new Map<string, string>(); // playerId -> freeRoamRoom.id
+let freeRoamEmptyTimer: NodeJS.Timeout | null = null;
 
 // ── Ghost players: fake entries shown in the pro queue_state so the user sees
 // "other players" trickling in during matchmaking. They never actually play —
@@ -287,6 +302,21 @@ function handleMessage(
   message: IncomingMessage,
   skinId: string | null = null,
 ): void {
+  // Helper: resolve the player from either arena room or free-roam
+  const resolvePlayer = (): Player | null => {
+    // Check arena rooms first
+    const roomId = playerRooms.get(playerId);
+    if (roomId) {
+      const room = rooms.get(roomId);
+      if (room) return room.players.get(playerId) || null;
+    }
+    // Check free-roam
+    if (freeRoamRoom && playerFreeRoam.has(playerId)) {
+      return freeRoamRoom.players.get(playerId) || null;
+    }
+    return null;
+  };
+
   switch (message.type) {
     case 'join_queue': {
       const requested = Number(message.betAmount || 0);
@@ -304,24 +334,53 @@ function handleMessage(
       break;
     }
 
+    // ── Free-roam mode ────────────────────────────────────────────────
+    case 'join_freeroam': {
+      const requested = Number(message.betAmount || 0);
+      const betAmount = Math.max(CONFIG.MIN_BET, requested);
+      void joinFreeRoam(ws, playerId, username, avatar, betAmount, isDemo, skinId);
+      break;
+    }
+
+    case 'cash_out': {
+      if (!freeRoamRoom || !playerFreeRoam.has(playerId)) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Not in free-roam mode.' }));
+        return;
+      }
+      const player = freeRoamRoom.players.get(playerId);
+      if (!player || !player.snake.alive) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Cannot cash out — you are not alive.' }));
+        return;
+      }
+      void cashOutPlayer(freeRoamRoom, player).then(() => {
+        playerFreeRoam.delete(playerId);
+        checkFreeRoamEmpty();
+      });
+      break;
+    }
+
+    case 'leave_freeroam': {
+      if (freeRoamRoom && playerFreeRoam.has(playerId)) {
+        const player = freeRoamRoom.players.get(playerId);
+        if (player) {
+          player.snake.alive = false;
+          removePlayerFromFreeRoam(freeRoamRoom, playerId);
+        }
+        playerFreeRoam.delete(playerId);
+        checkFreeRoamEmpty();
+      }
+      break;
+    }
+
     case 'turn': {
-      const roomId = playerRooms.get(playerId);
-      if (!roomId) return;
-      const room = rooms.get(roomId);
-      if (!room) return;
-      const player = room.players.get(playerId);
+      const player = resolvePlayer();
       if (!player) return;
       if (typeof message.angle === 'number') setTargetAngle(player, message.angle);
       break;
     }
 
     case 'boost': {
-      // Legacy toggle (kept for old clients)
-      const roomId = playerRooms.get(playerId);
-      if (!roomId) return;
-      const room = rooms.get(roomId);
-      if (!room) return;
-      const player = room.players.get(playerId);
+      const player = resolvePlayer();
       if (!player) return;
       activateBoost(player);
       break;
@@ -329,17 +388,14 @@ function handleMessage(
 
     case 'boost_start':
     case 'boost_end': {
-      const roomId = playerRooms.get(playerId);
-      if (!roomId) return;
-      const room = rooms.get(roomId);
-      if (!room) return;
-      const player = room.players.get(playerId);
+      const player = resolvePlayer();
       if (!player) return;
       setBoostHeld(player, message.type === 'boost_start');
       break;
     }
 
     case 'skill_use': {
+      // Traps only work in arena rooms (need GameRoom for placeTrap)
       const roomId = playerRooms.get(playerId);
       if (!roomId) return;
       const room = rooms.get(roomId);
@@ -728,6 +784,17 @@ function handleDisconnect(playerId: string, ws?: WebSocket): void {
     playerRooms.delete(playerId);
   }
 
+  // Free-roam cleanup
+  if (freeRoamRoom && playerFreeRoam.has(playerId)) {
+    const frPlayer = freeRoamRoom.players.get(playerId);
+    if (frPlayer) {
+      frPlayer.snake.alive = false;
+      removePlayerFromFreeRoam(freeRoamRoom, playerId);
+    }
+    playerFreeRoam.delete(playerId);
+    checkFreeRoamEmpty();
+  }
+
   // Only clear the playerWs entry if it still points to the socket that
   // disconnected. If a new connection has already taken over, leave it.
   if (ws !== undefined) {
@@ -786,6 +853,141 @@ setInterval(() => {
 
   createMatch(allPros.slice(0, humanSlots));
 }, 1000);
+
+// ============================================
+// Free-Roam Mode
+// ============================================
+
+async function joinFreeRoam(
+  ws: WebSocket,
+  playerId: string,
+  username: string,
+  avatar: string | null,
+  betAmount: number,
+  isDemo: boolean,
+  skinId: string | null,
+): Promise<void> {
+  console.log(`[joinFreeRoam] player=${playerId.slice(0, 8)} bet=${betAmount} demo=${isDemo}`);
+
+  // Prevent joining if already in an arena room
+  const existingRoom = playerRooms.get(playerId);
+  if (existingRoom) {
+    ws.send(JSON.stringify({ type: 'error', message: 'You are in an arena match. Finish it first.', code: 'ALREADY_IN_MATCH' }));
+    return;
+  }
+
+  // Prevent double-join
+  if (playerFreeRoam.has(playerId)) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Already in free-roam.', code: 'ALREADY_IN_FREEROAM' }));
+    return;
+  }
+
+  // Check player capacity
+  if (freeRoamRoom) {
+    let humanCount = 0;
+    for (const [, p] of freeRoamRoom.players) {
+      if (!p.isBot && p.snake.alive) humanCount++;
+    }
+    if (humanCount >= CONFIG.FR_MAX_PLAYERS) {
+      ws.send(JSON.stringify({ type: 'error', message: 'Free-roam is full. Try again soon.' }));
+      return;
+    }
+  }
+
+  // Charge the bet
+  const matchId = freeRoamRoom?.id || 'freeroam_pending';
+  const charged = await chargeBet(playerId, isDemo, betAmount, matchId);
+  if (!charged) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Insufficient balance for this bet.', code: 'CHARGE_FAILED' }));
+    return;
+  }
+
+  // Create the room lazily if it doesn't exist
+  if (!freeRoamRoom || freeRoamRoom.status === 'stopped') {
+    freeRoamRoom = createFreeRoamRoom();
+    startFreeRoamRoom(freeRoamRoom);
+    console.log(`[joinFreeRoam] created new free-roam room: ${freeRoamRoom.id.slice(0, 12)}`);
+  }
+
+  // Cancel empty-room shutdown timer
+  if (freeRoamEmptyTimer) {
+    clearTimeout(freeRoamEmptyTimer);
+    freeRoamEmptyTimer = null;
+  }
+
+  const player: Player = {
+    id: playerId,
+    username,
+    avatar,
+    ws,
+    betAmount,
+    isDemo,
+    isBot: false,
+    skinId,
+    snake: {
+      segments: [],
+      angle: 0,
+      targetAngle: 0,
+      speed: CONFIG.SNAKE_SPEED,
+      alive: true,
+      boosted: false,
+      boostLastChargedAt: 0,
+      boostEndTime: 0,
+      slowed: false,
+      slowEndTime: 0,
+      score: 0,
+      coinsCollected: 0,
+      outOfZoneSince: null,
+      lastZonePenaltyAt: null,
+      speedBoostEndTime: 0,
+      magnetEndTime: 0,
+      ghostEndTime: 0,
+    },
+  };
+
+  addPlayerToFreeRoam(freeRoamRoom, player);
+  playerFreeRoam.set(playerId, freeRoamRoom.id);
+
+  // Notify the joining player that they're in-game immediately (no lobby wait)
+  ws.send(JSON.stringify({
+    type: 'freeroam_joined',
+    roomId: freeRoamRoom.id,
+    betAmount,
+  }));
+
+  // Also send game_start so the existing GameScene begins rendering
+  ws.send(JSON.stringify({
+    type: 'game_start',
+    matchId: freeRoamRoom.id,
+    players: Array.from(freeRoamRoom.players.values())
+      .filter(p => !p.isBot)
+      .map(p => ({ id: p.id, username: p.username })),
+  }));
+
+  console.log(`[joinFreeRoam] player ${playerId.slice(0, 8)} joined — humans=${[...freeRoamRoom.players.values()].filter(p => !p.isBot).length} total=${freeRoamRoom.players.size}`);
+}
+
+/** Check if the free-roam room has no human players and schedule shutdown. */
+function checkFreeRoamEmpty(): void {
+  if (!freeRoamRoom) return;
+  let humanCount = 0;
+  for (const [, p] of freeRoamRoom.players) {
+    if (!p.isBot) humanCount++;
+  }
+  if (humanCount === 0) {
+    // Shutdown after 60s of no humans (keep bots running briefly in case someone joins quickly)
+    if (!freeRoamEmptyTimer) {
+      freeRoamEmptyTimer = setTimeout(() => {
+        if (freeRoamRoom) {
+          console.log(`[freeRoam] shutting down empty room ${freeRoamRoom.id.slice(0, 12)}`);
+          stopFreeRoamRoom(freeRoamRoom);
+          freeRoamRoom = null;
+        }
+        freeRoamEmptyTimer = null;
+      }, 60000);
+    }
+  }
+}
 
 // ============================================
 // Start Server

@@ -8,7 +8,7 @@ export const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_SERVIC
  * Source examples: 'match_rake', 'zone_penalty'
  */
 export async function recordRevenue(
-  source: 'match_rake' | 'zone_penalty',
+  source: 'match_rake' | 'zone_penalty' | 'freeroam_cashout_rake' | 'freeroam_kill_rake',
   amount: number,
   reference: string | null,
   userId: string | null = null,

@@ -95,6 +95,24 @@ export const CONFIG = {
   BUBBLE_EXPLOSION_MAX_FOOD: 50,
   BUBBLE_EXPLOSION_RADIUS: 150,             // scatter radius
   BUBBLE_GHOST_DURATION_MS: 8000,           // 8 seconds
+
+  // ─── Free-roam mode ────────────────────────────────────────────────
+  // Persistent world: up to 30 players, no timer, map shifts, cash out.
+  FR_MAX_PLAYERS: 30,
+  FR_ARENA_RADIUS: 3000,              // large fixed-size map
+  FR_TICK_RATE: 33,                   // same 30Hz as arena
+  FR_COIN_SPAWN_INTERVAL: 5000,      // ms — more frequent for larger map
+  FR_MAX_COINS: 40,
+  FR_INITIAL_COINS: 20,
+  FR_FOOD_SPAWN_INTERVAL: 400,       // dense food
+  FR_MAX_FOOD: 600,                  // lots of food for big map
+  FR_INITIAL_FOOD: 300,
+  FR_MAP_SHIFT_INTERVAL: 5000,       // ms — recalculate drift direction
+  FR_MAP_SHIFT_SPEED: 0.4,           // px per tick drift speed
+  FR_SPAWN_SAFE_DIST: 300,           // min px from nearest player for spawn
+  FR_BUBBLE_INTERVAL: 30000,         // ms — spawn a bubble every 30s
+  FR_BOT_FILL_COUNT: 10,             // bots to keep the world alive when few humans
+  FR_KILL_BONUS_FRACTION: 0.5,       // killer gets 50% of victim's score as bonus
 };
 
 /**

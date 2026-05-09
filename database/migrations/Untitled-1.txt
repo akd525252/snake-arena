@@ -1,0 +1,161 @@
+[Make your AI a shadcn expert](https://www.shadcn.io/mcp)
+[shadcn.io](https://www.shadcn.io/)
+[shadcn.io](https://www.shadcn.io/)
+Themes (59)
+Theme Configurations
+Introduction
+[Themes for shadcn/ui](https://www.shadcn.io/theme)
+Themes
+[Amber Minimal](https://www.shadcn.io/theme/amber-minimal)
+[Amethyst Haze](https://www.shadcn.io/theme/amethyst-haze)
+[Art Deco](https://www.shadcn.io/theme/art-deco)
+[Blue](https://www.shadcn.io/theme/blue)
+[Bold Tech](https://www.shadcn.io/theme/bold-tech)
+[Bubblegum](https://www.shadcn.io/theme/bubblegum)
+[Caffeine](https://www.shadcn.io/theme/caffeine)
+[Candyland](https://www.shadcn.io/theme/candyland)
+[Catppuccin](https://www.shadcn.io/theme/catppuccin)
+[Claude](https://www.shadcn.io/theme/claude)
+[Claymorphism](https://www.shadcn.io/theme/claymorphism)
+[Clean Slate](https://www.shadcn.io/theme/clean-slate)
+[Corporate](https://www.shadcn.io/theme/corporate)
+[Cosmic Night](https://www.shadcn.io/theme/cosmic-night)
+[Cyberpunk](https://www.shadcn.io/theme/cyberpunk)
+[Darkmatter](https://www.shadcn.io/theme/darkmatter)
+[Doom 64](https://www.shadcn.io/theme/doom-64)
+[Elegant Luxury](https://www.shadcn.io/theme/elegant-luxury)
+[Ghibli Studio](https://www.shadcn.io/theme/ghibli-studio)
+[Graphite](https://www.shadcn.io/theme/graphite)
+[Green](https://www.shadcn.io/theme/green)
+[Kodama Grove](https://www.shadcn.io/theme/kodama-grove)
+[Marshmallow](https://www.shadcn.io/theme/marshmallow)
+[Marvel](https://www.shadcn.io/theme/marvel)
+[Material Design](https://www.shadcn.io/theme/material-design)
+[Midnight Bloom](https://www.shadcn.io/theme/midnight-bloom)
+[Mocha Mousse](https://www.shadcn.io/theme/mocha-mousse)
+[Modern Minimal](https://www.shadcn.io/theme/modern-minimal)
+[Mono](https://www.shadcn.io/theme/mono)
+[Nature](https://www.shadcn.io/theme/nature)
+[Neo Brutalism](https://www.shadcn.io/theme/neo-brutalism)
+[Northern Lights](https://www.shadcn.io/theme/northern-lights)
+[Notebook](https://www.shadcn.io/theme/notebook)
+[Ocean Breeze](https://www.shadcn.io/theme/ocean-breeze)
+[Orange](https://www.shadcn.io/theme/orange)
+[Pastel Dreams](https://www.shadcn.io/theme/pastel-dreams)
+[Perpetuity](https://www.shadcn.io/theme/perpetuity)
+[Quantum Rose](https://www.shadcn.io/theme/quantum-rose)
+[Red](https://www.shadcn.io/theme/red)
+[Retro Arcade](https://www.shadcn.io/theme/retro-arcade)
+[Rose](https://www.shadcn.io/theme/rose)
+[Slack](https://www.shadcn.io/theme/slack)
+[Soft Pop](https://www.shadcn.io/theme/soft-pop)
+[Solar Dusk](https://www.shadcn.io/theme/solar-dusk)
+[Spotify](https://www.shadcn.io/theme/spotify)
+[Starry Night](https://www.shadcn.io/theme/starry-night)
+[Summer](https://www.shadcn.io/theme/summer)
+[Sunset Horizon](https://www.shadcn.io/theme/sunset-horizon)
+[Supabase](https://www.shadcn.io/theme/supabase)
+[T3 Chat](https://www.shadcn.io/theme/t3-chat)
+[Tangerine](https://www.shadcn.io/theme/tangerine)
+[Twitter](https://www.shadcn.io/theme/twitter)
+[Valorant](https://www.shadcn.io/theme/valorant)
+[Vercel](https://www.shadcn.io/theme/vercel)
+[Vintage Paper](https://www.shadcn.io/theme/vintage-paper)
+[Violet](https://www.shadcn.io/theme/violet)
+[Violet Bloom](https://www.shadcn.io/theme/violet-bloom)
+[Vs Code](https://www.shadcn.io/theme/vs-code)
+[Yellow](https://www.shadcn.io/theme/yellow)
+[Previous: Cosmic Night](https://www.shadcn.io/theme/cosmic-night)
+Shadcn.io is not affiliated with official [shadcn/ui](https://ui.shadcn.com)
+[Discord](https://discord.gg/Z9NVtNE7bj)
+[GitHub](https://github.com/shadcnio/react-shadcn-components)
+[Next: Darkmatter](https://www.shadcn.io/theme/darkmatter)
+
+# Cyberpunk
+
+Neon-soaked futuristic dark theme with electric accents for React gaming and tech applications
+The future is neon. This React theme delivers the full cyberpunk aesthetic—electric magentas at oklch(0.65 0.28 330), toxic cyans, warning yellows blazing against void-black backgrounds at oklch(0.08 0.01 280). It's Blade Runner meets Akira meets the last tech startup that actually felt exciting. The high contrast isn't subtle and doesn't pretend to be—this is design that announces itself. Use it for gaming platforms and esports sites, cutting-edge tech products, music and nightlife apps, crypto and web3 projects that want to feel futuristic, or any Next.js project that should feel like it's from 2049. Just know that cyberpunk aesthetics polarize: your audience will either love it or find it exhausting. There's no middle ground.
+
+### Cyberpunk preview
+
+Cyberpunk preview
+
+## Installation
+Installation
+
+```
+npx shadcn@latest add https://www.shadcn.io/r/cyberpunk.json
+```
+
+
+```
+npx shadcn@latest add https://www.shadcn.io/r/cyberpunk.json
+```
+
+
+```
+npx shadcn@latest add https://www.shadcn.io/r/cyberpunk.json
+```
+
+
+```
+npx shadcn@latest add https://www.shadcn.io/r/cyberpunk.json
+```
+
+
+```
+pnpm dlx shadcn@latest add https://www.shadcn.io/r/cyberpunk.json
+```
+
+
+```
+pnpm dlx shadcn@latest add https://www.shadcn.io/r/cyberpunk.json
+```
+
+
+```
+bunx shadcn@latest add https://www.shadcn.io/r/cyberpunk.json
+```
+
+
+```
+bunx shadcn@latest add https://www.shadcn.io/r/cyberpunk.json
+```
+
+## Related Components
+Related Components
+[React Midnight Bloom ThemeElegant midnight blue dark theme with purple floral accents](https://www.shadcn.io/theme/midnight-bloom)
+
+### React Midnight Bloom Theme
+Elegant midnight blue dark theme with purple floral accents
+[React Caffeine ThemeCoffee-inspired warm dark theme with espresso browns](https://www.shadcn.io/theme/caffeine)
+
+### React Caffeine Theme
+Coffee-inspired warm dark theme with espresso browns
+[React Cosmic Night ThemeSpace-inspired deep purple dark theme with stellar accents](https://www.shadcn.io/theme/cosmic-night)
+
+### React Cosmic Night Theme
+Space-inspired deep purple dark theme with stellar accents
+[React Doom 64 ThemeGothic dark theme inspired by classic 90s shooters](https://www.shadcn.io/theme/doom-64)
+
+### React Doom 64 Theme
+Gothic dark theme inspired by classic 90s shooters
+[React Dark Matter ThemeUltra-dark minimal theme with OLED-black backgrounds](https://www.shadcn.io/theme/darkmatter)
+
+### React Dark Matter Theme
+Ultra-dark minimal theme with OLED-black backgrounds
+
+## FAQ
+
+FAQ
+
+### How do you maintain accessibility with such extreme colors?
+
+Was this page helpful?
+[Sign in](https://www.shadcn.io/sign-in) to leave feedback.
+[Cosmic NightSpace-inspired deep purple dark theme with stellar accents for React sci-fi and astronomy applications](https://www.shadcn.io/theme/cosmic-night)
+Cosmic Night
+Space-inspired deep purple dark theme with stellar accents for React sci-fi and astronomy applications
+[DarkmatterUltra-dark minimal theme with OLED-black backgrounds for React media and focus applications](https://www.shadcn.io/theme/darkmatter)
+Darkmatter
+Ultra-dark minimal theme with OLED-black backgrounds for React media and focus applications
