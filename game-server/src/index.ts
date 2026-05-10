@@ -889,7 +889,7 @@ async function joinFreeRoam(
       if (!p.isBot && p.snake.alive) humanCount++;
     }
     if (humanCount >= CONFIG.FR_MAX_PLAYERS) {
-      ws.send(JSON.stringify({ type: 'error', message: 'Free-roam is full. Try again soon.' }));
+      ws.send(JSON.stringify({ type: 'error', message: 'Free-roam is full (30/30 players). Try again soon.', code: 'ROOM_FULL' }));
       return;
     }
   }

@@ -25,6 +25,7 @@ export default function Dashboard() {
   const [skins, setSkins] = useState<Skin[]>([]);
   const [ownedSkinIds, setOwnedSkinIds] = useState<Set<string>>(new Set());
   const [equippedSkinId, setEquippedSkinId] = useState<string | null>(null);
+  const [matchMode, setMatchMode] = useState<'arena' | 'freeroam'>('arena');
 
   async function loadWalletData() {
     try {
@@ -96,8 +97,14 @@ export default function Dashboard() {
   const activeBet = Math.max(1, Number.isFinite(betAmount) ? betAmount : 1);
   const activeBalance = isDemo ? demoBalance : balance;
   const canStartMatch = activeBalance >= activeBet;
-  const playHref = isDemo ? `/demo?bet=${activeBet}` : `/play?bet=${activeBet}`;
-  const playLabel = isDemo ? t.dashboard.launchDemoArena : t.dashboard.findRankedMatch;
+  const arenaHref = isDemo ? `/demo?bet=${activeBet}` : `/play?bet=${activeBet}`;
+  const freeRoamHref = `/freeroam?bet=${activeBet}`;
+  const playHref = (!isDemo && matchMode === 'freeroam') ? freeRoamHref : arenaHref;
+  const playLabel = isDemo
+    ? t.dashboard.launchDemoArena
+    : matchMode === 'freeroam'
+      ? `Enter Free Roam — $${activeBet}`
+      : t.dashboard.findRankedMatch;
   const modeLabel = isDemo ? t.dashboard.practiceArena : t.dashboard.rankedArena;
   const equippedSkin = skins.find(s => s.id === equippedSkinId);
   const userInitial = (user.username || user.email || 'S').charAt(0).toUpperCase();
@@ -293,6 +300,49 @@ export default function Dashboard() {
             </div>
 
             <div className="space-y-4">
+              {/* Match mode toggle — only for pro users */}
+              {!isDemo && (
+                <div className="flex rounded-lg overflow-hidden border border-[#3a2c1f]">
+                  <button
+                    onClick={() => setMatchMode('arena')}
+                    className={`flex-1 py-2.5 text-xs sm:text-sm font-rpg-heading tracking-wider transition-all duration-200 ${
+                      matchMode === 'arena'
+                        ? 'bg-[#962323] text-white font-black shadow-inner'
+                        : 'bg-[#1a1410] rpg-text-muted hover:bg-[#2a1f15] hover:text-[#d4a04a]'
+                    }`}
+                  >
+                    Arena Match
+                  </button>
+                  <button
+                    onClick={() => setMatchMode('freeroam')}
+                    className={`flex-1 py-2.5 text-xs sm:text-sm font-rpg-heading tracking-wider transition-all duration-200 relative ${
+                      matchMode === 'freeroam'
+                        ? 'bg-gradient-to-r from-purple-700 to-purple-600 text-white font-black shadow-inner'
+                        : 'bg-[#1a1410] rpg-text-muted hover:bg-[#2a1f15] hover:text-purple-300'
+                    }`}
+                  >
+                    Free Roam
+                    <span className={`ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-black tracking-widest ${
+                      matchMode === 'freeroam'
+                        ? 'bg-white/20 text-white'
+                        : 'bg-purple-900/40 text-purple-400'
+                    }`}>NEW</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Free Roam info blurb — shown when freeroam is selected */}
+              {!isDemo && matchMode === 'freeroam' && (
+                <div className="rpg-parchment-inset p-3 text-xs rpg-text-muted leading-relaxed">
+                  <div className="flex items-center gap-3 mb-1">
+                    <span className="font-bold rpg-text">Up to 30 players</span>
+                    <span className="rpg-text-muted">·</span>
+                    <span className="font-bold rpg-text">No timer</span>
+                  </div>
+                  Massive map. Eat, grow, kill for profit. Cash out anytime to keep your earnings — or die and lose your bet!
+                </div>
+              )}
+
               <div>
                 <label className="text-xs rpg-text-muted tracking-widest uppercase">
                   {isDemo ? t.dashboard.betLabelDemo : t.dashboard.betLabelPro}
@@ -307,7 +357,7 @@ export default function Dashboard() {
                     setBetAmount(Number.isFinite(parsed) ? Math.max(1, parsed) : 1);
                   }}
                   className={`w-full mt-2 px-4 py-3 rpg-parchment-inset rpg-text text-lg font-bold focus:outline-none focus:ring-2 ${
-                    isDemo ? 'focus:ring-[#d4a04a]' : 'focus:ring-[#962323]'
+                    isDemo ? 'focus:ring-[#d4a04a]' : matchMode === 'freeroam' ? 'focus:ring-purple-500' : 'focus:ring-[#962323]'
                   }`}
                 />
               </div>
@@ -319,7 +369,9 @@ export default function Dashboard() {
                     key={amt}
                     onClick={() => setBetAmount(amt)}
                     className={`btn-rpg btn-rpg-sm ${
-                      activeBet === amt ? (isDemo ? 'btn-rpg-amber' : 'btn-rpg-danger') : ''
+                      activeBet === amt
+                        ? (isDemo ? 'btn-rpg-amber' : matchMode === 'freeroam' ? 'bg-purple-700 text-white border-purple-400/50' : 'btn-rpg-danger')
+                        : ''
                     }`}
                   >
                     ${amt}
@@ -331,9 +383,15 @@ export default function Dashboard() {
                 href={canStartMatch ? playHref : '#'}
                 aria-disabled={!canStartMatch}
                 tabIndex={canStartMatch ? undefined : -1}
-                className={`btn-rpg btn-rpg-block btn-rpg-lg ${
-                  canStartMatch ? (isDemo ? 'btn-rpg-amber' : 'btn-rpg-primary') : ''
-                } ${canStartMatch ? '' : 'opacity-50 cursor-not-allowed pointer-events-none'}`}
+                className={`btn-rpg btn-rpg-block btn-rpg-lg text-center ${
+                  !canStartMatch
+                    ? 'opacity-50 cursor-not-allowed pointer-events-none'
+                    : isDemo
+                      ? 'btn-rpg-amber'
+                      : matchMode === 'freeroam'
+                        ? 'bg-gradient-to-r from-purple-700 to-purple-600 hover:from-purple-600 hover:to-purple-500 text-white border-purple-400/50'
+                        : 'btn-rpg-primary'
+                }`}
               >
                 {canStartMatch ? playLabel : isDemo ? t.dashboard.insufficientDemoBalance : t.dashboard.insufficientBalance}
               </Link>
@@ -350,50 +408,6 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
-
-          {/* Free Roam Mode */}
-          {!isDemo && (
-            <div className="rpg-panel p-6">
-              <div className="flex items-start justify-between gap-4 mb-5">
-                <div>
-                  <div className="rpg-subtitle text-xs">OPEN WORLD</div>
-                  <h2 className="rpg-title text-2xl mt-1">Free Roam</h2>
-                </div>
-                <span className="px-3 py-1 rounded-md text-xs font-black border font-rpg-heading tracking-widest border-purple-500/50 bg-purple-900/30 text-purple-300">
-                  NEW
-                </span>
-              </div>
-
-              <div className="rpg-parchment-inset p-4 mb-4">
-                <div className="grid grid-cols-2 gap-3 text-center">
-                  <div>
-                    <div className="text-[11px] uppercase tracking-[0.15em] rpg-text-muted">Players</div>
-                    <div className="mt-1 text-xl font-black rpg-text">Up to 30</div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] uppercase tracking-[0.15em] rpg-text-muted">Duration</div>
-                    <div className="mt-1 text-xl font-black rpg-text">∞</div>
-                  </div>
-                </div>
-                <p className="text-xs rpg-text-muted mt-3 leading-relaxed">
-                  Massive map, no timer. Eat, grow, kill for profit. Cash out anytime to secure your earnings — or die and lose your bet!
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                <Link
-                  href={canStartMatch ? `/freeroam?bet=${activeBet}` : '#'}
-                  aria-disabled={!canStartMatch}
-                  tabIndex={canStartMatch ? undefined : -1}
-                  className={`btn-rpg btn-rpg-block btn-rpg-lg text-center ${
-                    canStartMatch ? 'bg-gradient-to-r from-purple-700 to-purple-600 hover:from-purple-600 hover:to-purple-500 text-white border-purple-400/50' : 'opacity-50 cursor-not-allowed pointer-events-none'
-                  }`}
-                >
-                  {canStartMatch ? `Enter Free Roam — $${activeBet}` : 'Insufficient Balance'}
-                </Link>
-              </div>
-            </div>
-          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

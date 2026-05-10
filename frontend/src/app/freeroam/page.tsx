@@ -35,6 +35,7 @@ function FreeRoamPageInner() {
   const [inMatch, setInMatch] = useState(false);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const [noBalanceInfo, setNoBalanceInfo] = useState<{ balance: number; needed: number } | null>(null);
+  const [roomFull, setRoomFull] = useState(false);
   const gameStartedRef = useRef(false);
 
   useEffect(() => {
@@ -154,6 +155,10 @@ function FreeRoamPageInner() {
           if (gameStartedRef.current) return;
           if (data.code === 'CHARGE_FAILED') {
             setNoBalanceInfo({ balance: 0, needed: betAmount });
+            return;
+          }
+          if (data.code === 'ROOM_FULL') {
+            setRoomFull(true);
             return;
           }
           if (typeof window !== 'undefined') {
@@ -332,6 +337,33 @@ function FreeRoamPageInner() {
             >
               Back to Dashboard
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Room Full Overlay */}
+      {roomFull && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur flex items-center justify-center z-[60] px-4">
+          <div className="w-full max-w-sm sm:max-w-md rpg-panel p-5 sm:p-8 text-center">
+            <h2 className="rpg-title text-2xl sm:text-3xl mb-2 text-purple-400">Room Full</h2>
+            <p className="text-lg font-bold rpg-text mb-1">30 / 30 Players</p>
+            <p className="text-sm sm:text-base rpg-text-muted mb-4 sm:mb-6">
+              The free-roam room is at maximum capacity. Try again in a moment — a spot will open up when someone dies or cashes out.
+            </p>
+            <div className="flex flex-col gap-2 sm:gap-3">
+              <button
+                onClick={() => { window.location.reload(); }}
+                className="btn-rpg btn-rpg-block text-sm sm:text-base bg-gradient-to-r from-purple-700 to-purple-600 hover:from-purple-600 hover:to-purple-500 text-white border-purple-400/50"
+              >
+                Try Again
+              </button>
+              <button
+                onClick={() => { window.location.href = '/dashboard'; }}
+                className="btn-rpg btn-rpg-block text-center text-sm sm:text-base"
+              >
+                Back to Dashboard
+              </button>
+            </div>
           </div>
         </div>
       )}
