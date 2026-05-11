@@ -36,6 +36,7 @@ function FreeRoamPageInner() {
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const [noBalanceInfo, setNoBalanceInfo] = useState<{ balance: number; needed: number } | null>(null);
   const [roomFull, setRoomFull] = useState(false);
+  const [cashingOut, setCashingOut] = useState(false);
   const gameStartedRef = useRef(false);
 
   useEffect(() => {
@@ -181,9 +182,11 @@ function FreeRoamPageInner() {
   }, [user, loading, router, betAmount]);
 
   const handleCashOut = () => {
+    if (cashingOut) return; // already counting down
     const scene = sceneRef.current as { sendCashOut?: () => void } | null;
     if (scene?.sendCashOut) {
       scene.sendCashOut();
+      setCashingOut(true);
     }
   };
 
@@ -228,7 +231,7 @@ function FreeRoamPageInner() {
               transition-all duration-200 hover:scale-105 active:scale-95
               animate-pulse"
           >
-            💰 Cash Out — ${currentScore.toFixed(2)}
+            {cashingOut ? '⏳ Cashing Out...' : `💰 Cash Out — $${currentScore.toFixed(2)}`}
           </button>
         </div>
       )}

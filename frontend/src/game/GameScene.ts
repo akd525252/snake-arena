@@ -90,6 +90,15 @@ export class GameScene extends Phaser.Scene {
   // Marble tile ground (single theme for all matches)
   private arenaTileSprite: Phaser.GameObjects.TileSprite | null = null;
   private arenaMaskShape: Phaser.GameObjects.Graphics | null = null;
+  // Full-screen background tile (extends infinitely beyond arena)
+  private bgTileSprite: Phaser.GameObjects.TileSprite | null = null;
+
+  // Cash-out countdown (5s) — visual circle on snake head
+  private cashOutCountdownActive = false;
+  private cashOutCountdownStart = 0;
+  private cashOutCountdownDuration = 5000; // 5 seconds
+  private cashOutCountdownGfx: Phaser.GameObjects.Graphics | null = null;
+  private cashOutCountdownText: Phaser.GameObjects.Text | null = null;
 
   // HUD
   private scoreText!: Phaser.GameObjects.Text;
@@ -1060,6 +1069,85 @@ export class GameScene extends Phaser.Scene {
       // Trust Phaser's renderer.
       this.cameras.main.centerOn(this.cameraSmooth.x, this.cameraSmooth.y);
     }
+
+    // ── Keep background TileSprites anchored to camera ──────────────
+    // The bg tile is 20000×20000 centered at (0,0). We offset its
+    // tilePositionX/Y by the camera scroll so the marble texture stays
+    // fixed in world-space (parallax = 0). Without this in free-roam
+    // the ground appears to "walk" because the arena center drifts.
+    const cam = this.cameras.main;
+    if (this.bgTileSprite) {
+      this.bgTileSprite.setPosition(cam.scrollX + cam.width / 2, cam.scrollY + cam.height / 2);
+      this.bgTileSprite.tilePositionX = cam.scrollX;
+      this.bgTileSprite.tilePositionY = cam.scrollY;
+    }
+    if (this.arenaTileSprite && this.isFreeRoam) {
+      // In free-roam the tile is 20000×20000 with no mask — anchor it to
+      // the camera and offset tile position so the marble texture is fixed.
+      this.arenaTileSprite.setPosition(cam.scrollX + cam.width / 2, cam.scrollY + cam.height / 2);
+      this.arenaTileSprite.tilePositionX = cam.scrollX;
+      this.arenaTileSprite.tilePositionY = cam.scrollY;
+    }
+
+    // ── Cash-out countdown rendering (free-roam only) ───────────────
+    if (this.cashOutCountdownActive && myInterpHead && myAlive) {
+      const now = performance.now();
+      const elapsed = now - this.cashOutCountdownStart;
+      const remaining = Math.max(0, this.cashOutCountdownDuration - elapsed);
+      const secs = Math.ceil(remaining / 1000);
+      const progress = 1 - remaining / this.cashOutCountdownDuration;
+
+      if (remaining <= 0) {
+        // Countdown finished — send actual cash_out to server
+        this.cashOutCountdownActive = false;
+        this.send({ type: 'cash_out' });
+        if (this.cashOutCountdownGfx) {
+          this.cashOutCountdownGfx.clear();
+          this.cashOutCountdownGfx.setVisible(false);
+        }
+        if (this.cashOutCountdownText) this.cashOutCountdownText.setVisible(false);
+      } else {
+        // Draw circle around snake head
+        const hx = myInterpHead.x;
+        const hy = myInterpHead.y;
+        const radius = 28;
+
+        if (this.cashOutCountdownGfx) {
+          this.cashOutCountdownGfx.clear();
+          this.cashOutCountdownGfx.setVisible(true);
+
+          // Background circle (dark)
+          this.cashOutCountdownGfx.fillStyle(0x000000, 0.5);
+          this.cashOutCountdownGfx.fillCircle(hx, hy - 35, radius);
+
+          // Progress arc (green sweeping clockwise)
+          const startAngle = -Math.PI / 2; // 12 o'clock
+          const endAngle = startAngle + progress * Math.PI * 2;
+          this.cashOutCountdownGfx.lineStyle(4, 0x22c55e, 1);
+          this.cashOutCountdownGfx.beginPath();
+          this.cashOutCountdownGfx.arc(hx, hy - 35, radius, startAngle, endAngle, false);
+          this.cashOutCountdownGfx.strokePath();
+
+          // Outer ring
+          this.cashOutCountdownGfx.lineStyle(2, 0xffffff, 0.4);
+          this.cashOutCountdownGfx.strokeCircle(hx, hy - 35, radius);
+
+          // Pulsing glow
+          const pulse = 0.3 + 0.2 * Math.sin(now / 200);
+          this.cashOutCountdownGfx.lineStyle(6, 0x22c55e, pulse);
+          this.cashOutCountdownGfx.strokeCircle(hx, hy - 35, radius + 3);
+        }
+
+        if (this.cashOutCountdownText) {
+          this.cashOutCountdownText.setVisible(true);
+          this.cashOutCountdownText.setPosition(hx, hy - 35);
+          this.cashOutCountdownText.setText(`${secs}`);
+        }
+      }
+    } else if (this.cashOutCountdownActive && !myAlive) {
+      // Player died during countdown — cancel it
+      this.cancelCashOutCountdown();
+    }
   }
 
   /** Instantly snap camera to the player's current head position.
@@ -1280,6 +1368,8 @@ export class GameScene extends Phaser.Scene {
         if (msg.playerId === this.myPlayerId) {
           this.statusText.setText('');
           this.sfx.death();
+          // Cancel cash-out countdown — player died, so they lose money
+          this.cancelCashOutCountdown();
           this.onMyDeath?.({
             lostAmount: (msg.lostAmount as number) ?? 0,
             killerName: msg.killerName as string | undefined,
@@ -1332,9 +1422,44 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** Public: send cash_out to server (called from React UI). */
+  /** Public: send cash_out to server (called from React UI).
+   *  In free-roam mode, starts a 5-second countdown on the snake head.
+   *  If the player survives the 5s, the cash_out is sent to the server.
+   *  If they die during countdown, they lose their money. */
   public sendCashOut(): void {
-    this.send({ type: 'cash_out' });
+    if (this.isFreeRoam) {
+      if (this.cashOutCountdownActive) return; // already counting down
+      this.cashOutCountdownActive = true;
+      this.cashOutCountdownStart = performance.now();
+      // Create visual elements for countdown
+      if (!this.cashOutCountdownGfx) {
+        this.cashOutCountdownGfx = this.add.graphics().setDepth(300);
+      }
+      if (!this.cashOutCountdownText) {
+        this.cashOutCountdownText = this.add.text(0, 0, '5', {
+          fontFamily: 'monospace',
+          fontSize: '18px',
+          color: '#ffffff',
+          fontStyle: 'bold',
+          stroke: '#000000',
+          strokeThickness: 3,
+        }).setOrigin(0.5).setDepth(301);
+      }
+    } else {
+      this.send({ type: 'cash_out' });
+    }
+  }
+
+  /** Cancel the cash-out countdown (called if player dies during countdown). */
+  private cancelCashOutCountdown(): void {
+    this.cashOutCountdownActive = false;
+    if (this.cashOutCountdownGfx) {
+      this.cashOutCountdownGfx.clear();
+      this.cashOutCountdownGfx.setVisible(false);
+    }
+    if (this.cashOutCountdownText) {
+      this.cashOutCountdownText.setVisible(false);
+    }
   }
 
   // ============================================
@@ -2505,31 +2630,53 @@ export class GameScene extends Phaser.Scene {
     const cy = this.arenaCenterY;
     const r = this.arenaRadius;
     const g = this.arenaGfx;
-    const diameter = r * 2;
     const key = '__marble_tile__';
 
-    // ── Marble TileSprite — create or update to match arena ────────
+    // ── Full-world background TileSprite (covers everything — no edges) ──
+    // This sits behind everything and tiles infinitely. The camera's scrollX/Y
+    // offset is applied to tilePositionX/Y each frame in update() so the
+    // texture stays fixed in world-space while the camera moves.
+    if (this.textures.exists(key) && !this.bgTileSprite) {
+      // Very large size — 20000×20000 covers any arena + camera view
+      this.bgTileSprite = this.add.tileSprite(0, 0, 20000, 20000, key)
+        .setOrigin(0.5, 0.5)
+        .setDepth(-20)
+        .setAlpha(0.45); // dimmer than the arena interior
+    }
+
+    // ── Arena interior TileSprite (brighter, inside the circle) ──────
     if (this.textures.exists(key)) {
+      const diameter = r * 2;
       if (!this.arenaTileSprite) {
         this.arenaTileSprite = this.add.tileSprite(
           cx, cy, diameter, diameter, key,
         ).setOrigin(0.5, 0.5).setDepth(-10);
 
-        // Circular mask so the tiled marble stays inside the arena
-        this.arenaMaskShape = this.add.graphics();
-        this.arenaMaskShape.setVisible(false);
-        this.arenaMaskShape.fillStyle(0xffffff);
-        this.arenaMaskShape.fillCircle(cx, cy, r);
-        this.arenaTileSprite.setMask(this.arenaMaskShape.createGeometryMask());
+        // In free-roam the ground should be seamless everywhere — no mask.
+        // In arena mode, clip to the circle.
+        if (!this.isFreeRoam) {
+          this.arenaMaskShape = this.add.graphics();
+          this.arenaMaskShape.setVisible(false);
+          this.arenaMaskShape.fillStyle(0xffffff);
+          this.arenaMaskShape.fillCircle(cx, cy, r);
+          this.arenaTileSprite.setMask(this.arenaMaskShape.createGeometryMask());
+        }
       } else {
-        // Arena moved/resized — reposition tile sprite and update mask
         this.arenaTileSprite.setPosition(cx, cy);
         this.arenaTileSprite.setSize(diameter, diameter);
-        if (this.arenaMaskShape) {
+        if (this.arenaMaskShape && !this.isFreeRoam) {
           this.arenaMaskShape.clear();
           this.arenaMaskShape.fillStyle(0xffffff);
           this.arenaMaskShape.fillCircle(cx, cy, r);
         }
+      }
+
+      // In free-roam: make arena tile full-alpha (no dimming) and very large
+      // so there's no edge, and hide the bg tile since arena tile IS the ground.
+      if (this.isFreeRoam) {
+        this.arenaTileSprite.setSize(20000, 20000);
+        this.arenaTileSprite.setAlpha(1);
+        if (this.bgTileSprite) this.bgTileSprite.setVisible(false);
       }
     }
 
